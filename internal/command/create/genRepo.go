@@ -1,7 +1,7 @@
 /**
  * @Author: spruce
  * @Date: 2024-04-23 17:13
- * @Desc: TODO
+ * @Desc: 根据数据库生成 repository/db
  */
 
 package create
