@@ -17,7 +17,6 @@ import (
 	"gorm.io/driver/clickhouse"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -29,10 +28,9 @@ const (
 	Version        = "0.0.1"
 	VersionText    = "数据库生成GORM Model文件"
 
-	// dbMySQL Gorm Drivers mysql || postgres || sqlite || sqlserver
+	// dbMySQL Gorm Drivers mysql || postgres || clickhouse
 	dbMySQL      DBType = "mysql"
 	dbPostgres   DBType = "postgres"
-	dbSQLite     DBType = "sqlite"
 	dbClickHouse DBType = "clickhouse"
 )
 
@@ -56,8 +54,6 @@ func connectDB(t DBType, dsn string) (*gorm.DB, error) {
 		return gorm.Open(mysql.Open(dsn))
 	case dbPostgres:
 		return gorm.Open(postgres.Open(dsn))
-	case dbSQLite:
-		return gorm.Open(sqlite.Open(dsn))
 	case dbClickHouse:
 		return gorm.Open(clickhouse.Open(dsn))
 	default:
