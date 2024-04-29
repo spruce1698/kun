@@ -26,7 +26,7 @@ type DBType string
 const (
 	DefaultOutPath = "./internal/repository/db"
 	Version        = "1.0.1"
-	VersionText    = "数据库生成GORM Model文件"
+	VersionText    = "数据库生成GORM Repository文件"
 
 	// dbMySQL Gorm Drivers mysql || postgres || clickhouse
 	dbMySQL      DBType = "mysql"
