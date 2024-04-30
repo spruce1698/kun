@@ -133,7 +133,7 @@ import (
 	"context"
 )
 
-//go:generate mockgen -source=./{{.InterfaceName}}.go -destination=../../../test/mocks/repository/db/{{.InterfaceName}}.go  -package mock_db_repo -aux_files db=./{{.InterfaceName}}_gen.go
+//go:generate mockgen -source=./{{.InterfaceName}}.go -destination=../../../test/mocks/repository/mysql/{{.InterfaceName}}.go  -package mock_repo_mysql -aux_files mysql=./{{.InterfaceName}}_gen.go
 
 var _ {{.StructName}}Repo = (*custom{{.StructName}})(nil)
 

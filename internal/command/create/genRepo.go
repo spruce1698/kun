@@ -24,8 +24,7 @@ import (
 type DBType string
 
 const (
-	DefaultOutPath = "./internal/repository/db"
-	Version        = "1.0.1"
+	DefaultOutPath = "./internal/repository/mysql"
 	VersionText    = "数据库生成GORM Repository文件"
 
 	// dbMySQL Gorm Drivers mysql || postgres || clickhouse
@@ -36,12 +35,11 @@ const (
 
 // CmdParams is command line parameters
 type CmdParams struct {
-	DSN         string   // user:pass@tcp(127.0.0.1:3306)/dbname?charset=utf8mb4&parseTime=True&loc=Local
-	Tables      []string // 输入所需的数据表或将其留空,留空数据库中所有的数据表
-	OutPath     string   // 指定输出目录
-	PackageName string   // 生成的model代码的包名称。
-	Prefix      string   // 表前缀,不为空则model不包含前缀
-	DBType      string   // 数据库类型
+	DSN     string   // user:pass@tcp(127.0.0.1:3306)/dbname?charset=utf8mb4&parseTime=True&loc=Local
+	Tables  []string // 输入所需的数据表或将其留空,留空数据库中所有的数据表
+	OutPath string   // 指定输出目录
+	Prefix  string   // 表前缀,不为空则model不包含前缀
+	DBType  string   // 数据库类型
 }
 
 // connectDB 连接数据库 选择用于连接到数据库的数据库类型
@@ -63,10 +61,9 @@ func connectDB(t DBType, dsn string) (*gorm.DB, error) {
 
 func genRepo(cmd *cobra.Command, args []string) {
 	config := &CmdParams{
-		DSN:         args[0],
-		DBType:      "mysql",
-		PackageName: "db",
-		OutPath:     DefaultOutPath,
+		DSN:     args[0],
+		DBType:  "mysql",
+		OutPath: DefaultOutPath,
 	}
 	if args[1] != "" {
 		config.Tables = strings.Split(args[1], ",")
@@ -90,13 +87,13 @@ func genRepo(cmd *cobra.Command, args []string) {
 
 	g := sqlgen.NewGenerator(sqlgen.Config{
 		DbConn:            gormDb,
-		OutPath:           outPath,            // 指定输出目录
-		PackageName:       config.PackageName, // 默认值是数据表名称。生成的model代码的包名称。
-		FieldCoverable:    false,              // 当字段具有默认值时生成指针，以解决无法分配零值的问题
-		FieldNullable:     true,               // 当字段可为空时生成指针
-		FieldWithIndexTag: true,               // 生成字段包含 索引 标记
-		FieldWithTypeTag:  true,               // 生成字段包含 列类型 标记
-		FieldSignable:     false,              // 检测整数字段的无符号类型，调整生成的数据类型
+		OutPath:           outPath,       // 指定输出目录
+		PackageName:       config.DBType, // Repo代码的包名称,同数据库类型相同。
+		FieldCoverable:    false,         // 当字段具有默认值时生成指针，以解决无法分配零值的问题
+		FieldNullable:     true,          // 当字段可为空时生成指针
+		FieldWithIndexTag: true,          // 生成字段包含 索引 标记
+		FieldWithTypeTag:  true,          // 生成字段包含 列类型 标记
+		FieldSignable:     false,         // 检测整数字段的无符号类型，调整生成的数据类型
 	})
 
 	var tablesList []string
