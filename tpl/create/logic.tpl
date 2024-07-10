@@ -43,7 +43,7 @@ func (l *{{ .FileNameTitleLower }}Logic) Get{{ .FileName }}(id int64) (result *{
 		result = &{{ .FileName }}{}
 		{{ .FileNameTitleLower }}, dbErr := l.{{ .FileNameTitleLower }}Mysql.FindOne(ctx, id)
 		if dbErr != nil {
-			if errors.Is(dbErr, db.ErrNotFound) {
+			if errors.Is(dbErr, mysql.ErrNotFound) {
 				return nil, xerror.NewError(xerror.BusinessError, "没有相关记录", dbErr)
 			}
 			return result, xerror.NewError(xerror.BusinessError, "Get{{ .FileName }} 失败", dbErr)

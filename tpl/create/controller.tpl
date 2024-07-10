@@ -13,7 +13,7 @@ type {{ .FileName }}Ctl struct {
 }
 
 func New{{ .FileName }}Ctl({{ .FileNameTitleLower }}Logic logic.{{ .FileName }}Logic) *{{ .FileName }}Ctl {
-	return &{{ .FileName }}{
+	return &{{ .FileName }}Ctl{
 		{{ .FileNameTitleLower }}Logic: {{ .FileNameTitleLower }}Logic,
 	}
 }

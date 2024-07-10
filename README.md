@@ -60,8 +60,7 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
 │   ├── swagger
 ├── internal
 │   ├── controller
-│   │   │   ├── demo
-│   │   │   │   ├── demo.go
+│   │   └──demo.go
 │   ├── global
 │   │   └──router.go
 │   ├── logic
@@ -88,7 +87,7 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
 ├── pkg
 ├── scripts
 │   ├── swagger.sh
-├── pkg
+├── test
 ├── README.md
 ├── go.mod
 └── go.sum
@@ -122,6 +121,12 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
 - internal: 存放应用程序的内部代码。
   - controller: 处理HTTP请求的控制器。
     - demo.go: 处理demo相关的HTTP请求的控制器。
+  - global: 存放常量/全局变量代码。
+    - ctx.go: ctx中的常量/全局变量。
+    - router.go: 路由常量/全局变量。
+  - logic: 存放业务逻辑代码。
+    - logic.go: 业务逻辑的通用接口。
+    - demo.go: demo业务逻辑的实现。
   - middleware: 存放中间件代码。
     - cors.go: 跨域资源共享中间件。
     - logger.go: 接管默认日志中间件。
@@ -138,14 +143,9 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
     - router.go: 通用路由。
     - v0: 默认第一个/公共版本。
       - demo.go: demo相关路由。
-  - logic: 存放业务逻辑代码。
-    - logic.go: 业务逻辑的通用接口。
-    - demo.go: demo业务逻辑的实现。
-
+- pkg: 存放应用程序的公共包。
 - scripts:  项目脚本。
   - swagger.sh: 生成swagger文档的脚本。
-
-- pkg: 存放应用程序的公共包。
 - test: mock代码
 - go.mod: Go模块文件。
 - go.sum: Go模块的依赖版本文件。
@@ -226,7 +226,7 @@ kun create repo "name:pwd@tcp(127.0.0.1:3306)/dbname" "t1,t2"
 kun create all user
 ```
 
-这些命令将分别创建一个名为 `controller/user.go` 和 `logic/user.go`的组件，并将它们放置在正确的目录中。
+这些命令将分别创建以`UserCtl` 和 `UserLogic` 命名的组件，并将它们放置在正确的目录中。
 
 ### 启动项目
 

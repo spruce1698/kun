@@ -86,7 +86,6 @@ func runCreate(cmd *cobra.Command, args []string) {
 	c := NewCreate()
 	c.ProjectName = helper.GetProjectName(".")
 	c.CmdType = cmd.Use
-	args[0] = strings.Trim(strings.Trim(strings.Trim(args[0], "."), "../"), "./")
 	c.FilePath, c.FileName = filepath.Split(args[0])
 	c.FileName = strings.ReplaceAll(strings.ToUpper(string(c.FileName[0]))+c.FileName[1:], ".go", "")
 	c.FileNameTitleLower = strings.ToLower(string(c.FileName[0])) + c.FileName[1:]
@@ -116,26 +115,33 @@ func (c *Create) genFile() {
 	filePath := c.FilePath
 	if filePath == "" {
 		filePath = fmt.Sprintf("internal/%s/", c.CreateType)
-
-		c.PackageName = c.CreateType
 	} else {
 		filePath = fmt.Sprintf("internal/%s/", c.CreateType+"/"+filePath)
-
-		tPath := strings.Split(strings.Trim(filePath, "/"), "/")
-		if len(tPath) == 0 {
-			c.PackageName = c.FileNameTitleLower
-		}
-		c.PackageName = tPath[len(tPath)-1]
 	}
 	filePath = strings.ReplaceAll(filePath, "//", "/")
+
+	absPath, _ := filepath.Abs(filepath.Dir(filepath.Join(filePath, strings.ToLower(c.FileName)+".go")))
+	absLinuxPath := strings.ReplaceAll(absPath, "\\", "/") + "/"
+	dirOk := strings.Index(absLinuxPath, "internal/"+c.CreateType+"/")
+	if dirOk == -1 {
+		log.Fatalf("create %s error: %s", c.CreateType, "not in internal")
+		return
+	}
+
 	f := createFile(filePath, strings.ToLower(c.FileName)+".go")
 	if f == nil {
-		log.Printf("warn: file %s%s %s", filePath, strings.ToLower(c.FileName)+".go", "already exists.")
+		log.Printf("warn: file %s%s %s", absLinuxPath, strings.ToLower(c.FileName)+".go", "already exists.")
 		return
 	}
 	defer func(f *os.File) {
 		_ = f.Close()
 	}(f)
+
+	_, c.PackageName = filepath.Split(absPath)
+	if c.PackageName == "" {
+		c.PackageName = c.CreateType
+	}
+
 	var t *template.Template
 	var err error
 	if tplPath == "" {
@@ -150,7 +156,7 @@ func (c *Create) genFile() {
 	if err != nil {
 		log.Fatalf("create %s error: %s", c.CreateType, err.Error())
 	}
-	log.Printf("Created new %s: %s", c.CreateType, filePath+strings.ToLower(c.FileName)+".go")
+	log.Printf("Created new %s: %s", c.CreateType, absLinuxPath+strings.ToLower(c.FileName)+".go")
 
 }
 
