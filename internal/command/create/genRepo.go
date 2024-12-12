@@ -66,7 +66,11 @@ func genRepo(cmd *cobra.Command, args []string) {
 		OutPath: DefaultOutPath,
 	}
 	if args[1] != "" {
-		config.Tables = strings.Split(args[1], ",")
+		if args[1] == "*" {
+			config.Tables = []string{}
+		} else {
+			config.Tables = strings.Split(args[1], ",")
+		}
 	}
 
 	outPath, err := filepath.Abs(config.OutPath)

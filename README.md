@@ -217,7 +217,7 @@ Advanced Layout 包含了很多kun的用法示例（ db、redis、 jwt、 cron�
 ```bash
 kun create ctl user
 kun create logic user
-kun create repo "name:pwd@tcp(127.0.0.1:3306)/dbname" "t1,t2"
+kun create repo "name:pwd@tcp(127.0.0.1:3306)/dbname" [t1,t2|t1|*]
 ```
 
 或
