@@ -70,7 +70,7 @@ var CmdCreateLogic = &cobra.Command{
 var CmdCreateRepository = &cobra.Command{
 	Use:     "repo",
 	Short:   "Create a new repository",
-	Example: "kun create repo \"name:pwd@tcp(127.0.0.1:3306)/dbname\" \"t1,t2\"",
+	Example: "kun create repo \"name:pwd@tcp(127.0.0.1:3306)/dbname\" [t1,t2|t1|*]",
 	Args:    cobra.ExactArgs(2),
 	Run:     genRepo,
 }
