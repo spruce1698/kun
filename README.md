@@ -75,11 +75,11 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
 │   │   ├── subscriber.go
 │   ├── repository
 │   │   ├── cache
-│   │   │   ├── user.go
+│   │   │   ├── demo.go
 │   │   ├── mysql
 │   │   │   ├── mysql.go
-│   │   │   ├── user.go
-│   │   │   └── user_gen.go
+│   │   │   ├── demo.go
+│   │   │   └── demo_gen.go
 │   └── router
 │       ├── router.go
 │   │   │   ├── v0

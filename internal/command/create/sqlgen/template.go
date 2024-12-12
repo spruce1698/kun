@@ -1,6 +1,6 @@
 /**
  * @Author: spruce
- * @Date: 2023-04-10 16:29
+ * @Date: 2024-03-28 16:29
  * @Desc: sql gen Model 模板
  */
 
@@ -24,7 +24,7 @@ import (
 
 const BaseRepoMethod = NotEditMark + Header + `
 
-var  _ {{.InterfaceName}}Repo = (*default{{.StructName}}Repo)(nil)
+var  _ {{.InterfaceName}}Repo = (*default{{.StructName}})(nil)
 
 const TableName{{.StructName}} = "{{.TableName}}"
 
@@ -50,9 +50,9 @@ type (
 	`{{end}}
     }
 
-	default{{.StructName}}Repo struct {
+	default{{.StructName}} struct {
 		*Conn
-		model *{{.StructName}}
+		repo *{{.StructName}}
 	}
 )
 
@@ -61,24 +61,24 @@ func (*{{.StructName}}) TableName() string {
 	return TableName{{.StructName}}
 }
 
-func new{{.StructName}}(c *Conn) *default{{.StructName}}Repo {
-	return &default{{.StructName}}Repo{
+func new{{.StructName}}Repo(c *Conn) *default{{.StructName}} {
+	return &default{{.StructName}}{
 		Conn:   c,
-		model:    &{{.StructName}}{},
+		repo:    &{{.StructName}}{},
 	}
 }
 
-func (r *default{{.StructName}}Repo) Insert(ctx context.Context,data *{{.StructName}}) ({{.PrimaryKeyType}}, error) {
+func (d *default{{.StructName}}) Insert(ctx context.Context,data *{{.StructName}}) ({{.PrimaryKeyType}}, error) {
     data.Id = 0
-	err := r.WithContext(ctx).Create(data).Error
+	err := d.WithContext(ctx).Create(data).Error
 	if err != nil {
 		return 0,err
 	}
 	return data.Id,nil
 }
 
-func (r *default{{.StructName}}Repo) BatchInsert(ctx context.Context,list []*{{.StructName}}) ([]{{.PrimaryKeyType}}, error) {
-	err := r.WithContext(ctx).Create(list).Error
+func (d *default{{.StructName}}) BatchInsert(ctx context.Context,list []*{{.StructName}}) ([]{{.PrimaryKeyType}}, error) {
+	err := d.WithContext(ctx).Create(list).Error
 	if err != nil {
 		return nil,err
 	}
@@ -90,17 +90,17 @@ func (r *default{{.StructName}}Repo) BatchInsert(ctx context.Context,list []*{{.
 }
 
 
-func (r *default{{.StructName}}Repo) FindOne(ctx context.Context,id {{.PrimaryKeyType}}) (*{{.StructName}}, error) {
+func (d *default{{.StructName}}) FindOne(ctx context.Context,id {{.PrimaryKeyType}}) (*{{.StructName}}, error) {
     result:= &{{.StructName}}{}
-	err := r.WithContext(ctx).Where(" id = ? ", id).First(result).Error
+	err := d.WithContext(ctx).Where(" id = ? ", id).First(result).Error
     if  err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
-func (r *default{{.StructName}}Repo) Update(ctx context.Context,newData *{{.StructName}}, column []string)  (int64, error)  {
-	engine := r.WithContext(ctx).Model(r.model)
+func (d *default{{.StructName}}) Update(ctx context.Context,newData *{{.StructName}}, column []string)  (int64, error)  {
+	engine := d.WithContext(ctx).Model(d.repo)
 	if len(column) > 0 {
 		engine = engine.Select(column)
 	}
@@ -108,19 +108,19 @@ func (r *default{{.StructName}}Repo) Update(ctx context.Context,newData *{{.Stru
 	return result.RowsAffected, result.Error
 }
 
-func (r *default{{.StructName}}Repo) UpdateColumns(ctx context.Context,id {{.PrimaryKeyType}}, newData map[string]any)  (int64, error)  {
-	result := r.WithContext(ctx).Model(r.model).Where(" id = ? ", id).Updates(newData)
+func (d *default{{.StructName}}) UpdateColumns(ctx context.Context,id {{.PrimaryKeyType}}, newData map[string]any)  (int64, error)  {
+	result := d.WithContext(ctx).Model(d.repo).Where(" id = ? ", id).Updates(newData)
 	return result.RowsAffected, result.Error
 }
 
 
-func (r *default{{.StructName}}Repo) SoftDelete(ctx context.Context,ids []{{.PrimaryKeyType}}) error {
-	err :=  r.WithContext(ctx).Where(" id  IN (?)  ", ids).Delete(r.model).Error
+func (d *default{{.StructName}}) SoftDelete(ctx context.Context,ids []{{.PrimaryKeyType}}) error {
+	err :=  d.WithContext(ctx).Where(" id  IN (?)  ", ids).Delete(d.repo).Error
 	return err
 }
 
-func (r *default{{.StructName}}Repo) Delete(ctx context.Context, ids []{{.PrimaryKeyType}}) error {
-	err := r.WithContext(ctx).Where(" id  IN (?)  ", ids).Unscoped().Delete(r.model).Error
+func (d *default{{.StructName}}) Delete(ctx context.Context, ids []{{.PrimaryKeyType}}) error {
+	err := d.WithContext(ctx).Where(" id  IN (?)  ", ids).Unscoped().Delete(d.repo).Error
 	return err
 }
 
@@ -135,7 +135,7 @@ import (
 
 //go:generate mockgen -source=./{{.InterfaceName}}.go -destination=../../test/mocks/repository/mysql/{{.InterfaceName}}.go  -package mock_repo_mysql -aux_files mysql=./{{.InterfaceName}}_gen.go
 
-var _ {{.StructName}}Repo = (*custom{{.StructName}}Repo)(nil)
+var _ {{.StructName}}Repo = (*custom{{.StructName}})(nil)
 
 type (
 	{{.StructName}}Repo interface {
@@ -143,14 +143,14 @@ type (
 	}
 
 
-	custom{{.StructName}}Repo struct {
+	custom{{.StructName}} struct {
 		*default{{.StructName}}
 	}
 )
 
 func New{{.StructName}}Repo(c *Conn) {{.StructName}}Repo {
-	return &custom{{.StructName}}Repo{
-		default{{.StructName}}: new{{.StructName}}(c),
+	return &custom{{.StructName}}{
+		default{{.StructName}}: new{{.StructName}}Repo(c),
 	}
 }
 
