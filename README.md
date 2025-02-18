@@ -63,7 +63,7 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
 │   │   └──demo.go
 │   ├── global
 │   │   └──router.go
-│   ├── logic
+│   ├── service
 │   │   ├── demo.go
 │   │   └── logic.go
 │   ├── middleware
