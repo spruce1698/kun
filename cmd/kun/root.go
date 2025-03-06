@@ -23,12 +23,12 @@ var CmdRoot = &cobra.Command{
 
 func init() {
 	CmdRoot.AddCommand(new.CmdNew)
-	CmdRoot.AddCommand(create.CmdCreate)
 	CmdRoot.AddCommand(run.CmdRun)
-
 	CmdRoot.AddCommand(upgrade.CmdUpgrade)
+	CmdRoot.AddCommand(create.CmdCreate)
+
 	create.CmdCreate.AddCommand(create.CmdCreateController)
-	create.CmdCreate.AddCommand(create.CmdCreateLogic)
+	create.CmdCreate.AddCommand(create.CmdCreateService)
 	create.CmdCreate.AddCommand(create.CmdCreateRepository)
 	create.CmdCreate.AddCommand(create.CmdCreateAll)
 

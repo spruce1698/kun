@@ -91,13 +91,13 @@ func genRepo(cmd *cobra.Command, args []string) {
 
 	g := sqlgen.NewGenerator(sqlgen.Config{
 		DbConn:            gormDb,
-		OutPath:           outPath,       // 指定输出目录
-		PackageName:       config.DBType, // Repo代码的包名称,同数据库类型相同。
-		FieldCoverable:    false,         // 当字段具有默认值时生成指针，以解决无法分配零值的问题
-		FieldNullable:     true,          // 当字段可为空时生成指针
-		FieldWithIndexTag: true,          // 生成字段包含 索引 标记
-		FieldWithTypeTag:  true,          // 生成字段包含 列类型 标记
-		FieldSignable:     false,         // 检测整数字段的无符号类型，调整生成的数据类型
+		OutPath:           outPath, // 指定输出目录
+		PackageName:       "db",    // Repo代码的包名称,同数据库类型相同。
+		FieldCoverable:    false,   // 当字段具有默认值时生成指针，以解决无法分配零值的问题
+		FieldNullable:     true,    // 当字段可为空时生成指针
+		FieldWithIndexTag: true,    // 生成字段包含 索引 标记
+		FieldWithTypeTag:  true,    // 生成字段包含 列类型 标记
+		FieldSignable:     false,   // 检测整数字段的无符号类型，调整生成的数据类型
 	})
 
 	var tablesList []string

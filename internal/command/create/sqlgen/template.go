@@ -22,18 +22,19 @@ import (
 
 `
 
-const BaseRepoMethod = NotEditMark + Header + `
+const BaseDbMethod = NotEditMark + Header + `
 
-var  _ {{.InterfaceName}}Repo = (*default{{.StructName}})(nil)
+var  _ {{.InterfaceName}}Db = (*default{{.StructName}}Db)(nil)
 
 const TableName{{.StructName}} = "{{.TableName}}"
 
 type (
-	{{.InterfaceName}}Repo interface {
+	{{.InterfaceName}}Db interface {
 		Insert(ctx context.Context,data *{{.StructName}}) ({{.PrimaryKeyType}}, error)
 		BatchInsert(ctx context.Context,list []*{{.StructName}}) ([]{{.PrimaryKeyType}}, error)
 
 		FindOne(ctx context.Context, id {{.PrimaryKeyType}}) (*{{.StructName}}, error)
+		FindBy(ctx context.Context, id int64, columns ...string) (*{{.StructName}}, error)
 
 		Update(ctx context.Context, newData *{{.StructName}}, column []string)  (int64, error)
 		UpdateColumns(ctx context.Context, id {{.PrimaryKeyType}}, newData map[string]any)  (int64, error)
@@ -43,17 +44,17 @@ type (
 
 	}
 
+	default{{.StructName}}Db struct {
+		*Conn
+		model *{{.StructName}}
+	}
+
 	// {{.StructName}} {{.StructComment}}
 	{{.StructName}} struct {
 		{{range .Fields}}
             {{.Name}} {{.Type}} ` + "`{{.Tags}}` {{.CommentTag}}" +
 	`{{end}}
     }
-
-	default{{.StructName}} struct {
-		*Conn
-		repo *{{.StructName}}
-	}
 )
 
 
@@ -61,14 +62,14 @@ func (*{{.StructName}}) TableName() string {
 	return TableName{{.StructName}}
 }
 
-func new{{.StructName}}Repo(c *Conn) *default{{.StructName}} {
-	return &default{{.StructName}}{
+func new{{.StructName}}Db(c *Conn) *default{{.StructName}}Db {
+	return &default{{.StructName}}Db{
 		Conn:   c,
-		repo:    &{{.StructName}}{},
+		model:    &{{.StructName}}{},
 	}
 }
 
-func (d *default{{.StructName}}) Insert(ctx context.Context,data *{{.StructName}}) ({{.PrimaryKeyType}}, error) {
+func (d *default{{.StructName}}Db) Insert(ctx context.Context,data *{{.StructName}}) ({{.PrimaryKeyType}}, error) {
     data.Id = 0
 	err := d.WithContext(ctx).Create(data).Error
 	if err != nil {
@@ -77,7 +78,7 @@ func (d *default{{.StructName}}) Insert(ctx context.Context,data *{{.StructName}
 	return data.Id,nil
 }
 
-func (d *default{{.StructName}}) BatchInsert(ctx context.Context,list []*{{.StructName}}) ([]{{.PrimaryKeyType}}, error) {
+func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context,list []*{{.StructName}}) ([]{{.PrimaryKeyType}}, error) {
 	err := d.WithContext(ctx).Create(list).Error
 	if err != nil {
 		return nil,err
@@ -90,17 +91,26 @@ func (d *default{{.StructName}}) BatchInsert(ctx context.Context,list []*{{.Stru
 }
 
 
-func (d *default{{.StructName}}) FindOne(ctx context.Context,id {{.PrimaryKeyType}}) (*{{.StructName}}, error) {
-    result:= &{{.StructName}}{}
-	err := d.WithContext(ctx).Where(" id = ? ", id).First(result).Error
+func (d *default{{.StructName}}Db) FindOne(ctx context.Context,id {{.PrimaryKeyType}}) (*{{.StructName}}, error) {
+    result := &{{.StructName}}{}
+	err := d.WithContext(ctx).First(result,id).Error
     if  err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
-func (d *default{{.StructName}}) Update(ctx context.Context,newData *{{.StructName}}, column []string)  (int64, error)  {
-	engine := d.WithContext(ctx).Model(d.repo)
+func (d *default{{.StructName}}Db) FindBy(ctx context.Context, id int64, columns ...string) (*{{.StructName}}, error) {
+	result := &{{.StructName}}{}
+	err := d.WithContext(ctx).Select(columns).First(result, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (d *default{{.StructName}}Db) Update(ctx context.Context,newData *{{.StructName}}, column []string)  (int64, error)  {
+	engine := d.WithContext(ctx).Model(d.model)
 	if len(column) > 0 {
 		engine = engine.Select(column)
 	}
@@ -108,19 +118,19 @@ func (d *default{{.StructName}}) Update(ctx context.Context,newData *{{.StructNa
 	return result.RowsAffected, result.Error
 }
 
-func (d *default{{.StructName}}) UpdateColumns(ctx context.Context,id {{.PrimaryKeyType}}, newData map[string]any)  (int64, error)  {
-	result := d.WithContext(ctx).Model(d.repo).Where(" id = ? ", id).Updates(newData)
+func (d *default{{.StructName}}Db) UpdateColumns(ctx context.Context,id {{.PrimaryKeyType}}, newData map[string]any)  (int64, error)  {
+	result := d.WithContext(ctx).Model(d.model).Where(" id = ? ", id).Updates(newData)
 	return result.RowsAffected, result.Error
 }
 
 
-func (d *default{{.StructName}}) SoftDelete(ctx context.Context,ids []{{.PrimaryKeyType}}) error {
-	err :=  d.WithContext(ctx).Where(" id  IN (?)  ", ids).Delete(d.repo).Error
+func (d *default{{.StructName}}Db) SoftDelete(ctx context.Context,ids []{{.PrimaryKeyType}}) error {
+	err :=  d.WithContext(ctx).Where(" id  IN (?)  ", ids).Delete(d.model).Error
 	return err
 }
 
-func (d *default{{.StructName}}) Delete(ctx context.Context, ids []{{.PrimaryKeyType}}) error {
-	err := d.WithContext(ctx).Where(" id  IN (?)  ", ids).Unscoped().Delete(d.repo).Error
+func (d *default{{.StructName}}Db) Delete(ctx context.Context, ids []{{.PrimaryKeyType}}) error {
+	err := d.WithContext(ctx).Where(" id  IN (?)  ", ids).Unscoped().Delete(d.model).Error
 	return err
 }
 
@@ -133,26 +143,29 @@ import (
 	"context"
 )
 
-//go:generate mockgen -source=./{{.InterfaceName}}.go -destination=../../test/mocks/repository/mysql/{{.InterfaceName}}.go  -package mock_repo_mysql -aux_files mysql=./{{.InterfaceName}}_gen.go
+//go:generate mockgen -source=./{{.InterfaceName}}.go -destination=../../../test/mocks/repository/db/{{.InterfaceName}}.go  -package mock_repo_db -aux_files mysql=./{{.InterfaceName}}_gen.go
 
-var _ {{.StructName}}Repo = (*custom{{.StructName}})(nil)
+var _ {{.StructName}}Db = (*custom{{.StructName}})(nil)
 
 type (
-	{{.StructName}}Repo interface {
-		{{.InterfaceName}}Repo
+	{{.StructName}}Db interface {
+		{{.InterfaceName}}Db
 	}
-
 
 	custom{{.StructName}} struct {
 		*default{{.StructName}}
 	}
+
+	// TODO: add your code here and delete this line
 )
 
-func New{{.StructName}}Repo(c *Conn) {{.StructName}}Repo {
+func New{{.StructName}}Db(c *Conn) {{.StructName}}Db {
 	return &custom{{.StructName}}{
-		default{{.StructName}}: new{{.StructName}}Repo(c),
+		default{{.StructName}}: new{{.StructName}}Db(c),
 	}
 }
+
+// TODO: add your code here and delete this line
 
 
 `
