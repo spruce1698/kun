@@ -281,7 +281,7 @@ func (g *Generator) generateModelFile() error {
 			defer p.Done()
 
 			var buf bytes.Buffer
-			err := render(BaseRepoMethod, &buf, data)
+			err := render(BaseDbMethod, &buf, data)
 			if err != nil {
 				errChan <- err
 				return

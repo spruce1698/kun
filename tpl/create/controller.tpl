@@ -5,19 +5,25 @@ import (
 
 	"{{ .ProjectName }}/pkg/xerror"
     "{{ .ProjectName }}/pkg/xhttp"
-	"{{ .ProjectName }}/internal/logic"
+	"{{ .ProjectName }}/internal/service/svc"
 )
 
-type {{ .FileName }}Ctl struct {
-	{{ .FileNameTitleLower }}Logic logic.{{ .FileName }}Logic
-}
+type (
+   {{ .FileName }}Ctrl struct {
+       {{ .FileName }}Svc svc.{{ .FileName }}Svc
+   }
 
-func New{{ .FileName }}Ctl({{ .FileNameTitleLower }}Logic logic.{{ .FileName }}Logic) *{{ .FileName }}Ctl {
-	return &{{ .FileName }}Ctl{
-		{{ .FileNameTitleLower }}Logic: {{ .FileNameTitleLower }}Logic,
+   // TODO: add your code here and delete this line
+
+)
+
+func ({{ .FileNameFirstChar }} *{{ .FileName }}Ctrl) Get{{ .FileName }}(ctx *gin.Context) {
+    data, err := {{ .FileNameFirstChar }}.{{ .FileName }}Svc.Get{{ .FileName }}(ctx.Request.Context(), req.Id)
+	if err != nil {
+		xhttp.BusFail(ctx, err)
+		return
 	}
+	xhttp.Data(ctx, "Get{{ .FileName }} 成功", data)
 }
 
-func (c *{{ .FileName }}Ctl) Get{{ .FileName }}(ctx *gin.Context) {
-
-}
+// TODO: add your code here and delete this line

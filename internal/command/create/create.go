@@ -23,6 +23,7 @@ type Create struct {
 	FileNameTitleLower string
 	FileNameFirstChar  string
 	PackageName        string
+	AddUPPath          string
 	IsFull             bool
 }
 
@@ -32,8 +33,8 @@ func NewCreate() *Create {
 
 var CmdCreate = &cobra.Command{
 	Use:     "create [type] [controller-name]",
-	Short:   "Create a new ctl/logic/repo",
-	Example: "kun create ctl user",
+	Short:   "Create a new ctrl/svc/repo",
+	Example: "kun create ctrl user",
 	Args:    cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
 
@@ -46,7 +47,7 @@ var (
 func init() {
 	CmdCreateController.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
 
-	CmdCreateLogic.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
+	CmdCreateService.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
 
 	CmdCreateRepository.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
 
@@ -54,16 +55,16 @@ func init() {
 }
 
 var CmdCreateController = &cobra.Command{
-	Use:     "ctl",
+	Use:     "ctrl",
 	Short:   "Create a new controller",
-	Example: "kun create ctl user",
+	Example: "kun create ctrl user",
 	Args:    cobra.ExactArgs(1),
 	Run:     runCreate,
 }
-var CmdCreateLogic = &cobra.Command{
-	Use:     "logic",
-	Short:   "Create a new logic",
-	Example: "kun create logic user",
+var CmdCreateService = &cobra.Command{
+	Use:     "svc",
+	Short:   "Create a new service",
+	Example: "kun create svc user",
 	Args:    cobra.ExactArgs(1),
 	Run:     runCreate,
 }
@@ -76,7 +77,7 @@ var CmdCreateRepository = &cobra.Command{
 }
 var CmdCreateAll = &cobra.Command{
 	Use:     "all",
-	Short:   "Create a new controller & logic",
+	Short:   "Create a new controller & service",
 	Example: "kun create all user",
 	Args:    cobra.ExactArgs(1),
 	Run:     runCreate,
@@ -92,17 +93,17 @@ func runCreate(cmd *cobra.Command, args []string) {
 	c.FileNameFirstChar = string(c.FileNameTitleLower[0])
 
 	switch c.CmdType {
-	case "ctl":
+	case "ctrl":
 		c.CreateType = "controller"
 		c.genFile()
-	case "logic":
-		c.CreateType = "logic"
+	case "svc":
+		c.CreateType = "service"
 		c.genFile()
 	case "all":
 		c.CreateType = "controller"
 		c.genFile()
 
-		c.CreateType = "logic"
+		c.CreateType = "service"
 		c.genFile()
 
 	default:
@@ -112,17 +113,23 @@ func runCreate(cmd *cobra.Command, args []string) {
 }
 
 func (c *Create) genFile() {
+	basePath := "internal"
+	typePath := c.CreateType
+	if c.CreateType == "service" {
+		typePath = c.CreateType + "/svc"
+	}
 	filePath := c.FilePath
 	if filePath == "" {
-		filePath = fmt.Sprintf("internal/%s/", c.CreateType)
+		filePath = basePath + "/" + typePath + "/"
 	} else {
-		filePath = fmt.Sprintf("internal/%s/", c.CreateType+"/"+filePath)
+		c.AddUPPath = "../"
+		filePath = basePath + "/" + typePath + "/" + filePath + "/"
 	}
 	filePath = strings.ReplaceAll(filePath, "//", "/")
 
 	absPath, _ := filepath.Abs(filepath.Dir(filepath.Join(filePath, strings.ToLower(c.FileName)+".go")))
 	absLinuxPath := strings.ReplaceAll(absPath, "\\", "/") + "/"
-	dirOk := strings.Index(absLinuxPath, "internal/"+c.CreateType+"/")
+	dirOk := strings.Index(absLinuxPath, basePath+"/"+c.CreateType+"/")
 	if dirOk == -1 {
 		log.Fatalf("create %s error: %s", c.CreateType, "not in internal")
 		return
@@ -138,7 +145,9 @@ func (c *Create) genFile() {
 	}(f)
 
 	_, c.PackageName = filepath.Split(absPath)
-	if c.PackageName == "" {
+	if c.PackageName == "" && c.CreateType == "service" {
+		c.PackageName = "svc"
+	} else if c.PackageName == "" {
 		c.PackageName = c.CreateType
 	}
 
