@@ -18,12 +18,20 @@ type (
 )
 
 func ({{ .FileNameFirstChar }} *{{ .FileName }}Ctrl) Get{{ .FileName }}(ctx *gin.Context) {
+    req := &struct {
+		Id   int64  `form:"id"   json:"id"`
+    }{}
+    if err := ctx.ShouldBind(req); err != nil {
+		xhttp.BusCode(ctx, xerror.ParamError, err)
+		return
+	}
+    // TODO: add your code here and delete this line
     data, err := {{ .FileNameFirstChar }}.{{ .FileName }}Svc.Get{{ .FileName }}(ctx.Request.Context(), req.Id)
 	if err != nil {
 		xhttp.BusFail(ctx, err)
 		return
 	}
-	xhttp.Data(ctx, "Get{{ .FileName }} 成功", data)
+	xhttp.Data(ctx, "Get{{ .FileName }} success", data)
 }
 
 // TODO: add your code here and delete this line
