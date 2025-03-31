@@ -5,9 +5,11 @@ import (
 
     "{{ .ProjectName }}/internal/repository/cache"
    	"{{ .ProjectName }}/internal/repository/db"
+   	"{{ .ProjectName }}/internal/service/svc"
    	"{{ .ProjectName }}/pkg/xerror"
    	"{{ .ProjectName }}/pkg/xlog"
 
+   	"github.com/jinzhu/copier"
    	"github.com/pkg/errors"
 )
 
@@ -21,7 +23,7 @@ type (
 	}
 
 	{{ .FileName }}Ctx struct {
-	    *Ctx
+	    *svc.Ctx
 
 	    // TODO: add your code here and delete this line
     }
@@ -29,7 +31,9 @@ type (
 	{{ .FileNameTitleLower }}Svc struct {
 		ctx *{{ .FileName }}Ctx
 	}
-
+    {{ .FileName }} struct {
+	    // TODO: add your code here and delete this line
+    }
 	// TODO: add your code here and delete this line
 )
 
@@ -41,18 +45,18 @@ func New{{ .FileName }}Svc(ctx *{{ .FileName }}Ctx) {{ .FileName }}Svc {
 
 func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Svc) Get{{ .FileName }}(ctx context.Context, id int64) (*{{ .FileName }}, error) {
 	if id > 0 {
-		result = &{{ .FileName }}{}
+		result := &{{ .FileName }}{}
 		{{ .FileNameTitleLower }}, dbErr := {{ .FileNameFirstChar }}.ctx.{{ .FileName }}Db.FindOne(ctx, id)
 		if dbErr != nil {
 			if errors.Is(dbErr, db.ErrNotFound) {
-				return nil, xerror.NewError(xerror.BusinessError, "没有相关记录", dbErr)
+				return nil, xerror.NewError(ctx,xerror.BusinessError, "No relevant records", dbErr)
 			}
-			return result, xerror.NewError(xerror.BusinessError, "Get{{ .FileName }} 失败", dbErr)
+			return result, xerror.NewError(ctx,xerror.BusinessError, "Get{{ .FileName }} fail", dbErr)
 		}
 		_ = copier.Copy(result, &{{ .FileNameTitleLower }})
 		return result, nil
 	}
-	return nil, xerror.NewError(xerror.BusinessError, "Get{{ .FileName }} 失败", nil)
+	return nil, xerror.NewError(ctx,xerror.BusinessError, "Get{{ .FileName }} fail", nil)
 }
 
 // TODO: add your code here and delete this line

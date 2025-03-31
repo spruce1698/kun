@@ -32,7 +32,7 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
 
 ## kun CLI
 
-![kun](cmd.jpg)
+![kun](cmd.png)
 
 ## 目录结构
 
