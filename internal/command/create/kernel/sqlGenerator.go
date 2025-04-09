@@ -43,7 +43,7 @@ type StructMeta struct {
 	Fields         []*Field
 }
 
-// user input structures
+//  user input structures
 type Field struct {
 	Name         string
 	Type         string
@@ -119,7 +119,7 @@ type Generator struct {
 	repos map[string]*StructMeta // gen repository data
 }
 
-// create a new generator
+//  create a new generator
 func NewGenerator(conf SQLConfig) *Generator {
 	return &Generator{
 		Conf:  conf,
