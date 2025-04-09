@@ -1,7 +1,7 @@
 package config
 
 const (
-	Version       = "0.2.2"
+	Version       = "1.2.2"
 	Slogan        = "\n     _    _\n    | |  / )\n    | | / /_   _ ____\n    | |< <| | | |  _ \\\n    | | \\ \\ |_| | | | |\n    |_|  \\_)____|_| |_|\n\n A CLI tool for building golang application. \n"
 	WireUrl       = "github.com/google/wire/cmd/wire@latest"
 	KunUrl        = "github.com/spruce1698/kun@latest"
