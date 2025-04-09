@@ -134,8 +134,8 @@ var genConfigs = map[string]genConfig{
 				packageName = ""
 			}
 			return map[string]string{
-				"// ==== Add CtrlCtx before this line, don't edit this line.====": "    " + c.FileName + "Ctrl *" + packageName + c.FileName + "Ctrl",
-				"// ==== Add Ctrl before this line, don't edit this line.====":    "    wire.Struct(new(" + packageName + c.FileName + "Ctrl), \"*\"),",
+				"// ==== Add CtrlCtx before this line, don't edit this line.====": "\t" + c.FileName + "Ctrl *" + packageName + c.FileName + "Ctrl",
+				"// ==== Add Ctrl before this line, don't edit this line.====":    "\twire.Struct(new(" + packageName + c.FileName + "Ctrl), \"*\"),",
 			}
 		},
 	},
@@ -145,7 +145,7 @@ var genConfigs = map[string]genConfig{
 		structSuffix: "Svc",
 		diBuilder: func(c *Create) map[string]string {
 			return map[string]string{
-				"// ==== Add Svc before this line, don't edit this line.====": "    wire.Struct(new(" + c.PackageName + "." + c.FileName + "Ctx), \"*\"),\n    " +
+				"// ==== Add Svc before this line, don't edit this line.====": "\twire.Struct(new(" + c.PackageName + "." + c.FileName + "Ctx), \"*\"),\n    " +
 					c.PackageName + ".New" + c.FileName + "Svc,",
 			}
 		},
@@ -160,7 +160,7 @@ var genConfigs = map[string]genConfig{
 				packageName = ""
 			}
 			return map[string]string{
-				"// ==== Add Rt before this line, don't edit this line.====": "        " + packageName + c.FileName + ",",
+				"// ==== Add Rt before this line, don't edit this line.====": "\t\t" + packageName + c.FileName + ",",
 			}
 		},
 	},
@@ -170,7 +170,7 @@ var genConfigs = map[string]genConfig{
 		structSuffix: "Cache",
 		diBuilder: func(c *Create) map[string]string {
 			return map[string]string{
-				"// ==== Add Repo before this line, don't edit this line.====": "    " + c.PackageName + ".New" + c.FileName + "Cache,",
+				"// ==== Add Repo before this line, don't edit this line.====": "\t" + c.PackageName + ".New" + c.FileName + "Cache,",
 			}
 		},
 	},
@@ -287,8 +287,8 @@ func (c *Create) generateFile() {
 
 	contentMap := config.diBuilder(c)
 	if c.PackageName != config.defaultPkg {
-		contentMap["github.com/google/wire"] = "    \"" + c.ProjectName + "/" + strings.TrimRight(filePath, "/") + "\""
-		contentMap["// ==== Add Rt import  before this line, don't edit this line.===="] = "    \"" + c.ProjectName + "/" + strings.TrimRight(filePath, "/") + "\""
+		contentMap["github.com/google/wire"] = "\t\"" + c.ProjectName + "/" + strings.TrimRight(filePath, "/") + "\""
+		contentMap["// ==== Add Rt import  before this line, don't edit this line.===="] = "\t\"" + c.ProjectName + "/" + strings.TrimRight(filePath, "/") + "\""
 	}
 
 	if err = kernel.Wire2DIFile(diPath, contentMap); err != nil {

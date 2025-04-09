@@ -49,7 +49,7 @@ func wireProcess(filePath, markerLine, appendContent string) error {
 
 	// 检查是否已包含要插入的内容
 	for _, v := range strings.Split(appendContent, "\n") {
-		if bytes.Contains(content, []byte(strings.Trim(v, " "))) {
+		if bytes.Contains(content, []byte(strings.Trim(strings.Trim(v, " "), "\t"))) {
 			return nil
 		}
 	}
