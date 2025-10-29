@@ -43,7 +43,7 @@ type StructMeta struct {
 	Fields         []*Field
 }
 
-//  user input structures
+// user input structures
 type Field struct {
 	Name         string
 	Type         string
@@ -119,7 +119,7 @@ type Generator struct {
 	repos map[string]*StructMeta // gen repository data
 }
 
-//  create a new generator
+// Create a new generator
 func NewGenerator(conf SQLConfig) *Generator {
 	return &Generator{
 		Conf:  conf,
@@ -127,7 +127,7 @@ func NewGenerator(conf SQLConfig) *Generator {
 	}
 }
 
-// catch table info from db, return a BaseStruct
+// Catch table info from db, return a BaseStruct
 func (g *Generator) GenerateRepo(tableName string) {
 	structName := g.Conf.DbConn.NamingStrategy.SchemaName(tableName)
 
@@ -158,7 +158,7 @@ func (g *Generator) Execute() {
 	fmt.Success("Generate code done.")
 }
 
-// generate db repository by table name
+// Generate db repository by table name
 func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, error) {
 	if tableName == "" {
 		return nil, nil
@@ -249,7 +249,7 @@ func (g *Generator) getTableColumns(tableName string) (result []*Column, err err
 	return result, nil
 }
 
-// generate repository structures and save to file
+// Generate repository structures and save to file
 func (g *Generator) generateRepoFile() error {
 	if len(g.repos) == 0 {
 		return nil
@@ -312,7 +312,7 @@ func (g *Generator) getRepoOutputPath() (outPath string, err error) {
 	return outPath + string(os.PathSeparator), nil
 }
 
-// format and output
+// Format and output
 func (g *Generator) output(tmpl string, data interface{}, fileName string) error {
 	t, err := template.ParseFS(tpl.CreateTplFS, fmt.Sprintf("create/%s.tpl", tmpl))
 	if err != nil {

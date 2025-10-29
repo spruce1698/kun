@@ -14,10 +14,9 @@ type (
    }
 
    // TODO: add your code here and delete this line
-
 )
 
-func ({{ .FileNameFirstChar }} *{{ .FileName }}Ctrl) Get{{ .FileName }}(ctx *gin.Context) {
+func ({{ .FileNameFirstChar }} *{{ .FileName }}Ctrl) Detail(ctx *gin.Context) {
     req := &struct {
 		Id   int64  `form:"id"   json:"id"`
     }{}
@@ -26,12 +25,12 @@ func ({{ .FileNameFirstChar }} *{{ .FileName }}Ctrl) Get{{ .FileName }}(ctx *gin
 		return
 	}
     // TODO: add your code here and delete this line
-    data, err := {{ .FileNameFirstChar }}.{{ .FileName }}Svc.Get{{ .FileName }}(ctx.Request.Context(), req.Id)
+    data, err := {{ .FileNameFirstChar }}.{{ .FileName }}Svc.Detail(ctx.Request.Context(), req.Id)
 	if err != nil {
 		xhttp.BusFail(ctx, err)
 		return
 	}
-	xhttp.Data(ctx, "Get{{ .FileName }} success", data)
+	xhttp.Data(ctx, "{{ .FileName }} Detail success", data)
 }
 
 // TODO: add your code here and delete this line

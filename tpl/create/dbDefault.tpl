@@ -13,18 +13,18 @@ import (
 
 var  _ {{.InterfaceName}}Db = (*default{{.StructName}}Db)(nil)
 
-const TableName{{.StructName}} = "{{.TableName}}"
+const Table{{.StructName}} = "{{.TableName}}"
 
 type (
 	{{.InterfaceName}}Db interface {
 		Insert(ctx context.Context,data *{{.StructName}}) ({{.PrimaryKeyType}}, error)
 		BatchInsert(ctx context.Context,list []*{{.StructName}}) ([]{{.PrimaryKeyType}}, error)
 
-		FindOne(ctx context.Context, id {{.PrimaryKeyType}}) (*{{.StructName}}, error)
-		FindBy(ctx context.Context, id int64, columns ...string) (*{{.StructName}}, error)
+		Find(ctx context.Context, id {{.PrimaryKeyType}}) (*{{.StructName}}, error)
+		FindFields(ctx context.Context, id int64, fields ...string) (*{{.StructName}}, error)
 
-		Update(ctx context.Context, newData *{{.StructName}}, column []string)  (int64, error)
-		UpdateColumns(ctx context.Context, id {{.PrimaryKeyType}}, newData map[string]any)  (int64, error)
+		Update(ctx context.Context, newData *{{.StructName}}, field []string)  (int64, error)
+		UpdateFields(ctx context.Context, id {{.PrimaryKeyType}}, newData map[string]any)  (int64, error)
 
 		SoftDelete(ctx context.Context,ids []{{.PrimaryKeyType}}) error
 		Delete(ctx context.Context,ids []{{.PrimaryKeyType}}) error
@@ -44,7 +44,7 @@ type (
 
 
 func (*{{.StructName}}) TableName() string {
-	return TableName{{.StructName}}
+	return Table{{.StructName}}
 }
 
 func new{{.StructName}}Db(c *Conn) *default{{.StructName}}Db {
@@ -76,7 +76,7 @@ func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context,list []*{{.St
 }
 
 
-func (d *default{{.StructName}}Db) FindOne(ctx context.Context,id {{.PrimaryKeyType}}) (*{{.StructName}}, error) {
+func (d *default{{.StructName}}Db) Find(ctx context.Context,id {{.PrimaryKeyType}}) (*{{.StructName}}, error) {
     result := &{{.StructName}}{}
 	err := d.WithContext(ctx).First(result,id).Error
     if  err != nil {
@@ -85,25 +85,25 @@ func (d *default{{.StructName}}Db) FindOne(ctx context.Context,id {{.PrimaryKeyT
 	return result, nil
 }
 
-func (d *default{{.StructName}}Db) FindBy(ctx context.Context, id int64, columns ...string) (*{{.StructName}}, error) {
+func (d *default{{.StructName}}Db) FindFields(ctx context.Context, id int64, fields ...string) (*{{.StructName}}, error) {
 	result := &{{.StructName}}{}
-	err := d.WithContext(ctx).Select(columns).First(result, id).Error
+	err := d.WithContext(ctx).Select(fields).First(result, id).Error
 	if err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
-func (d *default{{.StructName}}Db) Update(ctx context.Context,newData *{{.StructName}}, column []string)  (int64, error)  {
+func (d *default{{.StructName}}Db) Update(ctx context.Context,newData *{{.StructName}}, field []string)  (int64, error)  {
 	engine := d.WithContext(ctx).Model(d.model)
-	if len(column) > 0 {
-		engine = engine.Select(column)
+	if len(field) > 0 {
+		engine = engine.Select(field)
 	}
 	result := engine.Omit("id").Where(" id = ? ", newData.Id).Updates(newData)
 	return result.RowsAffected, result.Error
 }
 
-func (d *default{{.StructName}}Db) UpdateColumns(ctx context.Context,id {{.PrimaryKeyType}}, newData map[string]any)  (int64, error)  {
+func (d *default{{.StructName}}Db) UpdateFields(ctx context.Context,id {{.PrimaryKeyType}}, newData map[string]any)  (int64, error)  {
 	result := d.WithContext(ctx).Model(d.model).Where(" id = ? ", id).Updates(newData)
 	return result.RowsAffected, result.Error
 }

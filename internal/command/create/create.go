@@ -130,11 +130,13 @@ var genConfigs = map[string]genConfig{
 		structSuffix: "Ctrl",
 		diBuilder: func(c *Create) map[string]string {
 			packageName := c.PackageName + "."
+			tPrefix := strings.ToUpper(string(c.PackageName[0])) + c.PackageName[1:]
 			if c.PackageName == c.CreateType {
 				packageName = ""
+				tPrefix = ""
 			}
 			return map[string]string{
-				"// ==== Add CtrlCtx before this line, don't edit this line.====": "\t" + c.FileName + "Ctrl *" + packageName + c.FileName + "Ctrl",
+				"// ==== Add CtrlCtx before this line, don't edit this line.====": "\t" + tPrefix + c.FileName + "Ctrl *" + packageName + c.FileName + "Ctrl",
 				"// ==== Add Ctrl before this line, don't edit this line.====":    "\twire.Struct(new(" + packageName + c.FileName + "Ctrl), \"*\"),",
 			}
 		},
@@ -226,6 +228,8 @@ func (c *Create) generateFile() {
 		return
 	}
 
+	fileName := strings.ToLower(string(c.FileName[0])) + c.FileName[1:] + ".go"
+
 	// 构建文件路径
 	filePath := c.FilePath
 	if filePath == "" {
@@ -236,7 +240,7 @@ func (c *Create) generateFile() {
 	}
 	filePath = strings.ReplaceAll(strings.ReplaceAll(filePath+"/", "//", "/"), "\\", "/")
 
-	absPath, _ := filepath.Abs(filepath.Dir(filepath.Join(filePath, strings.ToLower(c.FileName)+".go")))
+	absPath, _ := filepath.Abs(filepath.Dir(filepath.Join(filePath, fileName)))
 	absLinuxPath := strings.ReplaceAll(absPath, "\\", "/") + "/"
 	if strings.LastIndex(absLinuxPath, filePath) < 1 {
 		fmt.Error("create %s error: %s", c.CreateType, "not in internal")
@@ -261,7 +265,6 @@ func (c *Create) generateFile() {
 		fmt.Error("create %s error: %s", c.CreateType, err)
 		return
 	}
-	fileName := strings.ToLower(c.FileName) + ".go"
 	f := createFile(filePath, fileName)
 	if f == nil {
 		fmt.Warn("warn: file %s%s %s", absLinuxPath, fileName, "already exists.")

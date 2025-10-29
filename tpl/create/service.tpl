@@ -19,7 +19,7 @@ var _ {{ .FileName }}Svc = (*{{ .FileNameTitleLower }}Svc)(nil)
 
 type (
 	{{ .FileName }}Svc interface {
-		Get{{ .FileName }}(ctx context.Context, id int64) (*{{ .FileName }}, error)
+		Detail(ctx context.Context, id int64) (*{{ .FileName }}, error)
 	}
 
 	{{ .FileName }}Ctx struct {
@@ -31,6 +31,7 @@ type (
 	{{ .FileNameTitleLower }}Svc struct {
 		ctx *{{ .FileName }}Ctx
 	}
+
     {{ .FileName }} struct {
 	    // TODO: add your code here and delete this line
     }
@@ -43,20 +44,20 @@ func New{{ .FileName }}Svc(ctx *{{ .FileName }}Ctx) {{ .FileName }}Svc {
 	}
 }
 
-func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Svc) Get{{ .FileName }}(ctx context.Context, id int64) (*{{ .FileName }}, error) {
+func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Svc) Detail(ctx context.Context, id int64) (*{{ .FileName }}, error) {
 	if id > 0 {
 		result := &{{ .FileName }}{}
-		{{ .FileNameTitleLower }}, dbErr := {{ .FileNameFirstChar }}.ctx.{{ .FileName }}Db.FindOne(ctx, id)
+		{{ .FileNameTitleLower }}, dbErr := {{ .FileNameFirstChar }}.ctx.{{ .FileName }}Db.Find(ctx, id)
 		if dbErr != nil {
 			if errors.Is(dbErr, db.ErrNotFound) {
 				return nil, xerror.NewError(ctx,xerror.BusinessError, "No relevant records", dbErr)
 			}
-			return result, xerror.NewError(ctx,xerror.BusinessError, "Get{{ .FileName }} fail", dbErr)
+			return result, xerror.NewError(ctx,xerror.BusinessError, "{{ .FileName }} Detail fail", dbErr)
 		}
 		_ = copier.Copy(result, &{{ .FileNameTitleLower }})
 		return result, nil
 	}
-	return nil, xerror.NewError(ctx,xerror.BusinessError, "Get{{ .FileName }} fail", nil)
+	return nil, xerror.NewError(ctx,xerror.BusinessError, "{{ .FileName }} Detail fail", nil)
 }
 
 // TODO: add your code here and delete this line
