@@ -25,6 +25,7 @@ type (
         Warmup(ctx context.Context) error
         // TODO: add your code here and delete this line
 	}
+
 	{{ .FileNameTitleLower }}Cache struct {
 		common     *xredis.Client
 		lCache *LocalCache

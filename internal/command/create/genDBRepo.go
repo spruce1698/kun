@@ -17,6 +17,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 // Database type
@@ -46,6 +47,7 @@ func connectDB(t DBType, dsn string) (*gorm.DB, error) {
 	if dsn == "" {
 		return nil, fmt.Errorf("dsn cannot be empty")
 	}
+
 	switch t {
 	case dbMySQL:
 		return gorm.Open(mysql.Open(dsn))
@@ -87,7 +89,12 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 		fmt.Error("gorm db is nil")
 		return
 	}
-
+	// 自定义命名策略
+	gormDb.Config.NamingStrategy = schema.NamingStrategy{
+		TablePrefix:   cmdConf.Prefix, // 表名前缀，
+		SingularTable: true,           // 使用单数表名，例如 "user" 而不是 "users"
+		NameReplacer:  nil,            // 可选：替换名称中的特定字符
+	}
 	g := kernel.NewGenerator(kernel.SQLConfig{
 		DbConn:            gormDb,
 		OutPath:           outPath, // 指定输出目录
