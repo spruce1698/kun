@@ -268,7 +268,7 @@ func (g *Generator) generateRepoFile() error {
 		if data == nil {
 			continue
 		}
-		repoFile := filepath.Join(repoOutPath, data.FileName+"_gen.go")
+		repoFile := filepath.Join(repoOutPath, data.FileName+"Gen.go")
 		err = g.output("dbDefault", data, repoFile)
 		if err != nil {
 			return err
