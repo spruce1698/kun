@@ -69,8 +69,8 @@ var (
 	CmdCreateDBRepository = &cobra.Command{
 		Use:     "db",
 		Short:   "Create a new DB repository",
-		Example: "kun create db \"name:pwd@tcp(127.0.0.1:3306)/dbname\" [t1,t2|t1|*]",
-		Args:    cobra.ExactArgs(2),
+		Example: "kun create db \"name:pwd@tcp(127.0.0.1:3306)/dbname\" [t1,t2|t1|*]\n  kun create db path/to/your/schema.sql",
+		Args:    cobra.RangeArgs(1, 2),
 		Run:     genDBRepo,
 	}
 

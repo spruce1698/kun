@@ -482,3 +482,8 @@ func (b *StructMeta) StructComment() string {
 	}
 	return `mapped from object`
 }
+
+// Repos returns the repos map
+func (g *Generator) Repos() map[string]*StructMeta {
+	return g.repos
+}
