@@ -13,6 +13,7 @@ import (
 
 	"github.com/spruce1698/kun/pkg/fmt"
 	"github.com/spruce1698/kun/tpl"
+	"github.com/xwb1989/sqlparser"
 	"golang.org/x/tools/imports"
 	"gorm.io/gorm"
 )
@@ -124,6 +125,60 @@ func NewGenerator(conf SQLConfig) *Generator {
 	return &Generator{
 		Conf:  conf,
 		repos: make(map[string]*StructMeta),
+	}
+}
+
+// NewFieldFromSQL creates a Field from a sqlparser.ColumnDefinition
+func NewFieldFromSQL(col *sqlparser.ColumnDefinition, conf SQLConfig) *Field {
+	colName := col.Name.String()
+	colType := col.Type.Type
+	isPrimaryKey := col.Type.KeyOpt == 1
+
+	// Type conversion
+	goType := dataType.Get(colType, colType)
+	if conf.FieldSignable && strings.Contains(col.Type.Type, "unsigned") && strings.HasPrefix(goType, "int") {
+		goType = "u" + goType
+	}
+	if colName == "deleted_at" && goType == "time.Time" {
+		goType = "gorm.DeletedAt"
+	} else if conf.FieldNullable && !bool(col.Type.NotNull) && !isPrimaryKey {
+		goType = "*" + goType
+	}
+
+	// GORM tag
+	var gormTags []string
+	gormTags = append(gormTags, "column:"+colName)
+	if conf.FieldWithTypeTag {
+		gormTags = append(gormTags, "type:"+col.Type.Type)
+	}
+	if isPrimaryKey {
+		gormTags = append(gormTags, "primaryKey")
+		if col.Type.Autoincrement {
+			gormTags = append(gormTags, "autoIncrement")
+		}
+	} else if col.Type.NotNull {
+		gormTags = append(gormTags, "not null")
+	}
+	if col.Type.Default != nil {
+		gormTags = append(gormTags, "default:"+string(col.Type.Default.Val))
+	}
+
+	// Comment
+	var comment string
+	if col.Type.Comment != nil && len(col.Type.Comment.Val) > 0 {
+		comment = fmt.Sprintf("// %s", col.Type.Comment.Val)
+	}
+
+	// Field Name
+	fieldName := strings.ReplaceAll(strings.Title(strings.ReplaceAll(colName, "_", " ")), " ", "")
+
+	return &Field{
+		Name:         fieldName,
+		Type:         goType,
+		GORMTag:      strings.Join(gormTags, ";"),
+		JSONTag:      colName,
+		CommentTag:   comment,
+		IsPrimaryKey: isPrimaryKey,
 	}
 }
 
