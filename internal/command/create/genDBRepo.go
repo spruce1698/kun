@@ -61,12 +61,18 @@ func connectDB(t DBType, dsn string) (*gorm.DB, error) {
 }
 
 func genDBRepo(cmd *cobra.Command, args []string) {
+	// 如果参数是 .sql 文件，则解析 SQL 文件生成 repo
+	if strings.HasSuffix(args[0], ".sql") {
+		genDBRepoFromSQL(args)
+		return
+	}
+
 	cmdConf := &CmdParams{
 		DSN:     args[0],
 		DBType:  "mysql",
 		OutPath: DefaultOutPath,
 	}
-	if args[1] != "" {
+	if len(args) > 1 && args[1] != "" {
 		if args[1] == "*" {
 			cmdConf.Tables = []string{}
 		} else {
@@ -123,4 +129,66 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 
 	g.Execute()
 
+}
+
+// genDBRepoFromSQL 从 .sql 文件解析 CREATE TABLE 语句并生成 repo
+func genDBRepoFromSQL(args []string) {
+	outPath, err := filepath.Abs(DefaultOutPath)
+	if err != nil {
+		fmt.Error("outPath is invalid: %s", err)
+		return
+	}
+
+	// 生成配置（与 DB 连接路径一致）
+	conf := kernel.SQLConfig{
+		OutPath:           outPath, // 指定输出目录
+		PackageName:       "db",    // Repo代码的包名称,同数据库类型相同。
+		FieldCoverable:    false,   // 当字段具有默认值时生成指针，以解决无法分配零值的问题
+		FieldNullable:     true,    // 当字段可为空时生成指针
+		FieldWithIndexTag: true,    // 生成字段包含 索引 标记
+		FieldWithTypeTag:  true,    // 生成字段包含 列类型 标记
+		FieldSignable:     false,   // 检测整数字段的无符号类型，调整生成的数据类型
+	}
+
+	// 解析 SQL 文件（传递配置参数）
+	metas, err := kernel.ParseSQLFile(args[0], &conf)
+	if err != nil {
+		fmt.Error("parse sql file fail: %s", err)
+		return
+	}
+	if len(metas) == 0 {
+		fmt.Warn("no CREATE TABLE found in file: %s", args[0])
+		return
+	}
+
+	// 如果第二个参数指定了表名过滤
+	var tableFilter []string
+	if len(args) > 1 && args[1] != "" && args[1] != "*" && args[1] != "." {
+		tableFilter = strings.Split(args[1], ",")
+	}
+
+	// 创建 Generator（不使用 DB 连接，仅用于模板渲染和文件输出）
+	g := kernel.NewGenerator(conf)
+
+	for _, meta := range metas {
+		if meta == nil {
+			continue
+		}
+		// 表名过滤
+		if len(tableFilter) > 0 {
+			found := false
+			for _, t := range tableFilter {
+				if strings.EqualFold(meta.TableName, t) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		g.AddRepoMeta(meta)
+	}
+
+	g.Execute()
 }

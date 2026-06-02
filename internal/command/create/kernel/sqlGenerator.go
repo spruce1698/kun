@@ -146,6 +146,15 @@ func (g *Generator) GenerateRepo(tableName string) {
 	return
 }
 
+// AddRepoMeta adds a pre-built StructMeta (e.g. parsed from SQL file) to the generator.
+func (g *Generator) AddRepoMeta(meta *StructMeta) {
+	if meta == nil {
+		return
+	}
+	g.repos[meta.StructName] = meta
+	fmt.Success("got %d columns from table <%s>", len(meta.Fields), meta.TableName)
+}
+
 // Execute generate code to output path
 func (g *Generator) Execute() {
 	fmt.Success("Start generating code.")
@@ -348,6 +357,12 @@ func (m dataTypeMap) Get(dataType, detailType string) string {
 		return convert(detailType)
 	}
 	return defaultDataType
+}
+
+// GetSQLGoType returns the Go type for a given SQL database type name.
+// This is the unified public API used by both DB-connection and SQL-file code paths.
+func GetSQLGoType(databaseTypeName, columnType string) string {
+	return dataType.Get(databaseTypeName, columnType)
 }
 
 func (c *Column) columnType() (v string) {
