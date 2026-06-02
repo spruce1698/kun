@@ -13,6 +13,16 @@ import (
 	"gorm.io/gorm/schema"
 )
 
+// 预编译正则表达式，避免每次调用时重复编译
+var (
+	reCreateTable = regexp.MustCompile(`(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?` + "`?" + `(\w+)` + "`?" + `\s*\(`)
+	rePrimaryKey  = regexp.MustCompile(`(?i)PRIMARY\s+KEY\s*\(` + "`?" + `(\w+)` + "`?" + `\)`)
+	reUniqueKey   = regexp.MustCompile(`(?i)UNIQUE\s+KEY\s+` + "`" + `(\w+)` + "`" + `\s*\(([^)]+)\)`)
+	reComment     = regexp.MustCompile(`(?i)COMMENT\s+'([^']*)'`)
+	reDefault     = regexp.MustCompile(`(?i)DEFAULT\s+('[^']*'|[\w.]+|NULL)`)
+	reNoiseClause = regexp.MustCompile(`(?i)\b(CHARACTER\s+SET\s+\w+|COLLATE\s+\w+)\b`)
+)
+
 // columnDef 表示从 CREATE TABLE 语句中解析出的列定义
 type columnDef struct {
 	Name        string // 原始列名
@@ -42,12 +52,11 @@ func ParseSQLFile(filePath string, conf *SQLConfig) ([]*StructMeta, error) {
 	sql := string(content)
 
 	// 匹配 CREATE TABLE [IF NOT EXISTS] `table_name` (
-	createRe := regexp.MustCompile(`(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?` + "`?" + `(\w+)` + "`?" + `\s*\(`)
 
 	var metas []*StructMeta
 	remaining := sql
 	for {
-		loc := createRe.FindStringSubmatchIndex(remaining)
+		loc := reCreateTable.FindStringSubmatchIndex(remaining)
 		if loc == nil {
 			break
 		}
@@ -178,23 +187,20 @@ func splitByComma(s string) []string {
 	return parts
 }
 
-// isConstraintLine 判断是否是约束/索引行（PRIMARY KEY, KEY, INDEX, UNIQUE, CONSTRAINT 等）
+// isConstraintLine 判断是否是约束/索引行
 func isConstraintLine(line string) bool {
 	upper := strings.ToUpper(strings.TrimSpace(line))
-	return strings.HasPrefix(upper, "PRIMARY KEY") ||
-		strings.HasPrefix(upper, "KEY ") ||
-		strings.HasPrefix(upper, "INDEX ") ||
-		strings.HasPrefix(upper, "UNIQUE KEY") ||
-		strings.HasPrefix(upper, "UNIQUE INDEX") ||
-		strings.HasPrefix(upper, "CONSTRAINT") ||
-		strings.HasPrefix(upper, "FULLTEXT") ||
-		strings.HasPrefix(upper, "SPATIAL")
+	for _, prefix := range [...]string{"PRIMARY KEY", "KEY ", "INDEX ", "UNIQUE KEY", "UNIQUE INDEX", "CONSTRAINT", "FULLTEXT", "SPATIAL"} {
+		if strings.HasPrefix(upper, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // extractPKColumn 从 PRIMARY KEY (`col`) 中提取列名
 func extractPKColumn(line string) string {
-	re := regexp.MustCompile(`(?i)PRIMARY\s+KEY\s*\(` + "`?" + `(\w+)` + "`?" + `\)`)
-	if m := re.FindStringSubmatch(line); m != nil {
+	if m := rePrimaryKey.FindStringSubmatch(line); m != nil {
 		return m[1]
 	}
 	return ""
@@ -202,9 +208,8 @@ func extractPKColumn(line string) string {
 
 // parseUniqueIndexes 从 CREATE TABLE body 中解析 UNIQUE KEY 约束，返回 column→indexInfo 映射
 func parseUniqueIndexes(body string) map[string][]uniqueIndexInfo {
-	re := regexp.MustCompile(`(?i)UNIQUE\s+KEY\s+` + "`" + `(\w+)` + "`" + `\s*\(([^)]+)\)`)
 	result := make(map[string][]uniqueIndexInfo)
-	for _, m := range re.FindAllStringSubmatch(body, -1) {
+	for _, m := range reUniqueKey.FindAllStringSubmatch(body, -1) {
 		idxName := m[1]
 		cols := strings.Split(m[2], ",")
 		for i, col := range cols {
@@ -242,16 +247,15 @@ func parseColumn(line string) *columnDef {
 	// 3. 检测 UNSIGNED / SIGNED
 	isUnsigned := false
 	rest = strings.TrimSpace(rest)
-	if hasPrefixFold(rest, "UNSIGNED") {
+	if len(rest) >= 8 && strings.EqualFold(rest[:8], "UNSIGNED") {
 		isUnsigned = true
-		rest = strings.TrimSpace(rest[len("UNSIGNED"):])
-	} else if hasPrefixFold(rest, "SIGNED") {
-		rest = strings.TrimSpace(rest[len("SIGNED"):])
+		rest = strings.TrimSpace(rest[8:])
+	} else if len(rest) >= 6 && strings.EqualFold(rest[:6], "SIGNED") {
+		rest = strings.TrimSpace(rest[6:])
 	}
 
 	// 4. 移除噪声子句: CHARACTER SET xxx, COLLATE xxx
-	noiseRe := regexp.MustCompile(`(?i)\b(CHARACTER\s+SET\s+\w+|COLLATE\s+\w+)\b`)
-	rest = noiseRe.ReplaceAllString(rest, "")
+	rest = reNoiseClause.ReplaceAllString(rest, "")
 	rest = compactSpaces(rest)
 
 	// 5. 构建完整 SQL 类型（含 unsigned）
@@ -324,13 +328,7 @@ func extractTypeWithParens(s string) (string, string, string) {
 
 // normalizeTypeParams 去掉类型参数中逗号前后的空格: "(10, 2)" → "(10,2)"
 func normalizeTypeParams(params string) string {
-	// 去掉括号内部逗号前后的空格
-	inner := params[1 : len(params)-1]
-	parts := strings.Split(inner, ",")
-	for i, p := range parts {
-		parts[i] = strings.TrimSpace(p)
-	}
-	return "(" + strings.Join(parts, ",") + ")"
+	return "(" + strings.ReplaceAll(params[1:len(params)-1], " ", "") + ")"
 }
 
 // buildField 根据解析的列定义构建 kernel.Field
@@ -366,14 +364,13 @@ func buildField(cd *columnDef, uniqueIdxs []uniqueIndexInfo, conf *SQLConfig) *F
 	constraintsUpper := strings.ToUpper(cd.Constraints)
 
 	// 提取 COMMENT
-	if cre := regexp.MustCompile(`(?i)COMMENT\s+'([^']*)'`).FindStringSubmatch(cd.Constraints); cre != nil {
+	if cre := reComment.FindStringSubmatch(cd.Constraints); cre != nil {
 		comment = cre[1]
 	}
 
 	// 提取 DEFAULT（支持字符串、数字、NULL）
-	if dre := regexp.MustCompile(`(?i)DEFAULT\s+('[^']*'|[\w.]+|NULL)`).FindStringSubmatch(cd.Constraints); dre != nil {
-		val := strings.ToUpper(dre[1])
-		if val != "NULL" {
+	if dre := reDefault.FindStringSubmatch(cd.Constraints); dre != nil {
+		if !strings.EqualFold(dre[1], "NULL") {
 			defaultVal = strings.Trim(dre[1], "'")
 		}
 	}
@@ -445,13 +442,6 @@ func buildField(cd *columnDef, uniqueIdxs []uniqueIndexInfo, conf *SQLConfig) *F
 		CommentTag:   commentTag,
 		IsPrimaryKey: isPK,
 	}
-}
-
-// ────── helper functions ──────
-
-// hasPrefixFold 不区分大小写的 HasPrefix
-func hasPrefixFold(s, prefix string) bool {
-	return len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix)
 }
 
 // compactSpaces 将连续空白压缩为单个空格
