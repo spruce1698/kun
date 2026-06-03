@@ -60,6 +60,23 @@ func connectDB(t DBType, dsn string) (*gorm.DB, error) {
 	}
 }
 
+// defaultSQLConfig 构建默认 SQLConfig（DB 和 SQL 文件路径共用）
+func defaultSQLConfig() kernel.SQLConfig {
+	outPath, err := filepath.Abs(DefaultOutPath)
+	if err != nil {
+		fmt.Error("outPath is invalid: %s", err)
+	}
+	return kernel.SQLConfig{
+		OutPath:           outPath,
+		PackageName:       "db",
+		FieldCoverable:    false, // 当字段具有默认值时生成指针，以解决无法分配零值的问题
+		FieldNullable:     true,  // 当字段可为空时生成指针
+		FieldWithIndexTag: true,  // 生成字段包含 索引 标记
+		FieldWithTypeTag:  true,  // 生成字段包含 列类型 标记
+		FieldSignable:     false, // 检测整数字段的无符号类型，调整生成的数据类型
+	}
+}
+
 func genDBRepo(cmd *cobra.Command, args []string) {
 	// 如果参数是 .sql 文件，则解析 SQL 文件生成 repo
 	if strings.HasSuffix(args[0], ".sql") {
@@ -80,12 +97,6 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	outPath, err := filepath.Abs(cmdConf.OutPath)
-	if err != nil {
-		fmt.Error("outPath is invalid: %s", err)
-		return
-	}
-
 	gormDb, err := connectDB(DBType(cmdConf.DBType), cmdConf.DSN)
 	if err != nil {
 		fmt.Error("connect db server fail: %s", err)
@@ -101,16 +112,9 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 		SingularTable: true,           // 使用单数表名，例如 "user" 而不是 "users"
 		NameReplacer:  nil,            // 可选：替换名称中的特定字符
 	}
-	g := kernel.NewGenerator(kernel.SQLConfig{
-		DbConn:            gormDb,
-		OutPath:           outPath, // 指定输出目录
-		PackageName:       "db",    // Repo代码的包名称,同数据库类型相同。
-		FieldCoverable:    false,   // 当字段具有默认值时生成指针，以解决无法分配零值的问题
-		FieldNullable:     true,    // 当字段可为空时生成指针
-		FieldWithIndexTag: true,    // 生成字段包含 索引 标记
-		FieldWithTypeTag:  true,    // 生成字段包含 列类型 标记
-		FieldSignable:     false,   // 检测整数字段的无符号类型，调整生成的数据类型
-	})
+	conf := defaultSQLConfig()
+	conf.DbConn = gormDb
+	g := kernel.NewGenerator(conf)
 
 	var tablesList []string
 	if len(cmdConf.Tables) == 0 {
@@ -133,22 +137,7 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 
 // genDBRepoFromSQL 从 .sql 文件解析 CREATE TABLE 语句并生成 repo
 func genDBRepoFromSQL(args []string) {
-	outPath, err := filepath.Abs(DefaultOutPath)
-	if err != nil {
-		fmt.Error("outPath is invalid: %s", err)
-		return
-	}
-
-	// 生成配置（与 DB 连接路径一致）
-	conf := kernel.SQLConfig{
-		OutPath:           outPath, // 指定输出目录
-		PackageName:       "db",    // Repo代码的包名称,同数据库类型相同。
-		FieldCoverable:    false,   // 当字段具有默认值时生成指针，以解决无法分配零值的问题
-		FieldNullable:     true,    // 当字段可为空时生成指针
-		FieldWithIndexTag: true,    // 生成字段包含 索引 标记
-		FieldWithTypeTag:  true,    // 生成字段包含 列类型 标记
-		FieldSignable:     false,   // 检测整数字段的无符号类型，调整生成的数据类型
-	}
+	conf := defaultSQLConfig()
 
 	// 解析 SQL 文件（传递配置参数）
 	metas, err := kernel.ParseSQLFile(args[0], &conf)

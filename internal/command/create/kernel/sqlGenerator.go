@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"strings"
 	"text/template"
-	"unicode"
 
 	"github.com/spruce1698/kun/pkg/fmt"
 	"github.com/spruce1698/kun/tpl"
@@ -70,6 +69,7 @@ type dataTypeMap map[string]func(detailType string) (finalType string)
 
 var (
 	defaultDataType             = "string"
+	reStructName                = regexp.MustCompile(`^\w+$`)
 	dataType        dataTypeMap = map[string]func(detailType string) (finalType string){
 		"numeric":    func(string) string { return "int64" },
 		"integer":    func(string) string { return "int64" },
@@ -176,7 +176,7 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 		return nil, fmt.Errorf("repo name %q is invalid: %w", structName, err)
 	}
 
-	fileName := string(unicode.ToLower(rune(structName[0]))) + structName[1:]
+	fileName := toLowerCamel(structName)
 
 	columns, err := g.getTableColumns(tableName)
 	if err != nil || len(columns) == 0 {
@@ -196,7 +196,7 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 			primaryKeyType = m.Type
 		}
 		// json 小驼峰
-		m.JSONTag = strings.ToLower(m.Name[:1]) + m.Name[1:]
+		m.JSONTag = toLowerCamel(m.Name)
 
 		fields = append(fields, m)
 	}
@@ -343,7 +343,7 @@ func (g *Generator) checkStructName(name string) error {
 	if name == "" {
 		return nil
 	}
-	if !regexp.MustCompile(`^\w+$`).MatchString(name) {
+	if !reStructName.MatchString(name) {
 		return fmt.Errorf("repo name cannot contains invalid character")
 	}
 	if name[0] < 'A' || name[0] > 'Z' {

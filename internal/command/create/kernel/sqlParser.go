@@ -516,5 +516,3 @@ func decodeUTF16BE(data []byte) []byte {
 	}
 	return []byte(string(runes))
 }
-
-// ────── encoding ──────
