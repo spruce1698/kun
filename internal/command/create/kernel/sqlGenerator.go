@@ -13,7 +13,6 @@ import (
 
 	"github.com/spruce1698/kun/pkg/fmt"
 	"github.com/spruce1698/kun/tpl"
-	"github.com/xwb1989/sqlparser"
 	"golang.org/x/tools/imports"
 	"gorm.io/gorm"
 )
@@ -128,60 +127,6 @@ func NewGenerator(conf SQLConfig) *Generator {
 	}
 }
 
-// NewFieldFromSQL creates a Field from a sqlparser.ColumnDefinition
-func NewFieldFromSQL(col *sqlparser.ColumnDefinition, conf SQLConfig) *Field {
-	colName := col.Name.String()
-	colType := col.Type.Type
-	isPrimaryKey := col.Type.KeyOpt == 1
-
-	// Type conversion
-	goType := dataType.Get(colType, colType)
-	if conf.FieldSignable && strings.Contains(col.Type.Type, "unsigned") && strings.HasPrefix(goType, "int") {
-		goType = "u" + goType
-	}
-	if colName == "deleted_at" && goType == "time.Time" {
-		goType = "gorm.DeletedAt"
-	} else if conf.FieldNullable && !bool(col.Type.NotNull) && !isPrimaryKey {
-		goType = "*" + goType
-	}
-
-	// GORM tag
-	var gormTags []string
-	gormTags = append(gormTags, "column:"+colName)
-	if conf.FieldWithTypeTag {
-		gormTags = append(gormTags, "type:"+col.Type.Type)
-	}
-	if isPrimaryKey {
-		gormTags = append(gormTags, "primaryKey")
-		if col.Type.Autoincrement {
-			gormTags = append(gormTags, "autoIncrement")
-		}
-	} else if col.Type.NotNull {
-		gormTags = append(gormTags, "not null")
-	}
-	if col.Type.Default != nil {
-		gormTags = append(gormTags, "default:"+string(col.Type.Default.Val))
-	}
-
-	// Comment
-	var comment string
-	if col.Type.Comment != nil && len(col.Type.Comment.Val) > 0 {
-		comment = fmt.Sprintf("// %s", col.Type.Comment.Val)
-	}
-
-	// Field Name
-	fieldName := strings.ReplaceAll(strings.Title(strings.ReplaceAll(colName, "_", " ")), " ", "")
-
-	return &Field{
-		Name:         fieldName,
-		Type:         goType,
-		GORMTag:      strings.Join(gormTags, ";"),
-		JSONTag:      colName,
-		CommentTag:   comment,
-		IsPrimaryKey: isPrimaryKey,
-	}
-}
-
 // Catch table info from db, return a BaseStruct
 func (g *Generator) GenerateRepo(tableName string) {
 	structName := g.Conf.DbConn.NamingStrategy.SchemaName(tableName)
@@ -211,6 +156,15 @@ func (g *Generator) Execute() {
 	}
 
 	fmt.Success("Generate code done.")
+}
+
+// AddRepoMeta adds a pre-built StructMeta (e.g. parsed from SQL file) to the generator.
+func (g *Generator) AddRepoMeta(meta *StructMeta) {
+	if meta == nil {
+		return
+	}
+	g.repos[meta.StructName] = meta
+	fmt.Success("got %d columns from table <%s", len(meta.Fields), meta.TableName)
 }
 
 // Generate db repository by table name
@@ -323,7 +277,7 @@ func (g *Generator) generateRepoFile() error {
 		if data == nil {
 			continue
 		}
-		repoFile := filepath.Join(repoOutPath, data.FileName+"Gen.go")
+		repoFile := filepath.Join(repoOutPath, data.FileName+"_gen.go")
 		err = g.output("dbDefault", data, repoFile)
 		if err != nil {
 			return err
@@ -403,6 +357,12 @@ func (m dataTypeMap) Get(dataType, detailType string) string {
 		return convert(detailType)
 	}
 	return defaultDataType
+}
+
+// GetSQLGoType returns the Go type for a given SQL database type name.
+// Unified public API used by both DB-connection and SQL-file code paths.
+func GetSQLGoType(databaseTypeName, columnType string) string {
+	return dataType.Get(databaseTypeName, columnType)
 }
 
 func (c *Column) columnType() (v string) {
@@ -536,9 +496,4 @@ func (b *StructMeta) StructComment() string {
 		return fmt.Sprintf(`mapped from table <%s>`, b.TableName)
 	}
 	return `mapped from object`
-}
-
-// Repos returns the repos map
-func (g *Generator) Repos() map[string]*StructMeta {
-	return g.repos
 }
