@@ -61,23 +61,23 @@ func connectDB(t DBType, dsn string) (*gorm.DB, error) {
 }
 
 func genDBRepo(cmd *cobra.Command, args []string) {
+	// 如果参数是 .sql 文件，则解析 SQL 文件生成 repo
+	if strings.HasSuffix(args[0], ".sql") {
+		genDBRepoFromSQL(args)
+		return
+	}
+
 	cmdConf := &CmdParams{
 		DSN:     args[0],
 		DBType:  "mysql",
 		OutPath: DefaultOutPath,
 	}
-	if args[1] != "" {
+	if len(args) > 1 && args[1] != "" {
 		if args[1] == "*" {
 			cmdConf.Tables = []string{}
 		} else {
 			cmdConf.Tables = strings.Split(args[1], ",")
 		}
-	}
-
-	outPath, err := filepath.Abs(cmdConf.OutPath)
-	if err != nil {
-		fmt.Error("outPath is invalid: %s", err)
-		return
 	}
 
 	gormDb, err := connectDB(DBType(cmdConf.DBType), cmdConf.DSN)
@@ -91,20 +91,13 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 	}
 	// 自定义命名策略
 	gormDb.Config.NamingStrategy = schema.NamingStrategy{
-		TablePrefix:   cmdConf.Prefix, // 表名前缀，
-		SingularTable: true,           // 使用单数表名，例如 "user" 而不是 "users"
-		NameReplacer:  nil,            // 可选：替换名称中的特定字符
+		TablePrefix:   cmdConf.Prefix,
+		SingularTable: true,
+		NameReplacer:  nil,
 	}
-	g := kernel.NewGenerator(kernel.SQLConfig{
-		DbConn:            gormDb,
-		OutPath:           outPath, // 指定输出目录
-		PackageName:       "db",    // Repo代码的包名称,同数据库类型相同。
-		FieldCoverable:    false,   // 当字段具有默认值时生成指针，以解决无法分配零值的问题
-		FieldNullable:     true,    // 当字段可为空时生成指针
-		FieldWithIndexTag: true,    // 生成字段包含 索引 标记
-		FieldWithTypeTag:  true,    // 生成字段包含 列类型 标记
-		FieldSignable:     false,   // 检测整数字段的无符号类型，调整生成的数据类型
-	})
+	conf := defaultSQLConfig()
+	conf.DbConn = gormDb
+	g := kernel.NewGenerator(conf)
 
 	var tablesList []string
 	if len(cmdConf.Tables) == 0 {
@@ -122,5 +115,64 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 	}
 
 	g.Execute()
+}
 
+// defaultSQLConfig 构建默认 SQLConfig（DB 和 SQL 文件路径共用）
+func defaultSQLConfig() kernel.SQLConfig {
+	outPath, err := filepath.Abs(DefaultOutPath)
+	if err != nil {
+		fmt.Error("outPath is invalid: %s", err)
+	}
+	return kernel.SQLConfig{
+		OutPath:           outPath,
+		PackageName:       "db",
+		FieldCoverable:    false, // 当字段具有默认值时生成指针，以解决无法分配零值的问题
+		FieldNullable:     true,  // 当字段可为空时生成指针
+		FieldWithIndexTag: true,  // 生成字段包含 索引 标记
+		FieldWithTypeTag:  true,  // 生成字段包含 列类型 标记
+		FieldSignable:     false, // 检测整数字段的无符号类型，调整生成的数据类型
+	}
+}
+
+// genDBRepoFromSQL 从 .sql 文件解析 CREATE TABLE 语句并生成 repo
+func genDBRepoFromSQL(args []string) {
+	conf := defaultSQLConfig()
+
+	metas, err := kernel.ParseSQLFile(args[0], &conf)
+	if err != nil {
+		fmt.Error("parse sql file fail: %s", err)
+		return
+	}
+	if len(metas) == 0 {
+		fmt.Warn("no CREATE TABLE found in file: %s", args[0])
+		return
+	}
+
+	var tableFilter []string
+	if len(args) > 1 && args[1] != "" && args[1] != "*" && args[1] != "." {
+		tableFilter = strings.Split(args[1], ",")
+	}
+
+	g := kernel.NewGenerator(conf)
+
+	for _, meta := range metas {
+		if meta == nil {
+			continue
+		}
+		if len(tableFilter) > 0 {
+			found := false
+			for _, t := range tableFilter {
+				if strings.EqualFold(meta.TableName, t) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		g.AddRepoMeta(meta)
+	}
+
+	g.Execute()
 }

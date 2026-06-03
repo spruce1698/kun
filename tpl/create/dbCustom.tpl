@@ -14,6 +14,7 @@ type (
 
         ListWithTotal(ctx context.Context, args *{{.StructName}}Search) ([]*{{.StructName}}, int64, error)
 		ListWithMore(ctx context.Context, args *{{.StructName}}Search) ([]*{{.StructName}}, bool, error)
+
     	// TODO: add your code here and delete this line
 	}
 
