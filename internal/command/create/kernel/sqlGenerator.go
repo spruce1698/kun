@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"text/template"
+	"unicode"
 
 	"github.com/spruce1698/kun/pkg/fmt"
 	"github.com/spruce1698/kun/tpl"
@@ -69,7 +70,6 @@ type dataTypeMap map[string]func(detailType string) (finalType string)
 
 var (
 	defaultDataType             = "string"
-	reStructName                = regexp.MustCompile(`^\w+$`)
 	dataType        dataTypeMap = map[string]func(detailType string) (finalType string){
 		"numeric":    func(string) string { return "int64" },
 		"integer":    func(string) string { return "int64" },
@@ -146,15 +146,6 @@ func (g *Generator) GenerateRepo(tableName string) {
 	return
 }
 
-// AddRepoMeta adds a pre-built StructMeta (e.g. parsed from SQL file) to the generator.
-func (g *Generator) AddRepoMeta(meta *StructMeta) {
-	if meta == nil {
-		return
-	}
-	g.repos[meta.StructName] = meta
-	fmt.Success("got %d columns from table <%s>", len(meta.Fields), meta.TableName)
-}
-
 // Execute generate code to output path
 func (g *Generator) Execute() {
 	fmt.Success("Start generating code.")
@@ -176,7 +167,7 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 		return nil, fmt.Errorf("repo name %q is invalid: %w", structName, err)
 	}
 
-	fileName := toLowerCamel(structName)
+	fileName := string(unicode.ToLower(rune(structName[0]))) + structName[1:]
 
 	columns, err := g.getTableColumns(tableName)
 	if err != nil || len(columns) == 0 {
@@ -196,7 +187,7 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 			primaryKeyType = m.Type
 		}
 		// json 小驼峰
-		m.JSONTag = toLowerCamel(m.Name)
+		m.JSONTag = strings.ToLower(m.Name[:1]) + m.Name[1:]
 
 		fields = append(fields, m)
 	}
@@ -343,7 +334,7 @@ func (g *Generator) checkStructName(name string) error {
 	if name == "" {
 		return nil
 	}
-	if !reStructName.MatchString(name) {
+	if !regexp.MustCompile(`^\w+$`).MatchString(name) {
 		return fmt.Errorf("repo name cannot contains invalid character")
 	}
 	if name[0] < 'A' || name[0] > 'Z' {
@@ -357,12 +348,6 @@ func (m dataTypeMap) Get(dataType, detailType string) string {
 		return convert(detailType)
 	}
 	return defaultDataType
-}
-
-// GetSQLGoType returns the Go type for a given SQL database type name.
-// This is the unified public API used by both DB-connection and SQL-file code paths.
-func GetSQLGoType(databaseTypeName, columnType string) string {
-	return dataType.Get(databaseTypeName, columnType)
 }
 
 func (c *Column) columnType() (v string) {
