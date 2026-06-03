@@ -45,7 +45,7 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
 │      │           ├── wire.go
 │      │           └── wire_gen.go
 ├── config
-│      ├── local.yml
+│      └─ local.yml
 ├── internal
 │      ├── controller
 │      │      └── serverDI.go
@@ -187,18 +187,21 @@ Advanced Layout 包含了很多kun的用法示例（ db、redis、 jwt、 cron�
 
 ### 创建组件
 
-您可以使用以下命令为项目创建controller、service和repository等组件：
+您可以使用以下命令为项目创建router、controller、service、repository/db和repository/cache等组件：
 
 ```bash
+kun create rt user
 kun create ctrl user
 kun create svc user
-kun create repo "name:pwd@tcp(127.0.0.1:3306)/dbname" [t1,t2|t1|*]
+kun create db "name:pwd@tcp(127.0.0.1:3306)/dbname" "[t1,t2|t1|*]" 
+kun create db "*.sql" "[t1,t2|t1|*]"
+kun create cache cache
 ```
 
 或
 
 ```
-kun create all user
+kun create cs user
 ```
 
 这些命令将分别创建以`UserCtrl` 和 `UserSvc` 命名的组件，并将它们放置在正确的目录中。
