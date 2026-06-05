@@ -143,6 +143,7 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
 
 ```bash
 go install github.com/spruce1698/kun@latest
+
 ```
 
 国内用户可以使用 `GOPROXY`加速 `go install`
