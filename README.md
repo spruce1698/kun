@@ -107,7 +107,7 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
     - cache: 缓存存储代码
       - keys.go: 缓存的keys同一管理文件。
       - local.go: 本地缓存操作文件。
-    - sql: 存放sql存储层代码
+    - db: 存放数据库层代码
       - mysql.go: mysql通用接口。
     - serverDI.go: server的存储依赖注入文件。
   - router: 存放路由代码。
