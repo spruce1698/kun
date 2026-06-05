@@ -103,7 +103,7 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
     - otel.go: 全链路追踪器。
     - recovery.go: 接管默认恢复中间件。
     - tracing.go:  日志的追踪中间件。
-  - repository: 存储库相关代码。
+  - repository: 存储相关代码。
     - cache: 缓存存储代码
       - keys.go: 缓存的keys同一管理文件。
       - local.go: 本地缓存操作文件。
