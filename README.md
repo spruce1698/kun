@@ -83,21 +83,21 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
 
 - cmd: 应用程序的主要入口。
   - server: http服务的入口，包含主函数和依赖注入的代码。
-    - wire: 存放依赖注入代码
+    - wire: 依赖注入代码
       - wire.go: 使用Wire库生成的依赖注入代码。
         - wire_gen.go: 使用Wire库生成的依赖注入代码。
     - main.go: 主函数，用于启动应用http服务。
 
-- config: 存放应用程序的配置文件。
+- config: 应用程序的配置文件。
   - local.yml: 本地环境的配置文件。
 
-- internal: 存放应用程序的内部代码。
+- internal: 应用程序的内部代码。
   - controller: 处理HTTP请求的控制器。
     - serverDI.go: server的控制器依赖注入文件。
-  - global: 存放常量/全局变量代码。
+  - global: 常量/全局变量代码。
     - ctx.go: ctx中的常量/全局变量。
     - router.go: 路由常量/全局变量。
-  - middleware: 存放中间件代码。
+  - middleware: 中间件代码。
     - auth.go: 授权中间件。
     - cors.go: 跨域资源共享中间件。
     - otel.go: 全链路追踪器。
@@ -107,18 +107,18 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
     - cache: 缓存存储代码
       - keys.go: 缓存的keys同一管理文件。
       - local.go: 本地缓存操作文件。
-    - db: 存放数据库层代码
+    - db: 数据库层代码
       - mysql.go: mysql通用接口。
     - serverDI.go: server的存储依赖注入文件。
-  - router: 存放路由代码。
+  - router: 路由代码。
     - v0: 默认第一个/公共版本。
     - router.go: 通用路由。
     - serverDI.go: server的路由依赖注入文件。
-  - service: 存放业务服务(逻辑)代码。
+  - service: 业务服务(逻辑)代码。
     - svc: 业务服务(逻辑)核心目录。
       - context.go: 业务逻辑的context。
     - serverDI.go: server的服务依赖注入文件。。
-- pkg: 存放应用程序的公共包。
+- pkg: 应用程序的公共包。
 - scripts:  项目脚本。
   - swagger.sh: 生成swagger文档的脚本。
 - test: mock代码
