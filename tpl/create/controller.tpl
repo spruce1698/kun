@@ -18,7 +18,7 @@ type (
 
 func ({{ .FileNameFirstChar }} *{{ .FileName }}Ctrl) Detail(ctx *gin.Context) {
     req := &struct {
-		Id   int64  `form:"id"   json:"id"`
+		Id   int64  `form:"id"   json:"id" binding:"required,gt=0"`
     }{}
     if err := ctx.ShouldBind(req); err != nil {
 		xhttp.BusCode(ctx, xerror.ParamError, err)

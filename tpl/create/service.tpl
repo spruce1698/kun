@@ -47,14 +47,29 @@ func New{{ .FileName }}Svc(ctx *{{ .FileName }}Ctx) {{ .FileName }}Svc {
 func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Svc) Detail(ctx context.Context, id int64) (*{{ .FileName }}, error) {
 	if id > 0 {
 		result := &{{ .FileName }}{}
+		// TODO: 优先查询缓存示例
+		// cacheData, cacheErr := {{ .FileNameFirstChar }}.ctx.{{ .FileName }}Cache.Get(ctx, id)
+		// if cacheErr == nil {
+		// 	if err := copier.Copy(result, cacheData); err == nil {
+		// 		return result, nil
+		// 	}
+		// }
+
 		{{ .FileNameTitleLower }}, dbErr := {{ .FileNameFirstChar }}.ctx.{{ .FileName }}Db.Find(ctx, id)
 		if dbErr != nil {
+			xlog.Errorf(ctx,"{{ .FileName }} Detail db query fail, id: %d, err: %v", id, dbErr)
 			if errors.Is(dbErr, db.ErrNotFound) {
 				return nil, xerror.NewError(ctx,xerror.BusinessError, "No relevant records", dbErr)
 			}
 			return result, xerror.NewError(ctx,xerror.BusinessError, "{{ .FileName }} Detail fail", dbErr)
 		}
-		_ = copier.Copy(result, &{{ .FileNameTitleLower }})
+		if err := copier.Copy(result, {{ .FileNameTitleLower }}); err != nil {
+			return nil, xerror.NewError(ctx, xerror.BusinessError, "data copy fail", err)
+		}
+
+		// TODO: 查询库成功后，回写缓存示例
+		// _ = {{ .FileNameFirstChar }}.ctx.{{ .FileName }}Cache.Set(ctx, id, cacheData, expiration)
+
 		return result, nil
 	}
 	return nil, xerror.NewError(ctx,xerror.BusinessError, "{{ .FileName }} Detail fail", nil)
