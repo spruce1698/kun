@@ -25,6 +25,7 @@ const (
 
 var (
 	tplPath string
+	force   bool
 
 	CmdCreate = &cobra.Command{
 		Use:     "create [type] [name]",
@@ -85,16 +86,21 @@ var (
 
 func init() {
 	CmdCreateController.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
+	CmdCreateController.Flags().BoolVarP(&force, "force", "f", false, "force override existing file")
 
 	CmdCreateService.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
+	CmdCreateService.Flags().BoolVarP(&force, "force", "f", false, "force override existing file")
 
 	CmdCreateControllerAndService.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
+	CmdCreateControllerAndService.Flags().BoolVarP(&force, "force", "f", false, "force override existing file")
 
 	CmdCreateRouter.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
+	CmdCreateRouter.Flags().BoolVarP(&force, "force", "f", false, "force override existing file")
 
 	CmdCreateDBRepository.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
 
 	CmdCreateCacheRepository.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
+	CmdCreateCacheRepository.Flags().BoolVarP(&force, "force", "f", false, "force override existing file")
 }
 
 type Create struct {
@@ -316,7 +322,7 @@ func createFile(dirPath string, filename string) *os.File {
 		fmt.Error("failed to create dir %s: %v", dirPath, err)
 	}
 	stat, _ := os.Stat(filePath)
-	if stat != nil {
+	if stat != nil && !force {
 		return nil
 	}
 	file, err := os.Create(filePath)
@@ -352,7 +358,7 @@ func generateKeysFile(dirPath string, c *Create) error {
 
 	// 4. 追加逻辑
 	if strings.Contains(content, "const (") {
-		content = strings.Replace(content, "const (", "const (\n\t" + keyName + " = \"" + keyValue + "\"", 1)
+		content = strings.Replace(content, "const (", "const (\n\t"+keyName+" = \""+keyValue+"\"", 1)
 	} else {
 		content += "\n\nconst (\n\t" + keyName + " = \"" + keyValue + "\"\n)\n"
 	}
