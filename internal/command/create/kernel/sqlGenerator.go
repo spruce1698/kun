@@ -33,14 +33,17 @@ type SQLConfig struct {
 }
 
 type StructMeta struct {
-	DbConn         *gorm.DB
-	FileName       string // generated file name
-	InterfaceName  string // interface name
-	StructName     string // origin/repo struct name
-	TableName      string // table name in db server
-	PackageName    string
-	PrimaryKeyType string // 主键key类型
-	Fields         []*Field
+	DbConn           *gorm.DB
+	FileName         string // generated file name
+	InterfaceName    string // interface name
+	StructName       string // origin/repo struct name
+	TableName        string // table name in db server
+	PackageName      string
+	PrimaryKeyType   string // 主键key类型
+	Fields           []*Field
+	HasPrimaryKey    bool   // 是否有主键
+	PrimaryKeyName   string // 主键 Go 字段名
+	PrimaryKeyColumn string // 主键 DB 列名
 }
 
 // user input structures
@@ -51,6 +54,7 @@ type Field struct {
 	JSONTag      string
 	CommentTag   string
 	IsPrimaryKey bool
+	ColumnName   string
 }
 
 type Column struct {
@@ -201,15 +205,46 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 		fields = append(fields, m)
 	}
 
+	var hasPrimaryKey bool
+	var primaryKeyName string
+	var primaryKeyColumn string
+
+	// 1. First look for IsPrimaryKey = true
+	for _, f := range fields {
+		if f.IsPrimaryKey {
+			hasPrimaryKey = true
+			primaryKeyName = f.Name
+			primaryKeyColumn = f.ColumnName
+			primaryKeyType = f.Type
+			break
+		}
+	}
+
+	// 2. If not found, look for field Name == "Id" (case-insensitive column name "id")
+	if !hasPrimaryKey {
+		for _, f := range fields {
+			if strings.ToLower(f.ColumnName) == "id" || f.Name == "Id" {
+				hasPrimaryKey = true
+				primaryKeyName = f.Name
+				primaryKeyColumn = f.ColumnName
+				primaryKeyType = f.Type
+				break
+			}
+		}
+	}
+
 	return &StructMeta{
-		DbConn:         g.Conf.DbConn,
-		FileName:       fileName,
-		InterfaceName:  fileName,
-		StructName:     structName,
-		TableName:      tableName,
-		PackageName:    g.Conf.PackageName,
-		PrimaryKeyType: primaryKeyType,
-		Fields:         fields,
+		DbConn:           g.Conf.DbConn,
+		FileName:         fileName,
+		InterfaceName:    fileName,
+		StructName:       structName,
+		TableName:        tableName,
+		PackageName:      g.Conf.PackageName,
+		PrimaryKeyType:   primaryKeyType,
+		Fields:           fields,
+		HasPrimaryKey:    hasPrimaryKey,
+		PrimaryKeyName:   primaryKeyName,
+		PrimaryKeyColumn: primaryKeyColumn,
 	}, nil
 }
 
@@ -475,6 +510,7 @@ func (c *Column) ToField(nullable, coverable, signable bool) *Field {
 		JSONTag:      c.Name(),
 		CommentTag:   commentTag,
 		IsPrimaryKey: isPrimaryKey,
+		ColumnName:   c.Name(),
 	}
 }
 

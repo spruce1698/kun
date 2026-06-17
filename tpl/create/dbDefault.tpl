@@ -17,18 +17,22 @@ const Table{{.StructName}} = "{{.TableName}}"
 
 type (
 	{{.InterfaceName}}Db interface {
+		{{if .HasPrimaryKey -}}
 		Insert(ctx context.Context,data *{{.StructName}}) ({{.PrimaryKeyType}}, error)
 		BatchInsert(ctx context.Context,list []*{{.StructName}}) ([]{{.PrimaryKeyType}}, error)
 
 		Find(ctx context.Context, id {{.PrimaryKeyType}}) (*{{.StructName}}, error)
-		FindFields(ctx context.Context, id int64, fields ...string) (*{{.StructName}}, error)
+		FindFields(ctx context.Context, id {{.PrimaryKeyType}}, fields ...string) (*{{.StructName}}, error)
 
 		Update(ctx context.Context, newData *{{.StructName}}, field []string)  (int64, error)
 		UpdateFields(ctx context.Context, id {{.PrimaryKeyType}}, newData map[string]any)  (int64, error)
 
 		SoftDelete(ctx context.Context,ids []{{.PrimaryKeyType}}) error
 		Delete(ctx context.Context,ids []{{.PrimaryKeyType}}) error
-
+		{{- else -}}
+		Insert(ctx context.Context,data *{{.StructName}}) error
+		BatchInsert(ctx context.Context,list []*{{.StructName}}) error
+		{{- end}}
 	}
 
 	default{{.StructName}}Db struct {
@@ -54,13 +58,22 @@ func new{{.StructName}}Db(c *Conn) *default{{.StructName}}Db {
 	}
 }
 
+{{if .HasPrimaryKey -}}
 func (d *default{{.StructName}}Db) Insert(ctx context.Context,data *{{.StructName}}) ({{.PrimaryKeyType}}, error) {
-    data.Id = 0
+    {{if eq .PrimaryKeyType "string" -}}
+    data.{{.PrimaryKeyName}} = ""
+    {{- else -}}
+    data.{{.PrimaryKeyName}} = 0
+    {{- end}}
 	err := d.WithContext(ctx).Create(data).Error
 	if err != nil {
+		{{if eq .PrimaryKeyType "string" -}}
+		return "",err
+		{{- else -}}
 		return 0,err
+		{{- end}}
 	}
-	return data.Id,nil
+	return data.{{.PrimaryKeyName}},nil
 }
 
 func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context,list []*{{.StructName}}) ([]{{.PrimaryKeyType}}, error) {
@@ -70,7 +83,7 @@ func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context,list []*{{.St
 	}
     ids := make([]{{.PrimaryKeyType}}, len(list))
 	for i, v := range list {
-		ids[i] = v.Id
+		ids[i] = v.{{.PrimaryKeyName}}
 	}
 	return ids,nil
 }
@@ -85,7 +98,7 @@ func (d *default{{.StructName}}Db) Find(ctx context.Context,id {{.PrimaryKeyType
 	return result, nil
 }
 
-func (d *default{{.StructName}}Db) FindFields(ctx context.Context, id int64, fields ...string) (*{{.StructName}}, error) {
+func (d *default{{.StructName}}Db) FindFields(ctx context.Context, id {{.PrimaryKeyType}}, fields ...string) (*{{.StructName}}, error) {
 	result := &{{.StructName}}{}
 	err := d.WithContext(ctx).Select(fields).First(result, id).Error
 	if err != nil {
@@ -99,22 +112,33 @@ func (d *default{{.StructName}}Db) Update(ctx context.Context,newData *{{.Struct
 	if len(field) > 0 {
 		engine = engine.Select(field)
 	}
-	result := engine.Omit("id").Where(" id = ? ", newData.Id).Updates(newData)
+	result := engine.Omit("{{.PrimaryKeyColumn}}").Where(" `{{.PrimaryKeyColumn}}` = ? ", newData.{{.PrimaryKeyName}}).Updates(newData)
 	return result.RowsAffected, result.Error
 }
 
 func (d *default{{.StructName}}Db) UpdateFields(ctx context.Context,id {{.PrimaryKeyType}}, newData map[string]any)  (int64, error)  {
-	result := d.WithContext(ctx).Model(d.model).Where(" id = ? ", id).Updates(newData)
+	result := d.WithContext(ctx).Model(d.model).Where(" `{{.PrimaryKeyColumn}}` = ? ", id).Updates(newData)
 	return result.RowsAffected, result.Error
 }
 
 
 func (d *default{{.StructName}}Db) SoftDelete(ctx context.Context,ids []{{.PrimaryKeyType}}) error {
-	err :=  d.WithContext(ctx).Where(" id  IN (?)  ", ids).Delete(d.model).Error
+	err :=  d.WithContext(ctx).Where(" `{{.PrimaryKeyColumn}}`  IN (?)  ", ids).Delete(d.model).Error
 	return err
 }
 
 func (d *default{{.StructName}}Db) Delete(ctx context.Context, ids []{{.PrimaryKeyType}}) error {
-	err := d.WithContext(ctx).Where(" id  IN (?)  ", ids).Unscoped().Delete(d.model).Error
+	err := d.WithContext(ctx).Where(" `{{.PrimaryKeyColumn}}`  IN (?)  ", ids).Unscoped().Delete(d.model).Error
 	return err
 }
+{{- else -}}
+func (d *default{{.StructName}}Db) Insert(ctx context.Context,data *{{.StructName}}) error {
+	err := d.WithContext(ctx).Create(data).Error
+	return err
+}
+
+func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context,list []*{{.StructName}}) error {
+	err := d.WithContext(ctx).Create(list).Error
+	return err
+}
+{{- end}}

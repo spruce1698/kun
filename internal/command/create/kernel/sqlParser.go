@@ -146,18 +146,49 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 		fields = append(fields, field)
 	}
 
+	var hasPrimaryKey bool
+	var primaryKeyName string
+	var primaryKeyColumn string
+
+	// 1. First look for IsPrimaryKey = true
+	for _, f := range fields {
+		if f.IsPrimaryKey {
+			hasPrimaryKey = true
+			primaryKeyName = f.Name
+			primaryKeyColumn = f.ColumnName
+			primaryKeyType = f.Type
+			break
+		}
+	}
+
+	// 2. If not found, look for field Name == "Id" (case-insensitive column name "id")
+	if !hasPrimaryKey {
+		for _, f := range fields {
+			if strings.ToLower(f.ColumnName) == "id" || f.Name == "Id" {
+				hasPrimaryKey = true
+				primaryKeyName = f.Name
+				primaryKeyColumn = f.ColumnName
+				primaryKeyType = f.Type
+				break
+			}
+		}
+	}
+
 	if structName == "" {
 		return nil
 	}
 
 	return &StructMeta{
-		FileName:       fileName,
-		InterfaceName:  fileName,
-		StructName:     structName,
-		TableName:      tableName,
-		PackageName:    "db",
-		PrimaryKeyType: primaryKeyType,
-		Fields:         fields,
+		FileName:         fileName,
+		InterfaceName:    fileName,
+		StructName:       structName,
+		TableName:        tableName,
+		PackageName:      "db",
+		PrimaryKeyType:   primaryKeyType,
+		Fields:           fields,
+		HasPrimaryKey:    hasPrimaryKey,
+		PrimaryKeyName:   primaryKeyName,
+		PrimaryKeyColumn: primaryKeyColumn,
 	}
 }
 
@@ -434,6 +465,7 @@ func buildField(cd *columnDef, uniqueIdxs []uniqueIndexInfo, conf *SQLConfig) *F
 		JSONTag:      jsonTag,
 		CommentTag:   commentTag,
 		IsPrimaryKey: isPK,
+		ColumnName:   cd.Name,
 	}
 }
 
