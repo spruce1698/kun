@@ -53,23 +53,27 @@ func (c *custom{{.StructName}}Db) ListWithTotal(ctx context.Context, args *{{.St
 		c.HandleRank(
 			args.OrderField,
 			args.OrderType,
-			"`"+Table{{.StructName}}+"`.`id`",
+			{{if .HasPrimaryKey}}"`"+Table{{.StructName}}+"`.`{{.PrimaryKeyColumn}}`"{{else}}""{{end}},
 		),
 	)
 	offset, limit := c.HandlePage(args.Page, args.PageSize)
+	{{if .HasPrimaryKey -}}
 	//  time>lastTime or (time==lastTime and id>lastId)
 	if args.LastId > 0 && args.Page > 1 {
 		if args.OrderType == 0 {
-			model = model.Where("`id` > ?", args.LastId).Limit(limit)
+			model = model.Where("`{{.PrimaryKeyColumn}}` > ?", args.LastId).Limit(limit)
 		} else {
-			model = model.Where("`id` < ?", args.LastId).Limit(limit)
+			model = model.Where("`{{.PrimaryKeyColumn}}` < ?", args.LastId).Limit(limit)
 		}
 	} else if offset > 100000 { // 考虑深分页 SELECT * FROM demo INNER JOIN (SELECT id FROM demo LIMIT 100000, 10) AS tmp USING(id);
         model = c.WithContext(ctx).Model(c.model).
-      		Joins("INNER JOIN (?) AS tmp USING(id)", model.Select("id").Offset(offset).Limit(limit))
+      		Joins("INNER JOIN (?) AS tmp USING({{.PrimaryKeyColumn}})", model.Select("`{{.PrimaryKeyColumn}}`").Offset(offset).Limit(limit))
 	} else {
 		model = model.Offset(offset).Limit(limit)
 	}
+	{{- else -}}
+	model = model.Offset(offset).Limit(limit)
+	{{- end}}
 
 	result := make([]*{{.StructName}}, 0, limit)
 	err = model.Find(&result).Error
@@ -90,25 +94,29 @@ func (c *custom{{.StructName}}Db) ListWithMore(ctx context.Context, args *{{.Str
 		c.HandleRank(
 			args.OrderField,
 			args.OrderType,
-			"`"+Table{{.StructName}}+"`.`id`",
+			{{if .HasPrimaryKey}}"`"+Table{{.StructName}}+"`.`{{.PrimaryKeyColumn}}`"{{else}}""{{end}},
 		),
 	)
 	offset, limit := c.HandlePage(args.Page, args.PageSize)
 	// 在请求的数据基础上+1，以此来判断是否还有数据
 	limit += 1
 
+	{{if .HasPrimaryKey -}}
 	if args.LastId > 0 && args.Page > 1 {
 		if args.OrderType == 0 {
-			model = model.Where("`id` > ?", args.LastId).Limit(limit)
+			model = model.Where("`{{.PrimaryKeyColumn}}` > ?", args.LastId).Limit(limit)
 		} else {
-			model = model.Where("`id` < ?", args.LastId).Limit(limit)
+			model = model.Where("`{{.PrimaryKeyColumn}}` < ?", args.LastId).Limit(limit)
 		}
 	} else if offset > 100000 { // 考虑深分页
     	model = c.WithContext(ctx).Model(c.model).
-    		Joins("INNER JOIN (?) AS tmp USING(id)", model.Select("id").Offset(offset).Limit(limit))
+    		Joins("INNER JOIN (?) AS tmp USING({{.PrimaryKeyColumn}})", model.Select("`{{.PrimaryKeyColumn}}`").Offset(offset).Limit(limit))
 	} else {
 		model = model.Offset(offset).Limit(limit)
 	}
+	{{- else -}}
+	model = model.Offset(offset).Limit(limit)
+	{{- end}}
 
 	result := make([]*{{.StructName}}, 0, limit)
 	err := model.Find(&result).Error
