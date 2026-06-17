@@ -122,7 +122,7 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 			// 提取 PRIMARY KEY 中的列名来标记主键
 			if pkCol := extractPKColumn(col); pkCol != "" {
 				for _, f := range fields {
-					if strings.EqualFold(f.Name, pkCol) {
+					if strings.EqualFold(f.ColumnName, pkCol) {
 						f.IsPrimaryKey = true
 						primaryKeyType = f.Type
 						if !strings.Contains(f.GORMTag, "primaryKey") {

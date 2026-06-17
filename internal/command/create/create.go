@@ -281,6 +281,14 @@ func (c *Create) generateFile() {
 	}
 	fmt.Success("created new %s: %s", c.CreateType, filepath.Join(absLinuxPath, fileName))
 
+	if c.CreateType == TypeCache {
+		if err = generateKeysFile(absLinuxPath, c); err != nil {
+			fmt.Error("generate keys.go error: %s", err)
+			return
+		}
+		fmt.Success("generate keys.go in %s", absLinuxPath)
+	}
+
 	// 更新DI文件
 	diPath := absLinuxPath
 	if c.CreateType != TypeCache {
@@ -317,4 +325,37 @@ func createFile(dirPath string, filename string) *os.File {
 	}
 
 	return file
+}
+
+func generateKeysFile(dirPath string, c *Create) error {
+	keysPath := filepath.Join(dirPath, "keys.go")
+	keyName := c.FileName + "DataKey"
+	keyValue := "cache:" + c.FileNameTitleLower + ":%d"
+
+	// 1. 如果 keys.go 不存在，直接创建并写入初始模板
+	if _, err := os.Stat(keysPath); os.IsNotExist(err) {
+		content := "package " + c.PackageName + "\n\nconst (\n\t" + keyName + " = \"" + keyValue + "\"\n)\n"
+		return os.WriteFile(keysPath, []byte(content), 0644)
+	}
+
+	// 2. 如果 keys.go 已存在，读取它
+	data, err := os.ReadFile(keysPath)
+	if err != nil {
+		return err
+	}
+	content := string(data)
+
+	// 3. 幂等：若已经包含此常量的名称，则什么都不做
+	if strings.Contains(content, keyName) {
+		return nil
+	}
+
+	// 4. 追加逻辑
+	if strings.Contains(content, "const (") {
+		content = strings.Replace(content, "const (", "const (\n\t" + keyName + " = \"" + keyValue + "\"", 1)
+	} else {
+		content += "\n\nconst (\n\t" + keyName + " = \"" + keyValue + "\"\n)\n"
+	}
+
+	return os.WriteFile(keysPath, []byte(content), 0644)
 }

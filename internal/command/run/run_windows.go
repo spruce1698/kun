@@ -129,6 +129,9 @@ func watch(dir string, programArgs []string) {
 				continue
 			}
 			if strings.HasPrefix(path, s) {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 		}

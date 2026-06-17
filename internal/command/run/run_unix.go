@@ -91,9 +91,9 @@ var CmdRun = &cobra.Command{
 			}
 		}
 		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-		fmt.Print("kun run %s.", dir)
-		fmt.Print("Watch excludeDir %s", excludeDir)
-		fmt.Print("Watch includeExt %s", includeExt)
+		fmt.Success("kun run %s.", dir)
+		fmt.Success("Watch excludeDir %s", excludeDir)
+		fmt.Success("Watch includeExt %s", includeExt)
 		watch(dir, programArgs)
 	},
 }
@@ -127,6 +127,9 @@ func watch(dir string, programArgs []string) {
 				continue
 			}
 			if strings.HasPrefix(path, s) {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 		}
@@ -157,7 +160,7 @@ func watch(dir string, programArgs []string) {
 				fmt.Error("server exit error: %s", err)
 				return
 			}
-			fmt.Print("server exiting...")
+			fmt.Success("server exiting...")
 			os.Exit(0)
 
 		case event := <-watcher.Events:
@@ -165,7 +168,7 @@ func watch(dir string, programArgs []string) {
 			if event.Op&fsnotify.Create == fsnotify.Create ||
 				event.Op&fsnotify.Write == fsnotify.Write ||
 				event.Op&fsnotify.Remove == fsnotify.Remove {
-				fmt.Print("file modified: %s", event.Name)
+				fmt.Success("file modified: %s", event.Name)
 				syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 
 				cmd = start(dir, programArgs)
@@ -189,6 +192,6 @@ func start(dir string, programArgs []string) *exec.Cmd {
 		fmt.Error("cmd run failed")
 	}
 	time.Sleep(time.Second)
-	fmt.Print("running...")
+	fmt.Success("running...")
 	return cmd
 }
