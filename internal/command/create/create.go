@@ -135,7 +135,7 @@ var genConfigs = map[string]genConfig{
 		defaultPkg:   TypeController,
 		structSuffix: "Ctrl",
 		diBuilder: func(c *Create) map[string]string {
-			packageName := c.PackageName + "Ctrl."
+			packageName := c.PackageName + "."
 			tPrefix := strings.ToUpper(string(c.PackageName[0])) + c.PackageName[1:]
 			if c.PackageName == c.CreateType {
 				packageName = ""

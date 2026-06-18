@@ -10,6 +10,6 @@ import (
 
 
 func {{ .FileName }}(e *gin.Engine, jwt *token.Jwt, ctx *controller.ServerCtrlCtx) {
-	// TODO: add your code here and delete this line
+	// TODO: add routes here and delete this line
 }
 

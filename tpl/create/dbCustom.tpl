@@ -15,7 +15,7 @@ type (
         ListWithTotal(ctx context.Context, args *{{.StructName}}Search) ([]*{{.StructName}}, int64, error)
 		ListWithMore(ctx context.Context, args *{{.StructName}}Search) ([]*{{.StructName}}, bool, error)
 
-    	// TODO: add your code here and delete this line
+    	// TODO: add custom functions here and delete this line
 	}
 
 	custom{{.StructName}}Db struct {
@@ -26,7 +26,7 @@ type (
 		SearchPage
 	}
 
-	// TODO: add your code here and delete this line
+	// TODO: add struct here and delete this line
 )
 
 func New{{.StructName}}Db(c *Conn) {{.StructName}}Db {

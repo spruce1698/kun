@@ -4,7 +4,7 @@ import (
    "context"
 
 
-	// TODO: Import repo files example
+	// TODO: import repo files here and delete this line
     // "{{ .ProjectName }}/internal/repository/cache"
    	// "{{ .ProjectName }}/internal/repository/db"
 
@@ -13,10 +13,10 @@ import (
 {{- end }}
    	"{{ .ProjectName }}/pkg/xerror"
 
-   	// TODO: Import files example
+   	// TODO: import files here and delete this line
    	// "{{ .ProjectName }}/pkg/xlog"
 
-    // TODO: Import files example
+    // TODO: import files here and delete this line
    	// "github.com/jinzhu/copier"
    	// "github.com/pkg/errors"
 )
@@ -38,6 +38,8 @@ type (
 {{- end }}
 		
 	    // TODO: add "db/create/event" comment here and delete this line
+		// {{ .FileName }}Db db.{{ .FileName }}Db
+		// {{ .FileName }}Cache dbcache.{{ .FileName }}Cache
     }
 
 	{{ .FileNameTitleLower }}Svc struct {
@@ -59,7 +61,7 @@ func New{{ .FileName }}Svc(ctx *{{ .FileName }}Ctx) {{ .FileName }}Svc {
 func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Svc) Detail(ctx context.Context, id int64) (*{{ .FileName }}, error) {
 	if id > 0 {
 		result := &{{ .FileName }}{}
-		// TODO: Priority query cache example
+		// TODO: priority query cache here and delete this line
 		// cacheData, cacheErr := {{ .FileNameFirstChar }}.ctx.{{ .FileName }}Cache.Get(ctx, id)
 		// if cacheErr == nil {
 		// 	if err := copier.Copy(result, cacheData); err == nil {
@@ -67,7 +69,7 @@ func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Svc) Detail(ctx context
 		// 	}
 		// }
 
-		// TODO: Query db example
+		// TODO: query db here and delete this line
 		// {{ .FileNameTitleLower }}, dbErr := {{ .FileNameFirstChar }}.ctx.{{ .FileName }}Db.Find(ctx, id)
 		// if dbErr != nil {
 		// 	xlog.Errorf(ctx,"{{ .FileName }} Detail db query fail, id: %d, err: %v", id, dbErr)
@@ -80,7 +82,7 @@ func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Svc) Detail(ctx context
 		// 	return nil, xerror.NewError(ctx, xerror.BusinessError, "data copy fail", err)
 		// }
 
-		// TODO: Write cache after query db successfully example
+		// TODO: write cache after query db successfully here and delete this line
 		// _ = {{ .FileNameFirstChar }}.ctx.{{ .FileName }}Cache.Set(ctx, id, cacheData, expiration)
 
 		return result, nil
