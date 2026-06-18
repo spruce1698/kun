@@ -192,7 +192,15 @@ func runCreate(cmd *cobra.Command, args []string) {
 	}
 
 	c.CmdType = cmd.Use
-	c.FilePath, c.FileName = filepath.Split(args[0])
+	arg := args[0]
+	if c.CmdType == "svc" || c.CmdType == "cs" {
+		if strings.HasPrefix(strings.ToLower(arg), "svc/") {
+			arg = arg[4:]
+		} else if strings.HasPrefix(strings.ToLower(arg), "svc\\") {
+			arg = arg[4:]
+		}
+	}
+	c.FilePath, c.FileName = filepath.Split(arg)
 	c.FileName = strings.ReplaceAll(strings.ToUpper(string(c.FileName[0]))+c.FileName[1:], ".go", "")
 	c.FileNameTitleLower = strings.ToLower(string(c.FileName[0])) + c.FileName[1:]
 	c.FileNameFirstChar = string(c.FileNameTitleLower[0])
