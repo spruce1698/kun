@@ -5,15 +5,18 @@ import (
 
 	"{{ .ProjectName }}/pkg/xerror"
     "{{ .ProjectName }}/pkg/xhttp"
-	"{{ .ProjectName }}/internal/service/svc"
+
+	// TODO: add service import example
+	// "{{ .ProjectName }}/internal/service/svc"
 )
 
 type (
    {{ .FileName }}Ctrl struct {
-       {{ .FileName }}Svc svc.{{ .FileName }}Svc
+	   // TODO: add service example
+       // {{ .FileName }}Svc svc.{{ .FileName }}Svc
    }
 
-   // TODO: add your code here and delete this line
+   // TODO: add struct here and delete this line
 )
 
 func ({{ .FileNameFirstChar }} *{{ .FileName }}Ctrl) Detail(ctx *gin.Context) {
@@ -24,13 +27,13 @@ func ({{ .FileNameFirstChar }} *{{ .FileName }}Ctrl) Detail(ctx *gin.Context) {
 		xhttp.BusCode(ctx, xerror.ParamError, err)
 		return
 	}
-    // TODO: add your code here and delete this line
-    data, err := {{ .FileNameFirstChar }}.{{ .FileName }}Svc.Detail(ctx.Request.Context(), req.Id)
-	if err != nil {
-		xhttp.BusFail(ctx, err)
-		return
-	}
-	xhttp.Data(ctx, "{{ .FileName }} Detail success", data)
+    // TODO: add service call logic example
+    // data, err := {{ .FileNameFirstChar }}.{{ .FileName }}Svc.Detail(ctx.Request.Context(), req.Id)
+	// if err != nil {
+	// 	xhttp.BusFail(ctx, err)
+	// 	return
+	// }
+	// xhttp.Data(ctx, "{{ .FileName }} Detail success", data)
 }
 
 // TODO: add your code here and delete this line
