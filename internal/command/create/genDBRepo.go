@@ -16,6 +16,7 @@ import (
 	"gorm.io/driver/clickhouse"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 )
@@ -27,10 +28,11 @@ const (
 	DefaultOutPath = "./internal/repository/db"
 	VersionText    = "数据库生成GORM Repository文件"
 
-	// dbMySQL Gorm Drivers mysql || postgres || clickhouse
+	// dbMySQL Gorm Drivers mysql || postgres || clickhouse || sqlite
 	dbMySQL      DBType = "mysql"
 	dbPostgres   DBType = "postgres"
 	dbClickHouse DBType = "clickhouse"
+	dbSQLite     DBType = "sqlite"
 )
 
 // CmdParams is command line parameters
@@ -55,9 +57,25 @@ func connectDB(t DBType, dsn string) (*gorm.DB, error) {
 		return gorm.Open(postgres.Open(dsn))
 	case dbClickHouse:
 		return gorm.Open(clickhouse.Open(dsn))
+	case dbSQLite:
+		return gorm.Open(sqlite.Open(dsn))
 	default:
 		return nil, fmt.Errorf("unknow db %q (support mysql || postgres || sqlite || clickhouse for now)", t)
 	}
+}
+
+func detectDBType(dsn string) DBType {
+	dsnLower := strings.ToLower(dsn)
+	if strings.Contains(dsnLower, "host=") || strings.Contains(dsnLower, "sslmode=") || strings.HasPrefix(dsnLower, "postgres://") || strings.HasPrefix(dsnLower, "postgresql://") {
+		return dbPostgres
+	}
+	if strings.Contains(dsnLower, "clickhouse://") || (strings.Contains(dsnLower, "tcp://") && strings.Contains(dsnLower, "9000")) {
+		return dbClickHouse
+	}
+	if strings.HasSuffix(dsnLower, ".db") || strings.HasSuffix(dsnLower, ".sqlite") || strings.HasSuffix(dsnLower, ".sqlite3") || strings.Contains(dsnLower, "file:") {
+		return dbSQLite
+	}
+	return dbMySQL
 }
 
 func genDBRepo(cmd *cobra.Command, args []string) {
@@ -69,9 +87,9 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 
 	cmdConf := &CmdParams{
 		DSN:     args[0],
-		DBType:  "mysql",
 		OutPath: DefaultOutPath,
 	}
+	cmdConf.DBType = string(detectDBType(cmdConf.DSN))
 	if len(args) > 1 && args[1] != "" {
 		if args[1] == "*" {
 			cmdConf.Tables = []string{}

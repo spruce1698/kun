@@ -15,7 +15,7 @@ type (
         ListWithTotal(ctx context.Context, args *{{.StructName}}Search) ([]*{{.StructName}}, int64, error)
 		ListWithMore(ctx context.Context, args *{{.StructName}}Search) ([]*{{.StructName}}, bool, error)
 
-    	// TODO: add your code here and delete this line
+    	// TODO: add custom functions here and delete this line
 	}
 
 	custom{{.StructName}}Db struct {
@@ -26,7 +26,7 @@ type (
 		SearchPage
 	}
 
-	// TODO: add your code here and delete this line
+	// TODO: add struct here and delete this line
 )
 
 func New{{.StructName}}Db(c *Conn) {{.StructName}}Db {
@@ -39,23 +39,20 @@ func New{{.StructName}}Db(c *Conn) {{.StructName}}Db {
 func (c *custom{{.StructName}}Db) ListWithTotal(ctx context.Context, args *{{.StructName}}Search) ([]*{{.StructName}}, int64, error) {
 	model := c.WithContext(ctx).Model(c.model)
 
-
-
 	var total int64
-	err := model.WithContext(ctx).Count(&total).Error
+	err := model.Count(&total).Error
 	if err != nil {
 		return nil, 0, err
 	}
 	if total == 0 {
 		return nil, 0, ErrNotFound
 	}
-	model = model.Order(
-		c.HandleRank(
-			args.OrderField,
-			args.OrderType,
-			{{if .HasPrimaryKey}}"`"+Table{{.StructName}}+"`.`{{.PrimaryKeyColumn}}`"{{else}}""{{end}},
-		),
+	orderStr := c.HandleRank(
+		args.OrderField,
+		args.OrderType,
+		{{if .HasPrimaryKey}}"`"+Table{{.StructName}}+"`.`{{.PrimaryKeyColumn}}`"{{else}}""{{end}},
 	)
+	model = model.Order(orderStr)
 	offset, limit := c.HandlePage(args.Page, args.PageSize)
 	{{if .HasPrimaryKey -}}
 	//  time>lastTime or (time==lastTime and id>lastId)
@@ -66,8 +63,8 @@ func (c *custom{{.StructName}}Db) ListWithTotal(ctx context.Context, args *{{.St
 			model = model.Where("`{{.PrimaryKeyColumn}}` < ?", args.LastId).Limit(limit)
 		}
 	} else if offset > 100000 { // 考虑深分页 SELECT * FROM demo INNER JOIN (SELECT id FROM demo LIMIT 100000, 10) AS tmp USING(id);
-        model = c.WithContext(ctx).Model(c.model).
-      		Joins("INNER JOIN (?) AS tmp USING({{.PrimaryKeyColumn}})", model.Select("`{{.PrimaryKeyColumn}}`").Offset(offset).Limit(limit))
+		model = c.WithContext(ctx).Model(c.model).Order(orderStr).
+			Joins("INNER JOIN (?) AS tmp USING({{.PrimaryKeyColumn}})", model.Select("`{{.PrimaryKeyColumn}}`").Offset(offset).Limit(limit))
 	} else {
 		model = model.Offset(offset).Limit(limit)
 	}
@@ -77,7 +74,7 @@ func (c *custom{{.StructName}}Db) ListWithTotal(ctx context.Context, args *{{.St
 
 	result := make([]*{{.StructName}}, 0, limit)
 	err = model.Find(&result).Error
-    if err != nil {
+	if err != nil {
 		return nil, 0, err
 	}
 	if len(result) == 0 {
@@ -89,17 +86,15 @@ func (c *custom{{.StructName}}Db) ListWithTotal(ctx context.Context, args *{{.St
 func (c *custom{{.StructName}}Db) ListWithMore(ctx context.Context, args *{{.StructName}}Search) ([]*{{.StructName}}, bool, error) {
 	model := c.WithContext(ctx).Model(c.model)
 
-
-	model = model.Order(
-		c.HandleRank(
-			args.OrderField,
-			args.OrderType,
-			{{if .HasPrimaryKey}}"`"+Table{{.StructName}}+"`.`{{.PrimaryKeyColumn}}`"{{else}}""{{end}},
-		),
+	orderStr := c.HandleRank(
+		args.OrderField,
+		args.OrderType,
+		{{if .HasPrimaryKey}}"`"+Table{{.StructName}}+"`.`{{.PrimaryKeyColumn}}`"{{else}}""{{end}},
 	)
+	model = model.Order(orderStr)
 	offset, limit := c.HandlePage(args.Page, args.PageSize)
 	// 在请求的数据基础上+1，以此来判断是否还有数据
-	limit += 1
+	limit++
 
 	{{if .HasPrimaryKey -}}
 	if args.LastId > 0 && args.Page > 1 {
@@ -109,8 +104,8 @@ func (c *custom{{.StructName}}Db) ListWithMore(ctx context.Context, args *{{.Str
 			model = model.Where("`{{.PrimaryKeyColumn}}` < ?", args.LastId).Limit(limit)
 		}
 	} else if offset > 100000 { // 考虑深分页
-    	model = c.WithContext(ctx).Model(c.model).
-    		Joins("INNER JOIN (?) AS tmp USING({{.PrimaryKeyColumn}})", model.Select("`{{.PrimaryKeyColumn}}`").Offset(offset).Limit(limit))
+		model = c.WithContext(ctx).Model(c.model).Order(orderStr).
+			Joins("INNER JOIN (?) AS tmp USING({{.PrimaryKeyColumn}})", model.Select("`{{.PrimaryKeyColumn}}`").Offset(offset).Limit(limit))
 	} else {
 		model = model.Offset(offset).Limit(limit)
 	}
@@ -120,7 +115,7 @@ func (c *custom{{.StructName}}Db) ListWithMore(ctx context.Context, args *{{.Str
 
 	result := make([]*{{.StructName}}, 0, limit)
 	err := model.Find(&result).Error
-    if err != nil {
+	if err != nil {
 		return nil, false, err
 	}
 

@@ -23,7 +23,7 @@ type (
         Delete(ctx context.Context, id int64) error
         // 预热缓存
         Warmup(ctx context.Context) error
-        // TODO: add your code here and delete this line
+        // TODO: add cache functions here and delete this line
 	}
 
 	{{ .FileNameTitleLower }}Cache struct {
@@ -33,10 +33,10 @@ type (
 
 	//  缓存数据的结构体
 	{{ .FileName }} struct {
-        // TODO: add your code here and delete this line
+        // TODO: add struct fields here and delete this line
 	}
 
-    // TODO: add your code here and delete this line
+    // TODO: add struct here and delete this line
 )
 
 func New{{ .FileName }}Cache(c *xredis.Client) {{ .FileName }}Cache {

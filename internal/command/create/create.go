@@ -25,6 +25,7 @@ const (
 
 var (
 	tplPath string
+	force   bool
 
 	CmdCreate = &cobra.Command{
 		Use:     "create [type] [name]",
@@ -85,16 +86,21 @@ var (
 
 func init() {
 	CmdCreateController.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
+	CmdCreateController.Flags().BoolVarP(&force, "force", "f", false, "force override existing file")
 
 	CmdCreateService.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
+	CmdCreateService.Flags().BoolVarP(&force, "force", "f", false, "force override existing file")
 
 	CmdCreateControllerAndService.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
+	CmdCreateControllerAndService.Flags().BoolVarP(&force, "force", "f", false, "force override existing file")
 
 	CmdCreateRouter.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
+	CmdCreateRouter.Flags().BoolVarP(&force, "force", "f", false, "force override existing file")
 
 	CmdCreateDBRepository.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
 
 	CmdCreateCacheRepository.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
+	CmdCreateCacheRepository.Flags().BoolVarP(&force, "force", "f", false, "force override existing file")
 }
 
 type Create struct {
@@ -186,7 +192,15 @@ func runCreate(cmd *cobra.Command, args []string) {
 	}
 
 	c.CmdType = cmd.Use
-	c.FilePath, c.FileName = filepath.Split(args[0])
+	arg := args[0]
+	if c.CmdType == "svc" || c.CmdType == "cs" {
+		if strings.HasPrefix(strings.ToLower(arg), "svc/") {
+			arg = arg[4:]
+		} else if strings.HasPrefix(strings.ToLower(arg), "svc\\") {
+			arg = arg[4:]
+		}
+	}
+	c.FilePath, c.FileName = filepath.Split(arg)
 	c.FileName = strings.ReplaceAll(strings.ToUpper(string(c.FileName[0]))+c.FileName[1:], ".go", "")
 	c.FileNameTitleLower = strings.ToLower(string(c.FileName[0])) + c.FileName[1:]
 	c.FileNameFirstChar = string(c.FileNameTitleLower[0])
@@ -281,6 +295,14 @@ func (c *Create) generateFile() {
 	}
 	fmt.Success("created new %s: %s", c.CreateType, filepath.Join(absLinuxPath, fileName))
 
+	if c.CreateType == TypeCache {
+		if err = generateKeysFile(absLinuxPath, c); err != nil {
+			fmt.Error("generate keys.go error: %s", err)
+			return
+		}
+		fmt.Success("generate keys.go in %s", absLinuxPath)
+	}
+
 	// 更新DI文件
 	diPath := absLinuxPath
 	if c.CreateType != TypeCache {
@@ -308,7 +330,7 @@ func createFile(dirPath string, filename string) *os.File {
 		fmt.Error("failed to create dir %s: %v", dirPath, err)
 	}
 	stat, _ := os.Stat(filePath)
-	if stat != nil {
+	if stat != nil && !force {
 		return nil
 	}
 	file, err := os.Create(filePath)
@@ -317,4 +339,37 @@ func createFile(dirPath string, filename string) *os.File {
 	}
 
 	return file
+}
+
+func generateKeysFile(dirPath string, c *Create) error {
+	keysPath := filepath.Join(dirPath, "keys.go")
+	keyName := c.FileName + "DataKey"
+	keyValue := "cache:" + c.FileNameTitleLower + ":%d"
+
+	// 1. 如果 keys.go 不存在，直接创建并写入初始模板
+	if _, err := os.Stat(keysPath); os.IsNotExist(err) {
+		content := "package " + c.PackageName + "\n\nconst (\n\t" + keyName + " = \"" + keyValue + "\"\n)\n"
+		return os.WriteFile(keysPath, []byte(content), 0644)
+	}
+
+	// 2. 如果 keys.go 已存在，读取它
+	data, err := os.ReadFile(keysPath)
+	if err != nil {
+		return err
+	}
+	content := string(data)
+
+	// 3. 幂等：若已经包含此常量的名称，则什么都不做
+	if strings.Contains(content, keyName) {
+		return nil
+	}
+
+	// 4. 追加逻辑
+	if strings.Contains(content, "const (") {
+		content = strings.Replace(content, "const (", "const (\n\t"+keyName+" = \""+keyValue+"\"", 1)
+	} else {
+		content += "\n\nconst (\n\t" + keyName + " = \"" + keyValue + "\"\n)\n"
+	}
+
+	return os.WriteFile(keysPath, []byte(content), 0644)
 }

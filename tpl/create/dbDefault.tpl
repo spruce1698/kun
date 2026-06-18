@@ -22,16 +22,22 @@ type (
 		BatchInsert(ctx context.Context,list []*{{.StructName}}) ([]{{.PrimaryKeyType}}, error)
 
 		Find(ctx context.Context, id {{.PrimaryKeyType}}) (*{{.StructName}}, error)
+		FindByIds(ctx context.Context, ids []{{.PrimaryKeyType}}) ([]*{{.StructName}}, error)
 		FindFields(ctx context.Context, id {{.PrimaryKeyType}}, fields ...string) (*{{.StructName}}, error)
+		Exist(ctx context.Context, id {{.PrimaryKeyType}}) (bool, error)
 
 		Update(ctx context.Context, newData *{{.StructName}}, field []string)  (int64, error)
 		UpdateFields(ctx context.Context, id {{.PrimaryKeyType}}, newData map[string]any)  (int64, error)
 
 		SoftDelete(ctx context.Context,ids []{{.PrimaryKeyType}}) error
 		Delete(ctx context.Context,ids []{{.PrimaryKeyType}}) error
+
+		Count(ctx context.Context) (int64, error)
 		{{- else -}}
 		Insert(ctx context.Context,data *{{.StructName}}) error
 		BatchInsert(ctx context.Context,list []*{{.StructName}}) error
+
+		Count(ctx context.Context) (int64, error)
 		{{- end}}
 	}
 
@@ -60,20 +66,13 @@ func new{{.StructName}}Db(c *Conn) *default{{.StructName}}Db {
 
 {{if .HasPrimaryKey -}}
 func (d *default{{.StructName}}Db) Insert(ctx context.Context,data *{{.StructName}}) ({{.PrimaryKeyType}}, error) {
-    {{if eq .PrimaryKeyType "string" -}}
-    data.{{.PrimaryKeyName}} = ""
-    {{- else -}}
-    data.{{.PrimaryKeyName}} = 0
-    {{- end}}
+	var zero {{.PrimaryKeyType}}
+	data.{{.PrimaryKeyName}} = zero
 	err := d.WithContext(ctx).Create(data).Error
 	if err != nil {
-		{{if eq .PrimaryKeyType "string" -}}
-		return "",err
-		{{- else -}}
-		return 0,err
-		{{- end}}
+		return zero, err
 	}
-	return data.{{.PrimaryKeyName}},nil
+	return data.{{.PrimaryKeyName}}, nil
 }
 
 func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context,list []*{{.StructName}}) ([]{{.PrimaryKeyType}}, error) {
@@ -107,6 +106,24 @@ func (d *default{{.StructName}}Db) FindFields(ctx context.Context, id {{.Primary
 	return result, nil
 }
 
+func (d *default{{.StructName}}Db) FindByIds(ctx context.Context, ids []{{.PrimaryKeyType}}) ([]*{{.StructName}}, error) {
+	var result []*{{.StructName}}
+	err := d.WithContext(ctx).Where("`{{.PrimaryKeyColumn}}` IN (?)", ids).Find(&result).Error
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (d *default{{.StructName}}Db) Exist(ctx context.Context, id {{.PrimaryKeyType}}) (bool, error) {
+	var count int64
+	err := d.WithContext(ctx).Model(d.model).Where("`{{.PrimaryKeyColumn}}` = ?", id).Limit(1).Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func (d *default{{.StructName}}Db) Update(ctx context.Context,newData *{{.StructName}}, field []string)  (int64, error)  {
 	engine := d.WithContext(ctx).Model(d.model)
 	if len(field) > 0 {
@@ -131,6 +148,12 @@ func (d *default{{.StructName}}Db) Delete(ctx context.Context, ids []{{.PrimaryK
 	err := d.WithContext(ctx).Where(" `{{.PrimaryKeyColumn}}`  IN (?)  ", ids).Unscoped().Delete(d.model).Error
 	return err
 }
+
+func (d *default{{.StructName}}Db) Count(ctx context.Context) (int64, error) {
+	var count int64
+	err := d.WithContext(ctx).Model(d.model).Count(&count).Error
+	return count, err
+}
 {{- else -}}
 func (d *default{{.StructName}}Db) Insert(ctx context.Context,data *{{.StructName}}) error {
 	err := d.WithContext(ctx).Create(data).Error
@@ -140,5 +163,11 @@ func (d *default{{.StructName}}Db) Insert(ctx context.Context,data *{{.StructNam
 func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context,list []*{{.StructName}}) error {
 	err := d.WithContext(ctx).Create(list).Error
 	return err
+}
+
+func (d *default{{.StructName}}Db) Count(ctx context.Context) (int64, error) {
+	var count int64
+	err := d.WithContext(ctx).Model(d.model).Count(&count).Error
+	return count, err
 }
 {{- end}}

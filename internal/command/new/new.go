@@ -65,16 +65,11 @@ func run(_ *cobra.Command, args []string) {
 	}
 
 	err = p.replacePackageName()
-	if err != nil || !yes {
-		return
-	}
-
-	err = p.replacePackageName()
-	if err != nil || !yes {
+	if err != nil {
 		return
 	}
 	err = p.modTidy()
-	if err != nil || !yes {
+	if err != nil {
 		return
 	}
 	p.rmGit()
@@ -229,7 +224,7 @@ func (p *Project) replaceFiles(packageName string) error {
 
 func handlerZip(projectName, templateName string) error {
 	// 创建项目目录
-	mkDirErr := os.MkdirAll(projectName, os.ModeExclusive)
+	mkDirErr := os.MkdirAll(projectName, os.ModePerm)
 	if mkDirErr != nil {
 		return mkDirErr
 	}
