@@ -209,7 +209,7 @@ kun create cs user
 
 ### 启动项目
 
-您可以使用以下命令快速启动项目：
+您可以使用以下命令快速启动项目：[README.md](tpl/advanced/README.md)
 
 ```bash
 kun run
