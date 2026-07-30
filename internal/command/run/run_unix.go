@@ -112,35 +112,22 @@ func watch(dir string, programArgs []string) {
 	defer watcher.Close()
 
 	excludeDirArr := strings.Split(excludeDir, ",")
-	includeExtArr := strings.Split(includeExt, ",")
-	includeExtMap := make(map[string]struct{})
-	for _, s := range includeExtArr {
-		includeExtMap[s] = struct{}{}
-	}
-	// Add files to watcher
+
+	// 添加所有非排除目录到 watcher（监听目录而非单个文件，新文件自动被覆盖）
 	err = filepath.Walk(watchPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+		if !info.IsDir() {
+			return nil
+		}
 		for _, s := range excludeDirArr {
-			if s == "" {
-				continue
-			}
-			if strings.HasPrefix(path, s) {
-				if info.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
+			if s != "" && (path == s || strings.HasPrefix(path, s+"/") || strings.HasPrefix(path, s+"\\")) {
+				return filepath.SkipDir
 			}
 		}
-		if !info.IsDir() {
-			ext := filepath.Ext(info.Name())
-			if _, ok := includeExtMap[strings.TrimPrefix(ext, ".")]; ok {
-				err = watcher.Add(path)
-				if err != nil {
-					fmt.Error("Error: %s", err)
-				}
-			}
+		if addErr := watcher.Add(path); addErr != nil {
+			fmt.Error("Error: %s", addErr)
 		}
 		return nil
 	})
@@ -155,28 +142,51 @@ func watch(dir string, programArgs []string) {
 	for {
 		select {
 		case <-quit:
-			err = syscall.Kill(-cmd.Process.Pid, syscall.SIGINT)
-			if err != nil {
-				fmt.Error("server exit error: %s", err)
-				return
+			if cmd.Process != nil {
+				err = syscall.Kill(-cmd.Process.Pid, syscall.SIGINT)
+				if err != nil {
+					fmt.Error("server exit error: %s", err)
+					return
+				}
 			}
 			fmt.Success("server exiting...")
 			os.Exit(0)
 
 		case event := <-watcher.Events:
-			// The file has been modified or created
-			if event.Op&fsnotify.Create == fsnotify.Create ||
-				event.Op&fsnotify.Write == fsnotify.Write ||
+			// 文件被修改或删除时重启
+			if event.Op&fsnotify.Write == fsnotify.Write ||
 				event.Op&fsnotify.Remove == fsnotify.Remove {
 				fmt.Success("file modified: %s", event.Name)
-				syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-
+				if cmd.Process != nil {
+					_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+				}
 				cmd = start(dir, programArgs)
+			}
+			// 新建目录时加入 watcher，使其内部文件也被监听
+			if event.Op&fsnotify.Create == fsnotify.Create {
+				evPath := strings.ReplaceAll(event.Name, "\\", "/")
+				for _, s := range excludeDirArr {
+					if s != "" && (evPath == s || strings.HasPrefix(evPath, s+"/")) {
+						goto skipWatch
+					}
+				}
+				if fi, fiErr := os.Stat(event.Name); fiErr == nil && fi.IsDir() {
+					_ = watcher.Add(event.Name)
+				}
+			skipWatch:
 			}
 		case err := <-watcher.Errors:
 			fmt.Error("Error: %s", err)
 		}
 	}
+}
+
+func isProcessRunning(cmd *exec.Cmd) bool {
+	if cmd == nil || cmd.Process == nil {
+		return false
+	}
+	err := cmd.Process.Signal(syscall.Signal(0))
+	return err == nil
 }
 
 func start(dir string, programArgs []string) *exec.Cmd {
@@ -191,7 +201,11 @@ func start(dir string, programArgs []string) *exec.Cmd {
 	if err != nil {
 		fmt.Error("cmd run failed")
 	}
-	time.Sleep(time.Second)
+	// 等待进程真正启动，而非固定 sleep 1 秒
+	time.Sleep(200 * time.Millisecond)
+	if !isProcessRunning(cmd) {
+		fmt.Error("process exited immediately after start")
+	}
 	fmt.Success("running...")
 	return cmd
 }

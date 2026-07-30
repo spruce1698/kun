@@ -81,11 +81,28 @@ func ParseSQLFile(filePath string, conf *SQLConfig) ([]*StructMeta, error) {
 	return metas, nil
 }
 
-// findMatchingParen 从 start 位置开始找到匹配的右括号
+// findMatchingParen 从 start 位置开始找到匹配的右括号，跳过字符串字面量
 func findMatchingParen(s string, start int) int {
 	depth := 0
+	inString := false
 	for i := start; i < len(s); i++ {
-		switch s[i] {
+		ch := s[i]
+		if inString {
+			if ch == '\'' {
+				// 检查转义的单引号 ''
+				if i+1 < len(s) && s[i+1] == '\'' {
+					i++ // 跳过转义的单引号
+				} else {
+					inString = false
+				}
+			}
+			continue
+		}
+		if ch == '\'' {
+			inString = true
+			continue
+		}
+		switch ch {
 		case '(':
 			depth++
 		case ')':
@@ -192,13 +209,30 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 	}
 }
 
-// splitByComma 按逗号切分，正确处理括号嵌套
+// splitByComma 按逗号切分，正确处理括号嵌套和字符串字面量
 func splitByComma(s string) []string {
 	var parts []string
 	depth := 0
+	inString := false
 	start := 0
 	for i := 0; i < len(s); i++ {
-		switch s[i] {
+		ch := s[i]
+		if inString {
+			if ch == '\'' {
+				// 检查转义的单引号 ''
+				if i+1 < len(s) && s[i+1] == '\'' {
+					i++ // 跳过转义的单引号
+				} else {
+					inString = false
+				}
+			}
+			continue
+		}
+		if ch == '\'' {
+			inString = true
+			continue
+		}
+		switch ch {
 		case '(':
 			depth++
 		case ')':
@@ -512,9 +546,10 @@ func convertToUTF8(data []byte) []byte {
 			return decodeUTF16BE(data[2:])
 		}
 	}
-	// 检测无 BOM 的 UTF-16 LE
+	// 检测无 BOM 的 UTF-16 LE（启发式：前4字节中偶数位为非零ASCII，奇数位为0）
 	if len(data) >= 4 && len(data)%2 == 0 {
-		if data[1] == 0 && data[3] == 0 && data[0] != 0 {
+		if data[0] != 0 && data[1] == 0 && data[2] != 0 && data[3] == 0 &&
+			data[0] < 0x80 && data[2] < 0x80 {
 			return decodeUTF16LE(data)
 		}
 	}

@@ -15,12 +15,8 @@ var CmdUpgrade = &cobra.Command{
 	Long:    "Upgrade the kun command.",
 	Example: "kun upgrade",
 	Run: func(_ *cobra.Command, _ []string) {
-		cmd := exec.Command("go", "clean", "-modcache")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		_ = cmd.Run()
 		fmt.Success("go install %s", config.KunUrl)
-		cmd = exec.Command("go", "install", config.KunUrl)
+		cmd := exec.Command("go", "install", config.KunUrl)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
