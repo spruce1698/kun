@@ -139,7 +139,8 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 func defaultSQLConfig() kernel.SQLConfig {
 	outPath, err := filepath.Abs(DefaultOutPath)
 	if err != nil {
-		fmt.Error("outPath is invalid: %s", err)
+		fmt.Error("outPath is invalid: %s, using default", err)
+		outPath = DefaultOutPath
 	}
 	return kernel.SQLConfig{
 		OutPath:           outPath,

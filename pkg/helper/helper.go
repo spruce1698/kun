@@ -10,6 +10,8 @@ import (
 	"github.com/spruce1698/kun/pkg/fmt"
 )
 
+var reMainFunc = regexp.MustCompile(`func\s+main\s*\(`)
+
 func GetProjectName(dir string) string {
 	modFile, err := os.Open(dir + "/go.mod")
 	if err != nil {
@@ -57,6 +59,11 @@ func FindMain(base, excludeDir string) (map[string]string, error) {
 			}
 		}
 		if !info.IsDir() && filepath.Ext(path) == ".go" {
+			// 只检查 cmd/ 目录下的文件，避免读取无关文件
+			if !strings.Contains(path, "cmd"+string(filepath.Separator)) &&
+				!strings.Contains(path, "cmd/") {
+				return nil
+			}
 			content, err := os.ReadFile(path)
 			if err != nil {
 				return err
@@ -64,8 +71,7 @@ func FindMain(base, excludeDir string) (map[string]string, error) {
 			if !strings.Contains(string(content), "package main") {
 				return nil
 			}
-			re := regexp.MustCompile(`func\s+main\s*\(`)
-			if re.Match(content) {
+			if reMainFunc.Match(content) {
 				absPath, absErr := filepath.Abs(path)
 				if absErr != nil {
 					return absErr

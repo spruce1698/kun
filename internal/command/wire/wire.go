@@ -123,33 +123,37 @@ func findWire(base string) (map[string]string, error) {
 		wd += "/"
 	}
 
-	var root bool
-	next := func(dir string) (map[string]string, error) {
+	// walkDir 向上搜索 wire.go 文件，返回找到的 wire.go 路径映射和是否已到达项目根目录（含 go.mod）
+	walkDir := func(dir string) (map[string]string, bool, error) {
 		wirePath := make(map[string]string)
+		foundRoot := false
 		err = filepath.Walk(dir, func(walkPath string, info os.FileInfo, err error) error {
-			// multi level directory is not allowed under the wirePath directory, so it is judged that the path ends with wirePath.
+			if err != nil {
+				return err
+			}
+			// 多级目录不在 wire.go 所在目录下搜索
 			if strings.HasSuffix(walkPath, "wire.go") {
 				p, _ := filepath.Split(walkPath)
 				wirePath[strings.TrimPrefix(walkPath, wd)] = p
 				return nil
 			}
 			if info.Name() == "go.mod" {
-				root = true
+				foundRoot = true
 			}
 			return nil
 		})
-		return wirePath, err
+		return wirePath, foundRoot, err
 	}
+
 	for i := 0; i < 5; i++ {
-		tmp := base
-		cmd, err := next(tmp)
-		if err != nil {
-			return nil, err
+		cmd, reachedRoot, walkErr := walkDir(base)
+		if walkErr != nil {
+			return nil, walkErr
 		}
 		if len(cmd) > 0 {
 			return cmd, nil
 		}
-		if root {
+		if reachedRoot {
 			break
 		}
 		base = filepath.Join(base, "..")

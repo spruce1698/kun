@@ -254,14 +254,12 @@ func handlerZip(projectName, templateName string) error {
 		// 获取到 Reader
 		fr, frErr := file.Open()
 		if frErr != nil {
-			_ = fr.Close()
 			return frErr
 		}
 
 		// 创建要写出的文件对应的 Write
 		fw, fwErr := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, fileMode)
 		if fwErr != nil {
-			_ = fw.Close()
 			_ = fr.Close()
 			return fwErr
 		}

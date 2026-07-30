@@ -24,8 +24,9 @@ const (
 )
 
 var (
-	tplPath string
-	force   bool
+	// 仅用于 cobra flag 绑定，业务逻辑通过 Create 结构体传递
+	cmdTplPath string
+	cmdForce   bool
 
 	CmdCreate = &cobra.Command{
 		Use:     "create [type] [name]",
@@ -85,22 +86,22 @@ var (
 )
 
 func init() {
-	CmdCreateController.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
-	CmdCreateController.Flags().BoolVarP(&force, "force", "f", false, "force override existing file")
+	CmdCreateController.Flags().StringVarP(&cmdTplPath, "tpl-path", "t", cmdTplPath, "template path")
+	CmdCreateController.Flags().BoolVarP(&cmdForce, "force", "f", false, "force override existing file")
 
-	CmdCreateService.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
-	CmdCreateService.Flags().BoolVarP(&force, "force", "f", false, "force override existing file")
+	CmdCreateService.Flags().StringVarP(&cmdTplPath, "tpl-path", "t", cmdTplPath, "template path")
+	CmdCreateService.Flags().BoolVarP(&cmdForce, "force", "f", false, "force override existing file")
 
-	CmdCreateControllerAndService.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
-	CmdCreateControllerAndService.Flags().BoolVarP(&force, "force", "f", false, "force override existing file")
+	CmdCreateControllerAndService.Flags().StringVarP(&cmdTplPath, "tpl-path", "t", cmdTplPath, "template path")
+	CmdCreateControllerAndService.Flags().BoolVarP(&cmdForce, "force", "f", false, "force override existing file")
 
-	CmdCreateRouter.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
-	CmdCreateRouter.Flags().BoolVarP(&force, "force", "f", false, "force override existing file")
+	CmdCreateRouter.Flags().StringVarP(&cmdTplPath, "tpl-path", "t", cmdTplPath, "template path")
+	CmdCreateRouter.Flags().BoolVarP(&cmdForce, "force", "f", false, "force override existing file")
 
-	CmdCreateDBRepository.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
+	CmdCreateDBRepository.Flags().StringVarP(&cmdTplPath, "tpl-path", "t", cmdTplPath, "template path")
 
-	CmdCreateCacheRepository.Flags().StringVarP(&tplPath, "tpl-path", "t", tplPath, "template path")
-	CmdCreateCacheRepository.Flags().BoolVarP(&force, "force", "f", false, "force override existing file")
+	CmdCreateCacheRepository.Flags().StringVarP(&cmdTplPath, "tpl-path", "t", cmdTplPath, "template path")
+	CmdCreateCacheRepository.Flags().BoolVarP(&cmdForce, "force", "f", false, "force override existing file")
 }
 
 type Create struct {
@@ -114,6 +115,8 @@ type Create struct {
 	PackageName        string
 	AddUPPath          string
 	IsFull             bool
+	TplPath            string
+	Force              bool
 }
 
 func NewCreate() *Create {
@@ -190,6 +193,8 @@ func runCreate(cmd *cobra.Command, args []string) {
 	if c.ProjectName == "" {
 		return
 	}
+	c.TplPath = cmdTplPath
+	c.Force = cmdForce
 
 	c.CmdType = cmd.Use
 	arg := args[0]
@@ -254,7 +259,11 @@ func (c *Create) generateFile() {
 	}
 	filePath = strings.ReplaceAll(strings.ReplaceAll(filePath+"/", "//", "/"), "\\", "/")
 
-	absPath, _ := filepath.Abs(filepath.Dir(filepath.Join(filePath, fileName)))
+	absPath, err := filepath.Abs(filepath.Dir(filepath.Join(filePath, fileName)))
+	if err != nil {
+		fmt.Error("create %s error: %s", c.CreateType, err)
+		return
+	}
 	absLinuxPath := strings.ReplaceAll(absPath, "\\", "/") + "/"
 	if strings.LastIndex(absLinuxPath, filePath) < 1 {
 		fmt.Error("create %s error: %s", c.CreateType, "not in internal")
@@ -269,17 +278,16 @@ func (c *Create) generateFile() {
 
 	// 根据模板生成文件
 	var t *template.Template
-	var err error
-	if tplPath == "" {
+	if c.TplPath == "" {
 		t, err = template.ParseFS(tpl.CreateTplFS, fmt.Sprintf("create/%s.tpl", c.CreateType))
 	} else {
-		t, err = template.ParseFiles(path.Join(tplPath, fmt.Sprintf("%s.tpl", c.CreateType)))
+		t, err = template.ParseFiles(path.Join(c.TplPath, fmt.Sprintf("%s.tpl", c.CreateType)))
 	}
 	if err != nil {
 		fmt.Error("create %s error: %s", c.CreateType, err)
 		return
 	}
-	f := createFile(filePath, fileName)
+	f := createFile(filePath, fileName, c.Force)
 	if f == nil {
 		fmt.Warn("warn: file %s%s %s", absLinuxPath, fileName, "already exists.")
 		return
@@ -306,8 +314,7 @@ func (c *Create) generateFile() {
 	// 更新DI文件
 	diPath := absLinuxPath
 	if c.CreateType != TypeCache {
-		diPath, _ = filepath.Abs(filepath.Dir(filepath.Join(BasePath, c.CreateType, "X/X")))
-		diPath = strings.ReplaceAll(diPath, "\\", "/")
+		diPath = strings.ReplaceAll(filepath.Dir(filepath.Join(BasePath, c.CreateType)), "\\", "/")
 	}
 
 	contentMap := config.diBuilder(c)
@@ -323,11 +330,12 @@ func (c *Create) generateFile() {
 	fmt.Success("generate insert New%s%s to DI file", c.FileName, config.structSuffix)
 }
 
-func createFile(dirPath string, filename string) *os.File {
+func createFile(dirPath string, filename string, force bool) *os.File {
 	filePath := filepath.Join(dirPath, filename)
 	err := os.MkdirAll(dirPath, os.ModePerm)
 	if err != nil {
 		fmt.Error("failed to create dir %s: %v", dirPath, err)
+		return nil
 	}
 	stat, _ := os.Stat(filePath)
 	if stat != nil && !force {
