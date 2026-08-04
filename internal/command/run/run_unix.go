@@ -121,10 +121,8 @@ func watch(dir string, programArgs []string) {
 		if !info.IsDir() {
 			return nil
 		}
-		for _, s := range excludeDirArr {
-			if s != "" && (path == s || strings.HasPrefix(path, s+"/") || strings.HasPrefix(path, s+"\\")) {
-				return filepath.SkipDir
-			}
+		if isExcludedPath(path, excludeDirArr) {
+			return filepath.SkipDir
 		}
 		if addErr := watcher.Add(path); addErr != nil {
 			fmt.Error("Error: %s", addErr)
@@ -156,28 +154,73 @@ func watch(dir string, programArgs []string) {
 			// 文件被修改或删除时重启
 			if event.Op&fsnotify.Write == fsnotify.Write ||
 				event.Op&fsnotify.Remove == fsnotify.Remove {
+				if !shouldRestart(event.Name) {
+					continue
+				}
 				fmt.Success("file modified: %s", event.Name)
 				if cmd.Process != nil {
 					_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+					waitProcessExit(cmd)
 				}
 				cmd = start(dir, programArgs)
 			}
 			// 新建目录时加入 watcher，使其内部文件也被监听
 			if event.Op&fsnotify.Create == fsnotify.Create {
-				evPath := strings.ReplaceAll(event.Name, "\\", "/")
-				for _, s := range excludeDirArr {
-					if s != "" && (evPath == s || strings.HasPrefix(evPath, s+"/")) {
-						goto skipWatch
-					}
+				if isExcludedPath(event.Name, excludeDirArr) {
+					continue
 				}
 				if fi, fiErr := os.Stat(event.Name); fiErr == nil && fi.IsDir() {
 					_ = watcher.Add(event.Name)
 				}
-			skipWatch:
 			}
 		case err := <-watcher.Errors:
 			fmt.Error("Error: %s", err)
 		}
+	}
+}
+
+// shouldRestart 判断指定文件是否应触发重启：仅当扩展名在 includeExt 白名单内时。
+func shouldRestart(name string) bool {
+	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), ".")
+	if ext == "" {
+		return false
+	}
+	for _, e := range strings.Split(includeExt, ",") {
+		if strings.TrimSpace(e) == ext {
+			return true
+		}
+	}
+	return false
+}
+
+// isExcludedPath 判断路径是否位于任一排除目录下。
+func isExcludedPath(path string, excludeDirs []string) bool {
+	clean := strings.ReplaceAll(filepath.Clean(path), "\\", "/")
+	for _, dir := range excludeDirs {
+		if dir == "" {
+			continue
+		}
+		dir = strings.TrimSpace(dir)
+		if clean == dir || strings.HasPrefix(clean, dir+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// waitProcessExit 等待进程组退出，避免端口/资源尚未释放就重启导致冲突。
+func waitProcessExit(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
 	}
 }
 

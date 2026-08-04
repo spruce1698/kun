@@ -107,8 +107,13 @@ var (
 		"bit":        func(string) string { return "[]uint8" },
 		"boolean":    func(string) string { return "bool" },
 		"tinyint": func(detailType string) string {
-			if strings.HasPrefix(strings.TrimSpace(detailType), "tinyint(1)") {
-				return "bool"
+			// 仅当精确为 tinyint(1)（可带 unsigned 等后缀）时视为 bool，避免 tinyint(10)/tinyint(100) 误判
+			dt := strings.TrimSpace(detailType)
+			if strings.HasPrefix(dt, "tinyint(1)") {
+				rest := strings.TrimSpace(dt[len("tinyint(1)"):])
+				if rest == "" || strings.HasPrefix(rest, "unsigned") || strings.HasPrefix(rest, "signed") {
+					return "bool"
+				}
 			}
 			return "int32"
 		},

@@ -158,5 +158,5 @@ func findWire(base string) (map[string]string, error) {
 		}
 		base = filepath.Join(base, "..")
 	}
-	return map[string]string{"": base}, nil
+	return map[string]string{}, nil
 }

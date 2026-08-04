@@ -123,10 +123,8 @@ func watch(dir string, programArgs []string) {
 		if !info.IsDir() {
 			return nil
 		}
-		for _, s := range excludeDirArr {
-			if s != "" && (path == s || strings.HasPrefix(path, s+"/") || strings.HasPrefix(path, s+"\\")) {
-				return filepath.SkipDir
-			}
+		if isExcludedPath(path, excludeDirArr) {
+			return filepath.SkipDir
 		}
 		if addErr := watcher.Add(path); addErr != nil {
 			fmt.Error("Error: %s", addErr)
@@ -158,29 +156,83 @@ func watch(dir string, programArgs []string) {
 			// 文件被修改或删除时重启
 			if event.Op&fsnotify.Write == fsnotify.Write ||
 				event.Op&fsnotify.Remove == fsnotify.Remove {
+				if !shouldRestart(event.Name) {
+					continue
+				}
 				fmt.Success("file modified: %s", event.Name)
 				if cmd.Process != nil {
 					_ = killProcess(cmd)
+					waitProcessExit(cmd)
 				}
 				cmd = start(dir, programArgs)
 			}
 			// 新建目录时加入 watcher，使其内部文件也被监听
 			if event.Op&fsnotify.Create == fsnotify.Create {
-				evPath := strings.ReplaceAll(event.Name, "\\", "/")
-				for _, s := range excludeDirArr {
-					if s != "" && (evPath == s || strings.HasPrefix(evPath, s+"/")) {
-						goto skipWatch
-					}
+				if isExcludedPath(event.Name, excludeDirArr) {
+					continue
 				}
 				if fi, fiErr := os.Stat(event.Name); fiErr == nil && fi.IsDir() {
 					_ = watcher.Add(event.Name)
 				}
-			skipWatch:
 			}
 		case err := <-watcher.Errors:
 			fmt.Error("Error: %s", err)
 		}
 	}
+}
+
+// shouldRestart 判断指定文件是否应触发重启：仅当扩展名在 includeExt 白名单内时。
+func shouldRestart(name string) bool {
+	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), ".")
+	if ext == "" {
+		return false
+	}
+	for _, e := range strings.Split(includeExt, ",") {
+		if strings.TrimSpace(e) == ext {
+			return true
+		}
+	}
+	return false
+}
+
+// isExcludedPath 判断路径是否位于任一排除目录下。
+func isExcludedPath(path string, excludeDirs []string) bool {
+	clean := strings.ReplaceAll(filepath.Clean(path), "\\", "/")
+	for _, dir := range excludeDirs {
+		if dir == "" {
+			continue
+		}
+		dir = strings.TrimSpace(dir)
+		if clean == dir || strings.HasPrefix(clean, dir+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// waitProcessExit 等待进程退出，避免端口/资源尚未释放就重启导致冲突。
+func waitProcessExit(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+	}
+}
+
+func isProcessRunning(cmd *exec.Cmd) bool {
+	if cmd == nil || cmd.Process == nil {
+		return false
+	}
+	// Windows 下通过 Signal(0) 判断进程存活同样适用
+	err := cmd.Process.Signal(syscall.Signal(0))
+	return err == nil
 }
 
 func killProcess(cmd *exec.Cmd) error {
@@ -209,8 +261,11 @@ func start(dir string, programArgs []string) *exec.Cmd {
 	if err != nil {
 		fmt.Error("cmd run failed")
 	}
-	// 等待进程启动后再提示，避免编译耗时导致误报
+	// 等待进程真正启动，而非固定 sleep 1 秒
 	time.Sleep(200 * time.Millisecond)
+	if !isProcessRunning(cmd) {
+		fmt.Error("process exited immediately after start")
+	}
 	fmt.Success("running...")
 	return cmd
 }

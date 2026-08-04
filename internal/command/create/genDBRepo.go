@@ -146,7 +146,7 @@ func defaultSQLConfig() kernel.SQLConfig {
 		OutPath:           outPath,
 		PackageName:       "db",
 		FieldCoverable:    false, // 当字段具有默认值时生成指针，以解决无法分配零值的问题
-		FieldNullable:     true,  // 当字段可为空时生成指针
+		FieldNullable:     true,  // 当字段可为空时生成指针。注意：此默认值会让所有可空列生成 *T 指针类型，若希望生成值类型请改为 false
 		FieldWithIndexTag: true,  // 生成字段包含 索引 标记
 		FieldWithTypeTag:  true,  // 生成字段包含 列类型 标记
 		FieldSignable:     false, // 检测整数字段的无符号类型，调整生成的数据类型

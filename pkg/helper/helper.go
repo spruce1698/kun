@@ -48,15 +48,16 @@ func FindMain(base, excludeDir string) (map[string]string, error) {
 		wd += "/"
 	}
 	excludeDirArr := strings.Split(excludeDir, ",")
+	for i := range excludeDirArr {
+		excludeDirArr[i] = strings.TrimSpace(excludeDirArr[i])
+	}
 	cmdPath := make(map[string]string)
 	err = filepath.Walk(base, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		for _, s := range excludeDirArr {
-			if strings.HasPrefix(path, s) {
-				return nil
-			}
+		if info.IsDir() && isExcluded(path, excludeDirArr) {
+			return filepath.SkipDir
 		}
 		if !info.IsDir() && filepath.Ext(path) == ".go" {
 			// 只检查 cmd/ 目录下的文件，避免读取无关文件
@@ -86,4 +87,19 @@ func FindMain(base, excludeDir string) (map[string]string, error) {
 		return nil, err
 	}
 	return cmdPath, nil
+}
+
+// isExcluded 判断 path 是否位于任一排除目录下（或本身就是排除目录）。
+// 通过逐段匹配路径分隔符，避免 HasPrefix 因 ./ 前缀或 .git 误伤 .gitignore 等问题。
+func isExcluded(path string, excludeDirs []string) bool {
+	clean := filepath.Clean(path)
+	for _, dir := range excludeDirs {
+		if dir == "" {
+			continue
+		}
+		if clean == dir || strings.HasPrefix(clean, dir+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }

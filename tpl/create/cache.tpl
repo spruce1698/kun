@@ -92,7 +92,7 @@ func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Cache) Delete(ctx conte
 	key := fmt.Sprintf({{ .FileName }}DataKey, id)
 
 	if err := {{ .FileNameFirstChar }}.common.Del(ctx, key).Err(); err != nil {
-		return errors.New("delete cache failed")
+		return err
 	}
 
 	// 设置本地缓存

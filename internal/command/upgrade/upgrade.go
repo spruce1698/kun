@@ -20,7 +20,8 @@ var CmdUpgrade = &cobra.Command{
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			fmt.Error("go install %s error", err)
+			fmt.Error("go install %s error: %s", config.KunUrl, err)
+			return
 		}
 		fmt.Success("kun upgrade successfully!")
 	},

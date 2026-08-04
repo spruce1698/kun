@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/spf13/cobra"
@@ -73,7 +74,10 @@ func run(_ *cobra.Command, args []string) {
 		return
 	}
 	p.rmGit()
-	p.installWire()
+	if err := p.installWire(); err != nil {
+		fmt.Error("project created but wire install failed: %s", err)
+		return
+	}
 	fmt.Success("Project [ %s ] created successfully!", p.ProjectName)
 	fmt.Success("Done. Now run:")
 	fmt.Success("› cd %s ", p.ProjectName)
@@ -184,14 +188,15 @@ func (p *Project) modTidy() error {
 func (p *Project) rmGit() {
 	_ = os.RemoveAll(p.ProjectName + "/.git")
 }
-func (p *Project) installWire() {
+func (p *Project) installWire() error {
 	fmt.Success("go install %s", config.WireUrl)
 	cmd := exec.Command("go", "install", config.WireUrl)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Error("go install %s error", err)
+		return fmt.Errorf("go install %s: %w", config.WireUrl, err)
 	}
+	return nil
 }
 
 func (p *Project) replaceFiles(packageName string) error {
@@ -239,8 +244,20 @@ func handlerZip(projectName, templateName string) error {
 	}
 
 	// 遍历 zip 包里的文件
+	baseAbs, err := filepath.Abs(projectName)
+	if err != nil {
+		return err
+	}
 	for _, file := range zipReader.File {
-		path := filepath.Join(projectName, file.Name)
+		// 防 zip slip：拒绝任何逃逸出目标目录的路径
+		name := filepath.Clean(filepath.FromSlash(file.Name))
+		if strings.HasPrefix(name, ".."+string(filepath.Separator)) || filepath.IsAbs(name) {
+			return fmt.Errorf("zip entry %q has unsafe path", file.Name)
+		}
+		path := filepath.Join(projectName, name)
+		if !strings.HasPrefix(filepath.Clean(path), baseAbs+string(filepath.Separator)) && filepath.Clean(path) != baseAbs {
+			return fmt.Errorf("zip entry %q escapes target directory", file.Name)
+		}
 		fileMode := file.Mode()
 		// 如果是目录，就创建目录
 		if file.FileInfo().IsDir() {

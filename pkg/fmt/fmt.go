@@ -6,6 +6,7 @@ import (
 	"github.com/fatih/color"
 )
 
+// 重导出标准库 fmt 的常用函数，使导入 pkg/fmt 的包可直接使用 fmt.Sprintf / fmt.Errorf / fmt.Fscanf。
 var (
 	Fscanf  = fmt.Fscanf
 	Sprintf = fmt.Sprintf

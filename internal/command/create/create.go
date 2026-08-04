@@ -193,8 +193,9 @@ func runCreate(cmd *cobra.Command, args []string) {
 	if c.ProjectName == "" {
 		return
 	}
-	c.TplPath = cmdTplPath
-	c.Force = cmdForce
+	// 从当前命令的 flag 读取，避免全局变量在多次调用间泄漏
+	c.TplPath, _ = cmd.Flags().GetString("tpl-path")
+	c.Force, _ = cmd.Flags().GetBool("force")
 
 	c.CmdType = cmd.Use
 	arg := args[0]
@@ -254,7 +255,6 @@ func (c *Create) generateFile() {
 	if filePath == "" {
 		filePath = filepath.Join(BasePath, config.typePath)
 	} else {
-		c.AddUPPath = strings.Repeat("../", strings.Count(filePath, "/"))
 		filePath = filepath.Join(BasePath, config.typePath, filePath)
 	}
 	filePath = strings.ReplaceAll(strings.ReplaceAll(filePath+"/", "//", "/"), "\\", "/")
@@ -269,6 +269,10 @@ func (c *Create) generateFile() {
 		fmt.Error("create %s error: %s", c.CreateType, "not in internal")
 		return
 	}
+
+	// 计算相对 internal/ 的层级，用于模板中的 ../ 引用（如 mockgen 目标路径）。
+	// 深度 = 自定义子路径（c.FilePath）的路径段数；默认路径时为 0，模板已含固定 ../../../。
+	c.AddUPPath = strings.Repeat("../", strings.Count(strings.ReplaceAll(c.FilePath, "\\", "/"), "/"))
 
 	// 设置包名
 	_, c.PackageName = filepath.Split(absPath)
@@ -287,8 +291,12 @@ func (c *Create) generateFile() {
 		fmt.Error("create %s error: %s", c.CreateType, err)
 		return
 	}
-	f := createFile(filePath, fileName, c.Force)
-	if f == nil {
+	f, existed, err := createFile(filePath, fileName, c.Force)
+	if err != nil {
+		fmt.Error("create %s error: %s", c.CreateType, err)
+		return
+	}
+	if existed {
 		fmt.Warn("warn: file %s%s %s", absLinuxPath, fileName, "already exists.")
 		return
 	}
@@ -330,23 +338,21 @@ func (c *Create) generateFile() {
 	fmt.Success("generate insert New%s%s to DI file", c.FileName, config.structSuffix)
 }
 
-func createFile(dirPath string, filename string, force bool) *os.File {
+// createFile 创建文件。返回 (file, existed, err)：existed 表示文件已存在且未强制覆盖。
+func createFile(dirPath string, filename string, force bool) (*os.File, bool, error) {
 	filePath := filepath.Join(dirPath, filename)
 	err := os.MkdirAll(dirPath, os.ModePerm)
 	if err != nil {
-		fmt.Error("failed to create dir %s: %v", dirPath, err)
-		return nil
+		return nil, false, fmt.Errorf("failed to create dir %s: %w", dirPath, err)
 	}
-	stat, _ := os.Stat(filePath)
-	if stat != nil && !force {
-		return nil
+	if stat, err := os.Stat(filePath); err == nil && stat != nil && !force {
+		return nil, true, nil
 	}
 	file, err := os.Create(filePath)
 	if err != nil {
-		fmt.Error("failed to create file %s: %v", filePath, err)
+		return nil, false, fmt.Errorf("failed to create file %s: %w", filePath, err)
 	}
-
-	return file
+	return file, false, nil
 }
 
 func generateKeysFile(dirPath string, c *Create) error {

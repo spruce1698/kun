@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	"github.com/spruce1698/kun/cmd/kun"
 	"github.com/spruce1698/kun/pkg/fmt"
 )
@@ -13,5 +15,6 @@ func main() {
 	err := kun.Execute()
 	if err != nil {
 		fmt.Error("execute error: ", err.Error())
+		os.Exit(1)
 	}
 }
