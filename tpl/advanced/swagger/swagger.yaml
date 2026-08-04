@@ -1,0 +1,255 @@
+host: localhost:9009
+info:
+  contact:
+    name: spruce
+  description: 描述信息
+  title: prajna 项目
+  version: "1.0"
+paths:
+  /api/auth/info:
+    get:
+      description: 当前登录信息(需授权),从token中解析userid和roleid
+      produces:
+      - application/json
+      responses: {}
+      summary: Info
+      tags:
+      - api
+  /api/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: demo登录(账号:name,密码:password),返回双token
+      parameters:
+      - description: 账号(demo名称)
+        in: formData
+        name: name
+        required: true
+        type: string
+      - description: 密码
+        in: formData
+        name: password
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"code":0,"message":"Login 成功","data":{"accessToken":"","refreshToken":""}}'
+          schema:
+            type: string
+      summary: Login
+      tags:
+      - api
+  /api/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: 登出,废弃当前token
+      produces:
+      - application/json
+      responses: {}
+      summary: Logout
+      tags:
+      - api
+  /api/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: 刷新双token
+      parameters:
+      - description: 访问token
+        in: formData
+        name: accessToken
+        required: true
+        type: string
+      - description: 刷新token
+        in: formData
+        name: refreshToken
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses: {}
+      summary: Refresh
+      tags:
+      - api
+  /api/auth/ws-ticket:
+    post:
+      description: 申请 WebSocket 一次性升级票据(需授权),用 ticket 连接 WS,避免长 token 进 URL
+      produces:
+      - application/json
+      responses: {}
+      summary: WSTicket
+      tags:
+      - api
+  /api/demo/:id:
+    get:
+      consumes:
+      - application/json
+      description: demo详情
+      parameters:
+      - description: demoID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"code":0,"message":"demo-Demo成功","data":{"id":100,"name":"我是demo名称"}}'
+          schema:
+            type: string
+        "500":
+          description: '{"code":50000,"message":"demo查询失败","data":""}'
+          schema:
+            type: string
+      summary: Detail
+      tags:
+      - api
+  /api/demo/create:
+    post:
+      consumes:
+      - application/json
+      description: 写一个demo
+      parameters:
+      - description: demoID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"code":0,"message":"demo-Demo成功","data":{"id":100,"name":"我是demo名称"}}'
+          schema:
+            type: string
+        "500":
+          description: '{"code":50000,"message":"demo查询失败","data":""}'
+          schema:
+            type: string
+      summary: Create
+      tags:
+      - api
+  /api/demo/excel:
+    get:
+      consumes:
+      - application/json
+      description: http+mysql 全链路流式导出 Excel，浏览器直接下载
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses: {}
+      summary: Excel
+      tags:
+      - api
+  /api/demo/export:
+    get:
+      consumes:
+      - application/json
+      description: http+mysql 全链路流式导出 demo
+      produces:
+      - application/json
+      responses: {}
+      summary: Export
+      tags:
+      - api
+  /api/demo/list:
+    get:
+      consumes:
+      - application/json
+      description: 根据条件查询demo列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"code":0,"message":"demo-Demo成功","data":{"id":100,"name":"我是demo名称"}}'
+          schema:
+            type: string
+        "500":
+          description: '{"code":50000,"message":"demo查询失败","data":""}'
+          schema:
+            type: string
+      summary: List
+      tags:
+      - api
+  /api/demo/sse:
+    get:
+      description: Server-Sent Events demo
+      produces:
+      - text/event-stream
+      responses: {}
+      summary: SSE
+      tags:
+      - api
+  /api/demo/update:
+    post:
+      consumes:
+      - application/json
+      description: 更新一个demo,有事务
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"code":0,"message":"demo-Demo成功","data":{"id":100,"name":"我是demo名称"}}'
+          schema:
+            type: string
+        "500":
+          description: '{"code":50000,"message":"demo查询失败","data":""}'
+          schema:
+            type: string
+      summary: Update
+      tags:
+      - api
+  /demo/delete:
+    post:
+      consumes:
+      - application/json
+      description: 删除一个demo
+      parameters:
+      - description: demoID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"code":0,"message":"demo-Demo成功","data":{"id":100,"name":"我是demo名称"}}'
+          schema:
+            type: string
+        "500":
+          description: '{"code":50000,"message":"demo查询失败","data":""}'
+          schema:
+            type: string
+      summary: Delete
+      tags:
+      - api
+  /demo/softdelete:
+    post:
+      consumes:
+      - application/json
+      description: 逻辑删除一个demo
+      parameters:
+      - description: demoID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{"code":0,"message":"demo-Demo成功","data":{"id":100,"name":"我是demo名称"}}'
+          schema:
+            type: string
+        "500":
+          description: '{"code":50000,"message":"demo查询失败","data":""}'
+          schema:
+            type: string
+      summary: SoftDelete
+      tags:
+      - api
+swagger: "2.0"
