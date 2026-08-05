@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"basic/pkg/xconfig"
-	"basic/pkg/xlog"
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 )
@@ -23,7 +22,7 @@ type Client struct {
 	redis.UniversalClient
 }
 
-func New(conf *xconfig.Conf, logger *xlog.Logger) (*Client, error) {
+func New(conf *xconfig.Conf) (*Client, error) {
 	if len(conf.Redis.Source) == 0 {
 		return nil, fmt.Errorf("redis 配置错误")
 	}

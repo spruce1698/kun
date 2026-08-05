@@ -27,7 +27,7 @@ func WireApp(env string) (*xserver.Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	client, err := xredis.New(conf, logger)
+	client, err := xredis.New(conf)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,6 @@ func WireApp(env string) (*xserver.Server, error) {
 		Conf:     conf,
 		Conn:     conn,
 		RedisCli: client,
-		Logger:   logger,
 	}
 	brokerCtx := &svc.BrokerCtx{
 		Ctx: ctx,
