@@ -54,7 +54,7 @@ type Server struct {
 	curCmd   *exec.Cmd
 	stopCh   chan struct{} // Stop() 关闭,通知 supervisor goroutine 退出
 	cmdExit  chan error    // 子进程退出事件(err 由 cmd.Wait 返回)
-	stopOnce sync.Once    // 保证 stopCh 只关闭一次,防止二次调用 panic
+	stopOnce sync.Once     // 保证 stopCh 只关闭一次,防止二次调用 panic
 }
 
 func New(conf *xconfig.Conf, log *xlog.Logger, db *xdb.Client, redis *xredis.Client, task *event.Task) (xserver.Engine, error) {
@@ -74,7 +74,7 @@ func (s *Server) Start() error {
 
 	// 是否是子进程
 	if isChild() {
-		childProcess(s.Conf, s.task, s.db, s.redis, s.logger)
+		childProcess(s.Conf, s.task, s.db, s.redis)
 		return nil
 	}
 
@@ -105,7 +105,7 @@ func (s *Server) supervisor() {
 		}
 
 		if err := cmd.Start(); err != nil {
-			s.logger.Warn("Broker start child process err: " + err.Error())
+			xlog.Warn(context.Background(), "Broker start child process err: "+err.Error())
 			return
 		}
 
@@ -129,16 +129,16 @@ func (s *Server) supervisor() {
 		// 是否已收到停止信号
 		select {
 		case <-s.stopCh:
-			s.logger.Warn("Broker parent process exit")
+			xlog.Warn(context.Background(), "Broker parent process exit")
 			return
 		default:
 		}
 
 		// 未主动停止却退出 -> 子进程异常,父进程也退出
 		if waitErr != nil {
-			s.logger.Warn(fmt.Sprintf("Broker child process %d exit err: %s", cmd.Process.Pid, waitErr.Error()))
+			xlog.Warnf(context.Background(), "Broker child process %d exit err: %s", cmd.Process.Pid, waitErr.Error())
 		} else {
-			s.logger.Warn(fmt.Sprintf("Broker child process %d exit", cmd.Process.Pid))
+			xlog.Warnf(context.Background(), "Broker child process %d exit", cmd.Process.Pid)
 		}
 		return
 	}
@@ -150,8 +150,8 @@ func (s *Server) supervisor() {
 // 3. 关闭 db/redis;
 // 4. 通知 supervisor 退出。
 func (s *Server) Stop(signal string) {
-	s.logger.Warn("Receive a signal", xlog.KVStr("signal", signal))
-	s.logger.Warn("Broker server stopping ...")
+	xlog.Warn(context.Background(), "Receive a signal", xlog.KVStr("signal", signal))
+	xlog.Warn(context.Background(), "Broker server stopping ...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
@@ -159,9 +159,9 @@ func (s *Server) Stop(signal string) {
 	// 1. 先关 health server,探针变红,上游摘流量
 	if s.healthSvr != nil {
 		if err := s.healthSvr.Shutdown(ctx); err != nil {
-			s.logger.Warn(fmt.Sprintf("http server shutdown err:%v", err))
+			xlog.Warnf(context.Background(), "http server shutdown err:%v", err)
 		}
-		s.logger.Warn("Close http server")
+		xlog.Warn(context.Background(), "Close http server")
 	}
 
 	// 2. 通知子进程退出并等待
@@ -174,9 +174,9 @@ func (s *Server) Stop(signal string) {
 
 		select {
 		case <-s.cmdExit:
-			s.logger.Warn("Broker child process exited")
+			xlog.Warn(context.Background(), "Broker child process exited")
 		case <-time.After(time.Second * 5):
-			s.logger.Warn("Broker child process shutdown timeout, killing")
+			xlog.Warn(context.Background(), "Broker child process shutdown timeout, killing")
 			_ = cmd.Process.Kill()
 			<-s.cmdExit
 		}
@@ -187,31 +187,27 @@ func (s *Server) Stop(signal string) {
 		sqlDB, _ := s.db.DB()
 		if sqlDB != nil {
 			if err := sqlDB.Close(); err != nil {
-				s.logger.Warn(fmt.Sprintf("db Close err:%v", err))
+				xlog.Warnf(context.Background(), "db Close err:%v", err)
 			}
-			s.logger.Warn("Close Db")
+			xlog.Warn(context.Background(), "Close Db")
 		}
 	}
 	// 关闭 redis
 	if s.redis != nil {
 		if err := s.redis.Close(); err != nil {
-			s.logger.Warn(fmt.Sprintf("redis Close err:%v", err))
+			xlog.Warnf(context.Background(), "redis Close err:%v", err)
 		}
-		s.logger.Warn("Close redis")
+		xlog.Warn(context.Background(), "Close redis")
 	}
 
 	// TODO 其他关闭
 
-	s.logger.Warn("Broker server stopped")
+	xlog.Warn(context.Background(), "Broker server stopped")
 
 	// 4. 通知 supervisor 退出(若子进程是异常退出已 return,这里无影响)
 	s.stopOnce.Do(func() { close(s.stopCh) })
 
-	// 日志异步
-	if err := s.logger.Sync(); err != nil {
-		fmt.Printf("Failed to sync logger: %v\n", err)
-	}
-	// 关闭日志组件底层资源(如日志 Kafka Writer)
+	// 刷新日志缓冲并关闭底层资源(如日志 Kafka Writer),避免异步日志丢日志
 	if err := xlog.Close(); err != nil {
 		fmt.Printf("Failed to close xlog: %v\n", err)
 	}
@@ -268,17 +264,17 @@ func healthServer(conf *xconfig.Conf, log *xlog.Logger) *http.Server {
 	}
 
 	// 启动成功
-	log.Warn(fmt.Sprintf("Broker Server 启动 (Host: 0.0.0.0:%d  Pid:%d)", port, os.Getpid()))
+	xlog.Warnf(context.Background(), "Broker Server 启动 (Host: 0.0.0.0:%d  Pid:%d)", port, os.Getpid())
 
 	go func() {
 		if err := httpSvr.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Warn(fmt.Sprintf("listen: %s", err))
+			xlog.Warnf(context.Background(), "listen: %s", err)
 		}
 	}()
 	return httpSvr
 }
 
-func childProcess(conf *xconfig.Conf, task *event.Task, db *xdb.Client, redis *xredis.Client, logger *xlog.Logger) {
+func childProcess(conf *xconfig.Conf, task *event.Task, db *xdb.Client, redis *xredis.Client) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -300,9 +296,7 @@ func childProcess(conf *xconfig.Conf, task *event.Task, db *xdb.Client, redis *x
 		if redis != nil {
 			_ = redis.Close()
 		}
-		if logger != nil {
-			_ = logger.Sync()
-		}
+		// 刷新日志缓冲并关闭底层资源(已含 Sync)
 		_ = xlog.Close()
 	}
 

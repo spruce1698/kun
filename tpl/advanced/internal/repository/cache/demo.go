@@ -38,8 +38,8 @@ type (
 		Id     int64
 		Name   string // 名称
 		Test1  float64
-		Test4  int32  // 测试4
-		RoleId int64  // 角色id
+		Test4  int32 // 测试4
+		RoleId int64 // 角色id
 	}
 )
 

@@ -149,11 +149,11 @@ func (s *Server) Start() error {
 	}
 
 	// 启动成功
-	s.logger.Warn(fmt.Sprintf("Http server 启动 (Host: 0.0.0.0:%d  Pid:%d)", port, os.Getpid()))
+	xlog.Warnf(context.Background(), "Http server 启动 (Host: 0.0.0.0:%d  Pid:%d)", port, os.Getpid())
 
 	go func() {
 		if err := svr.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			s.logger.Error(fmt.Sprintf("%s ", err))
+			xlog.Errorf(context.Background(), "%s ", err)
 			s.Stop("")
 		}
 	}()
@@ -170,60 +170,56 @@ func (s *Server) Stop(signal string) {
 }
 
 func (s *Server) stop(signal string) {
-	s.logger.Warn("Receive a signal", xlog.KVStr("signal", signal))
+	xlog.Warn(context.Background(), "Receive a signal", xlog.KVStr("signal", signal))
 
-	s.logger.Warn("Http server stopping ...")
+	xlog.Warn(context.Background(), "Http server stopping ...")
 
 	// 每步关闭用独立 ctx,避免 http Shutdown 耗尽超时后 db/redis/tracer 因 ctx 到期失败
 	// 关闭 http server
 	if s.server != nil {
 		httpCtx, httpCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := s.server.Shutdown(httpCtx); err != nil {
-			s.logger.Warn(fmt.Sprintf("http server shutdown err:%v", err))
+			xlog.Warnf(context.Background(), "http server shutdown err:%v", err)
 		}
 		httpCancel()
-		s.logger.Warn("Close http server")
+		xlog.Warn(context.Background(), "Close http server")
 	}
 	// 关闭 db
 	if s.db != nil {
 		sqlDB, _ := s.db.DB()
 		if sqlDB != nil {
 			if err := sqlDB.Close(); err != nil {
-				s.logger.Warn(fmt.Sprintf("db shutdown err:%v", err))
+				xlog.Warnf(context.Background(), "db shutdown err:%v", err)
 			}
 		}
-		s.logger.Warn("Close Db")
+		xlog.Warn(context.Background(), "Close Db")
 	}
 
 	// 关闭 redis
 	if s.Redis != nil {
 		if err := s.Redis.Close(); err != nil {
-			s.logger.Warn(fmt.Sprintf("redis shutdown err:%v", err))
+			xlog.Warnf(context.Background(), "redis shutdown err:%v", err)
 		}
-		s.logger.Warn("Close redis")
+		xlog.Warn(context.Background(), "Close redis")
 	}
 	// 关闭 kafka publisher(底层 Writer)
 	if s.pub != nil {
 		s.pub.Close()
-		s.logger.Warn("Close kafka publisher")
+		xlog.Warn(context.Background(), "Close kafka publisher")
 	}
 	// 关闭tracer
 	if s.tp != nil {
 		tpCtx, tpCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := s.tp.Shutdown(tpCtx); err != nil {
-			s.logger.Error("Failed to shutdown tracer provider", xlog.KVErr(err))
+			xlog.Error(context.Background(), "Failed to shutdown tracer provider", err)
 		}
 		tpCancel()
 	}
 
 	// TODO 其他关闭
-	s.logger.Warn("Http server stopped")
+	xlog.Warn(context.Background(), "Http server stopped")
 
-	// 日志异步
-	if err := s.logger.Sync(); err != nil {
-		fmt.Printf("Failed to sync logger: %v\n", err)
-	}
-	// 关闭日志组件底层资源(如日志 Kafka Writer)
+	// 刷新日志缓冲并关闭底层资源(如日志 Kafka Writer),避免异步日志丢日志
 	if err := xlog.Close(); err != nil {
 		fmt.Printf("Failed to close xlog: %v\n", err)
 	}

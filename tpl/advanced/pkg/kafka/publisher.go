@@ -9,6 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 	kafkaGo "github.com/segmentio/kafka-go"
+	"go.opentelemetry.io/otel"
 )
 
 type (
@@ -60,26 +61,29 @@ func (p *Publisher) Close() error {
 	return nil
 }
 
-func (p *Publisher) Pub(topic string, value []byte) error {
+func (p *Publisher) Pub(ctx context.Context, topic string, value []byte) error {
 	// 无类型消息:不设 Key(nil),由 LeastBytes balancer 均匀分配分区,
 	// 避免用 nano 时间戳做 Key 造成同毫秒消息挤在同一分区且无业务含义。
 	msg := kafkaGo.Message{
 		Topic: topic,
 		Value: value,
 	}
-	return p.getWriter().WriteMessages(context.Background(), msg)
+	// 注入 trace context 到消息 headers,供消费者端提取建立链路
+	otel.GetTextMapPropagator().Inject(ctx, &kafkaHeadersCarrier{headers: &msg.Headers})
+	return p.getWriter().WriteMessages(ctx, msg)
 }
 
-func (p *Publisher) PubWithKey(topic, key string, value []byte) error {
+func (p *Publisher) PubWithKey(ctx context.Context, topic, key string, value []byte) error {
 	msg := kafkaGo.Message{
 		Topic: topic,
 		Key:   []byte(key),
 		Value: value,
 	}
-	return p.getWriter().WriteMessages(context.Background(), msg)
+	otel.GetTextMapPropagator().Inject(ctx, &kafkaHeadersCarrier{headers: &msg.Headers})
+	return p.getWriter().WriteMessages(ctx, msg)
 }
 
-func (p *Publisher) PubList(msgSet ...Msg) error {
+func (p *Publisher) PubList(ctx context.Context, msgSet ...Msg) error {
 	if len(msgSet) == 0 {
 		return errors.New("Msg 不能为空")
 	}
@@ -90,6 +94,8 @@ func (p *Publisher) PubList(msgSet ...Msg) error {
 			Key:   []byte(msg.Key),
 			Value: msg.Value,
 		}
+		// 注入 trace context 到每条消息 headers
+		otel.GetTextMapPropagator().Inject(ctx, &kafkaHeadersCarrier{headers: &msgList[i].Headers})
 	}
-	return p.getWriter().WriteMessages(context.Background(), msgList...)
+	return p.getWriter().WriteMessages(ctx, msgList...)
 }

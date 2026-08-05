@@ -37,7 +37,7 @@ func WireApp(env string) (*xserver.Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	pub := event.NewPub(conf, logger)
+	pub := event.NewPub(conf)
 	conn := db.NewConn(gormDB)
 	ctx := &svc.Ctx{
 		Conf:     conf,

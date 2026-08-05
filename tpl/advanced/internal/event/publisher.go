@@ -7,6 +7,7 @@
 package event
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -21,29 +22,27 @@ type (
 	Pub struct {
 		kQueue *kafka.Publisher
 		aQueue *asynq.Asynq
-		logger *xlog.Logger
 	}
 )
 
-func NewPub(conf *xconfig.Conf, log *xlog.Logger) *Pub {
+func NewPub(conf *xconfig.Conf) *Pub {
 	return &Pub{
 		kQueue: kafka.NewPublisher(conf),
 		aQueue: asynq.New(conf),
-		logger: log,
 	}
 }
 
 // Close 关闭底层 kafka Writer 等资源,应在进程退出前调用。
 func (p *Pub) Close() {
 	if err := p.kQueue.Close(); err != nil {
-		p.logger.Warn(fmt.Sprintf("kafka publisher close err: %v", err))
+		xlog.Warnf(context.Background(), "kafka publisher close err: %v", err)
 	}
 }
 
 // Kafka 发布kafka异步消息
-func (p *Pub) Kafka(topic global.EventTopic, message []byte) error {
+func (p *Pub) Kafka(ctx context.Context, topic global.EventTopic, message []byte) error {
 	topicStr := string(topic)
-	err := p.kQueue.Pub(topicStr, message)
+	err := p.kQueue.Pub(ctx, topicStr, message)
 	if err != nil {
 		return fmt.Errorf("kafka topic:%s 发布消息:%s 失败, error:%w", topicStr, message, err)
 	}
@@ -51,10 +50,10 @@ func (p *Pub) Kafka(topic global.EventTopic, message []byte) error {
 }
 
 // KafkaWithType 发布kafka异步有type的消息
-func (p *Pub) KafkaWithType(topic global.EventTopic, msgType global.EventType, message []byte) error {
+func (p *Pub) KafkaWithType(ctx context.Context, topic global.EventTopic, msgType global.EventType, message []byte) error {
 	topicStr := string(topic)
 	msgTypeStr := string(msgType)
-	err := p.kQueue.PubWithKey(topicStr, msgTypeStr, message)
+	err := p.kQueue.PubWithKey(ctx, topicStr, msgTypeStr, message)
 	if err != nil {
 		return fmt.Errorf("kafka topic:%s 发布类型:%s 消息:%s 失败, error:%w", topicStr, msgTypeStr, message, err)
 	}

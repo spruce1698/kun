@@ -38,7 +38,7 @@ type (
 	Kafka struct {
 		Topic   global.EventTopic
 		Group   global.EventGroup
-		Handler func(key, value string) error
+		Handler func(ctx context.Context, key, value string) error
 	}
 	Asynq struct {
 		Topic   global.EventTopic

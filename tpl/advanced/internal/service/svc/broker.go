@@ -9,7 +9,6 @@ package svc
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"advanced/internal/global"
@@ -24,8 +23,8 @@ var _ BrokerSvc = (*brokerSvc)(nil)
 
 type (
 	BrokerSvc interface {
-		SubPayRecharge(key, value string) error
-		KQPayDemo(key, value string) error
+		SubPayRecharge(ctx context.Context, key, value string) error
+		KQPayDemo(ctx context.Context, key, value string) error
 		SubAqPay(ctx context.Context, task *asynq.Task) error
 		SubAqPay1(ctx context.Context, task *asynq.Task) error
 	}
@@ -44,9 +43,7 @@ func NewBrokerSvc(ctx *BrokerCtx) BrokerSvc {
 }
 
 // SubPayRecharge 支付事件订阅
-func (b *brokerSvc) SubPayRecharge(key, value string) error {
-	// kafka handler 无 ctx,用 background;改用 xlog 统一结构化输出,避免 Error 级堆栈膨胀
-	ctx := context.Background()
+func (b *brokerSvc) SubPayRecharge(ctx context.Context, key, value string) error {
 	switch global.EventType(key) {
 	case global.EventTypePayRecharge: // 充值
 		msg := &global.PayRecharge{}
@@ -55,7 +52,7 @@ func (b *brokerSvc) SubPayRecharge(key, value string) error {
 			return err
 		}
 
-		xlog.Info(ctx, fmt.Sprintf("SubPayRecharge-type:消费时间:%s:%s", utils.TimeStr(time.Now()), value))
+		xlog.Infof(ctx, "SubPayRecharge-type:消费时间:%s:%s", utils.TimeStr(time.Now()), value)
 
 		// TODO: do something 逻辑处理start...
 
@@ -67,16 +64,15 @@ func (b *brokerSvc) SubPayRecharge(key, value string) error {
 }
 
 // KQPayDemo 支付事件订阅,无类型
-func (b *brokerSvc) KQPayDemo(key, value string) error {
-	ctx := context.Background()
+func (b *brokerSvc) KQPayDemo(ctx context.Context, key, value string) error {
 	msg := &global.PayRecharge{}
 	if err := json.Unmarshal([]byte(value), msg); err != nil {
 		xlog.Error(ctx, "KQPayDemo 反序列化失败", err, value)
 		return err
 	}
 
-	xlog.Info(ctx, fmt.Sprintf("KQPayDemo:not key 消费时间:%s:%s", utils.TimeStr(time.Now()), value))
-	xlog.Info(ctx, b.ctx.Conf.Get().Env+" 测试:"+key+value)
+	xlog.Infof(ctx, "KQPayDemo:not key 消费时间:%s:%s", utils.TimeStr(time.Now()), value)
+	xlog.Infof(ctx, "%v 测试: key:%v,value:%v", b.ctx.Conf.Get().Env, key, value)
 
 	// TODO: do something 逻辑处理start...
 
@@ -85,7 +81,7 @@ func (b *brokerSvc) KQPayDemo(key, value string) error {
 
 // SubAqPay aq订阅
 func (b *brokerSvc) SubAqPay(ctx context.Context, task *asynq.Task) error {
-	xlog.Info(ctx, fmt.Sprintf("SubAqPay:消费时间:%s: %s %s", utils.TimeStr(time.Now()), task.Type(), task.Payload()))
+	xlog.Infof(ctx, "SubAqPay:消费时间:%s: %s %s", utils.TimeStr(time.Now()), task.Type(), task.Payload())
 
 	// TODO: do something 逻辑处理start...
 
@@ -93,7 +89,7 @@ func (b *brokerSvc) SubAqPay(ctx context.Context, task *asynq.Task) error {
 }
 
 func (b *brokerSvc) SubAqPay1(ctx context.Context, task *asynq.Task) error {
-	xlog.Info(ctx, fmt.Sprintf("SubAqPay1:消费时间:%s: %s %s", utils.TimeStr(time.Now()), task.Type(), task.Payload()))
+	xlog.Infof(ctx, "SubAqPay1:消费时间:%s: %s %s", utils.TimeStr(time.Now()), task.Type(), task.Payload())
 
 	// TODO: do something 逻辑处理start...
 	return nil

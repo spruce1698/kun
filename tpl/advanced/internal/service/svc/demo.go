@@ -362,7 +362,7 @@ func (d *demoSvc) SendMsg(ctx context.Context) error {
 	if err != nil {
 		return xerror.NewError(ctx, xerror.BusinessError, "序列化 Kafka 消息失败", err)
 	}
-	if err = d.ctx.MsgPub.Kafka(global.EventTopicPay, demoMsg0); err != nil {
+	if err = d.ctx.MsgPub.Kafka(ctx, global.EventTopicPay, demoMsg0); err != nil {
 		return err
 	}
 
@@ -378,7 +378,7 @@ func (d *demoSvc) SendMsg(ctx context.Context) error {
 	if err != nil {
 		return xerror.NewError(ctx, xerror.BusinessError, "序列化 Kafka-type 消息失败", err)
 	}
-	if err = d.ctx.MsgPub.KafkaWithType(global.EventTopicPay, global.EventTypePayRecharge, demoMsg1); err != nil {
+	if err = d.ctx.MsgPub.KafkaWithType(ctx, global.EventTopicPay, global.EventTypePayRecharge, demoMsg1); err != nil {
 		return err
 	}
 
@@ -463,7 +463,7 @@ func (d *demoSvc) AddMsg(ctx context.Context) error {
 	if err != nil {
 		return xerror.NewError(ctx, xerror.BusinessError, "序列化 Kafka 消息失败", err)
 	}
-	if err = d.ctx.MsgPub.Kafka(global.EventTopicPay, demoMsg0); err != nil {
+	if err = d.ctx.MsgPub.Kafka(ctx, global.EventTopicPay, demoMsg0); err != nil {
 		return err
 	}
 	return nil

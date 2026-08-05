@@ -11,6 +11,7 @@ import (
 	"advanced/pkg/xconfig"
 
 	kafkaGo "github.com/segmentio/kafka-go"
+	"go.opentelemetry.io/otel"
 )
 
 const (
@@ -19,6 +20,34 @@ const (
 	// 超过后视为毒消息,跳过提交(避免无限重投),仅记录日志。
 	maxConsumeRetry = 3
 )
+
+// kafkaHeadersCarrier 实现 textmap.TextMapCarrier 接口,将 trace context 读写到 kafka 消息 headers。
+// 使 OTel 的 Inject/Extract 能从 kafka 消息传播 trace_id/span_id。
+type kafkaHeadersCarrier struct {
+	headers *[]kafkaGo.Header
+}
+
+func (c *kafkaHeadersCarrier) Get(key string) string {
+	for _, h := range *c.headers {
+		if h.Key == key {
+			return string(h.Value)
+		}
+	}
+	return ""
+}
+
+func (c *kafkaHeadersCarrier) Set(key, value string) {
+	// 追加而非覆盖,避免 OTel 标准头(traceparent/tracestate)被重复写入
+	*c.headers = append(*c.headers, kafkaGo.Header{Key: key, Value: []byte(value)})
+}
+
+func (c *kafkaHeadersCarrier) Keys() []string {
+	keys := make([]string, 0, len(*c.headers))
+	for _, h := range *c.headers {
+		keys = append(keys, h.Key)
+	}
+	return keys
+}
 
 type (
 	Subscriber struct {
@@ -59,17 +88,23 @@ func (s *Subscriber) Sub(ctx context.Context, topic, group string, handler func(
 			fmt.Printf("--sub-: %v\n", err)
 			break
 		}
+
+		// 从消息 headers 提取 trace context,创建 child span
+		msgCtx := otel.GetTextMapPropagator().Extract(context.Background(), &kafkaHeadersCarrier{headers: &msg.Headers})
+		tracer := otel.Tracer("kafka-consumer")
+		msgCtx, span := tracer.Start(msgCtx, fmt.Sprintf("consume %s", topic))
 		// 处理失败时按指数退避重试,超过 maxConsumeRetry 仍失败则跳过该消息(kafka 自动提交会推进 offset),
 		// 避免handler持续报错导致消费卡死。
-		consumeWithRetry(ctx, string(msg.Key), string(msg.Value), func(k, v string) error {
-			return handler(ctx, k, v)
+		consumeWithRetry(ctx, string(msg.Key), string(msg.Value), func(_ context.Context, k, v string) error {
+			return handler(msgCtx, k, v)
 		})
+		span.End()
 	}
 }
 
 // SubFetch 订阅者 程序提交(速度快), ctx 取消时退出消费循环。
 // 同一 topic:group 仅创建一个 reader 并缓存,Close 时统一关闭。
-func (s *Subscriber) SubFetch(ctx context.Context, topic, group string, handler func(key, value string) error) {
+func (s *Subscriber) SubFetch(ctx context.Context, topic, group string, handler func(ctx context.Context, key, value string) error) {
 	reader := s.getOrCreateReader(topic, group, kafkaGo.ReaderConfig{
 		StartOffset: kafkaGo.FirstOffset,
 		Brokers:     s.brokers,
@@ -93,10 +128,17 @@ func (s *Subscriber) SubFetch(ctx context.Context, topic, group string, handler 
 			break
 		}
 
-		// 处理失败时按指数退避重试,超过 maxConsumeRetry 仍失败则视为毒消息:
-		// 仍提交 offset(跳过该消息),避免未提交导致 kafka 反复重投同一条毒消息形成死循环。
+		// 从消息 headers 提取 trace context,创建 child span
+		msgCtx := otel.GetTextMapPropagator().Extract(context.Background(), &kafkaHeadersCarrier{headers: &msg.Headers})
+		tracer := otel.Tracer("kafka-consumer")
+		msgCtx, span := tracer.Start(msgCtx, fmt.Sprintf("consume %s", topic))
+
 		key, value := string(msg.Key), string(msg.Value)
-		consumeErr := consumeWithRetry(ctx, key, value, handler)
+		consumeErr := consumeWithRetry(ctx, key, value, func(_ context.Context, k, v string) error {
+			return handler(msgCtx, k, v)
+		})
+		span.End()
+
 		// ctx 取消(进程退出)时直接退出,不提交 offset,让 kafka 重投未处理完的消息。
 		if consumeErr != nil && ctx.Err() != nil {
 			break
@@ -112,14 +154,14 @@ func (s *Subscriber) SubFetch(ctx context.Context, topic, group string, handler 
 
 // consumeWithRetry 对单条消息按指数退避重试,ctx 取消时立即返回。
 // 超过 maxConsumeRetry 仍失败则返回最后一次错误,由调用方决定是否跳过(提交 offset)。
-func consumeWithRetry(ctx context.Context, key, value string, handler func(key, value string) error) error {
+func consumeWithRetry(ctx context.Context, key, value string, handler func(ctx context.Context, key, value string) error) error {
 	var lastErr error
 	backoff := 100 * time.Millisecond
 	for i := 0; i < maxConsumeRetry; i++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := handler(key, value); err != nil {
+		if err := handler(ctx, key, value); err != nil {
 			lastErr = err
 			fmt.Printf("consume retry %d/%d, key=%s err: %v \n", i+1, maxConsumeRetry, key, err)
 			// 退避等待,ctx 取消则提前退出

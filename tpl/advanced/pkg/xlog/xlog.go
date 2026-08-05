@@ -119,8 +119,14 @@ func New(conf *xconfig.Conf) *Logger {
 	return logger
 }
 
-// Close 关闭日志组件持有的底层资源(如日志 Kafka Writer),应在进程退出前调用。
+// Close 刷新全局 logger 缓冲并关闭日志组件底层资源(如日志 Kafka Writer),应在进程退出前调用。
+// 先 Sync 确保异步日志(如 Kafka Writer 的 Async 批量缓冲)落盘,再关闭 Writer,避免丢日志。
 func Close() error {
+	// 全局 logger(文件/控制台/Kafka 各 core)的缓冲先刷出
+	if err := zap.L().Sync(); err != nil {
+		// zap 对 stdout/stderr 的 Sync 在某些平台返回 EINVAL,属正常,不中断关闭流程
+		fmt.Printf("xlog sync warn: %v\n", err)
+	}
 	if kafkaCloser != nil {
 		return kafkaCloser()
 	}
