@@ -149,10 +149,15 @@ func (s *Subscriber) getOrCreateReader(topic, group string, config kafkaGo.Reade
 }
 
 func (s *Subscriber) Close() {
+	var wg sync.WaitGroup
 	s.box.Range(func(_, value any) bool {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			_ = value.(*kafkaGo.Reader).Close()
 		}()
 		return true
 	})
+	// 等待所有 reader 关闭完成,避免 offset 未提交完就退出导致消息重复消费
+	wg.Wait()
 }

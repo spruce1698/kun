@@ -15,6 +15,9 @@ var  _ {{.InterfaceName}}Db = (*default{{.StructName}}Db)(nil)
 
 const Table{{.StructName}} = "{{.TableName}}"
 
+// {{.StructName}}Fields 表 {{.TableName}} 的字段白名单,供 HandleRank 校验可排序字段。
+const {{.StructName}}Fields = "{{range $i, $f := .Fields}}{{if $i}},{{end}}{{$f.ColumnName}}{{end}}"
+
 type (
 	{{.InterfaceName}}Db interface {
 		{{if .HasPrimaryKey -}}
@@ -67,7 +70,9 @@ func new{{.StructName}}Db(c *Conn) *default{{.StructName}}Db {
 {{if .HasPrimaryKey -}}
 func (d *default{{.StructName}}Db) Insert(ctx context.Context,data *{{.StructName}}) ({{.PrimaryKeyType}}, error) {
 	var zero {{.PrimaryKeyType}}
-	data.{{.PrimaryKeyName}} = zero
+	{{if .PrimaryKeyAutoIncrement -}}
+	data.{{.PrimaryKeyName}} = zero // 自增主键:清零让 DB 分配;非自增主键保留调用方传入值
+	{{- end}}
 	err := d.WithContext(ctx).Create(data).Error
 	if err != nil {
 		return zero, err
@@ -76,6 +81,12 @@ func (d *default{{.StructName}}Db) Insert(ctx context.Context,data *{{.StructNam
 }
 
 func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context,list []*{{.StructName}}) ([]{{.PrimaryKeyType}}, error) {
+	{{if .PrimaryKeyAutoIncrement -}}
+	// 清零主键,避免调用方误传非零 Id 导致插入指定 Id 或主键冲突;非自增主键保留调用方传入值
+	for _, v := range list {
+		v.{{.PrimaryKeyName}} = *new({{.PrimaryKeyType}})
+	}
+	{{- end}}
 	err := d.WithContext(ctx).Create(list).Error
 	if err != nil {
 		return nil,err
@@ -99,7 +110,12 @@ func (d *default{{.StructName}}Db) Find(ctx context.Context,id {{.PrimaryKeyType
 
 func (d *default{{.StructName}}Db) FindFields(ctx context.Context, id {{.PrimaryKeyType}}, fields ...string) (*{{.StructName}}, error) {
 	result := &{{.StructName}}{}
-	err := d.WithContext(ctx).Select(fields).First(result, id).Error
+	query := d.WithContext(ctx)
+	// 空 fields 时执行全字段查询,避免 Select([]) 生成无列 SELECT
+	if len(fields) > 0 {
+		query = query.Select(fields)
+	}
+	err := query.First(result, id).Error
 	if err != nil {
 		return nil, err
 	}

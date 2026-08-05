@@ -8,9 +8,7 @@ package utils
 
 import (
 	"net"
-	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 )
 
@@ -26,7 +24,11 @@ func AvailablePort() int64 {
 }
 
 func IPv42Int64(ip string) int64 {
-	b := net.ParseIP(ip).To4()
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return 0
+	}
+	b := parsed.To4()
 	if b == nil {
 		return 0
 	}
@@ -93,27 +95,6 @@ func LocalIP() (string, error) {
 	}
 
 	return host, nil
-}
-
-// 客户端ip
-// 直接使用 gin 的 c.ClientIP():它会根据 SetTrustedProxies 配置校验 X-Forwarded-For/X-Real-IP,
-// 避免直接信任可伪造的头。注意:使用反向代理时需正确设置可信代理,否则可能拿到伪造 IP。
-func ClientIP(c *gin.Context) string {
-	ip127 := "127.0.0.1"
-	ip := c.Request.Header.Get("X-Real-IP")
-	if strings.Contains(ip, ip127) || ip == "" {
-		ip = c.Request.Header.Get("X-Forwarded-For")
-	}
-	if ip == "" {
-		ip = ip127
-	}
-	if remoteIP := c.RemoteIP(); remoteIP != ip127 {
-		ip = remoteIP
-	}
-	if clientIP := c.ClientIP(); clientIP != ip127 {
-		ip = clientIP
-	}
-	return ip
 }
 
 // 是否为ipv4地址

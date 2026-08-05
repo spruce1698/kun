@@ -35,29 +35,36 @@ func RateLimiter(maxAttempts int, window, cooldown time.Duration) gin.HandlerFun
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
-			mu.Lock()
 			now := time.Now()
+			// 构建新 map 替换旧 map(copy-on-write 风格),把持锁时间压缩到构建+替换,
+			// 避免对大 map 全表遍历时长时间持锁阻塞所有请求。
+			mu.Lock()
+			newBanned := make(map[string]time.Time, len(banned))
 			for ip, t := range banned {
-				if now.After(t) {
-					delete(banned, ip)
+				if now.Before(t) {
+					newBanned[ip] = t
 				}
 			}
+			newRecords := make(map[string]*loginRecord, len(records))
 			for ip, r := range records {
-				if now.Sub(r.firstSeen) > window {
-					delete(records, ip)
+				if now.Sub(r.firstSeen) <= window {
+					newRecords[ip] = r
 				}
 			}
-			// 如果条目数仍然过多，强制清理最旧的一半
-			if len(records) > maxRateLimitEntries {
-				half := len(records) / 2
-				for ip := range records {
-					delete(records, ip)
+			// 条目数仍然过多:强制清掉最旧的一半(此时 map 已小,删除快)
+			if len(newRecords) > maxRateLimitEntries {
+				half := len(newRecords) / 2
+				for ip, r := range newRecords {
+					_ = r
+					delete(newRecords, ip)
 					half--
 					if half <= 0 {
 						break
 					}
 				}
 			}
+			banned = newBanned
+			records = newRecords
 			mu.Unlock()
 		}
 	}()

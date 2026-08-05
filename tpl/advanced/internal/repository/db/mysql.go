@@ -2,7 +2,7 @@ package db
 
 import (
 	"context"
-	"fmt"
+	"regexp"
 	"strings"
 
 	"advanced/pkg/xdb"
@@ -21,6 +21,9 @@ const (
 var (
 	ErrNotFound = gorm.ErrRecordNotFound
 	ctxDbKey    = ctxDbKeyType{}
+
+	// reIdentifier 校验排序列名/表名单段(仅字母/数字/下划线),防 ORDER BY 注入。
+	reIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
 type (
@@ -60,20 +63,42 @@ func (r *Conn) Tx(ctx context.Context, fn func(ctx context.Context) error) error
 	})
 }
 
-// 获取 排序字段(manager专用)
-func (r *Conn) HandleRank(orderField string, orderType int64, defaultOrder string) (orderStr string) {
-	orderStr = defaultOrder
-	if orderField != "" &&
-		!strings.Contains(orderField, ".``") &&
-		strings.Index(orderField, ".") != len(orderField)-1 {
-		orderStr = orderField
+// HandleRank 构造排序子句字符串,如 "demo.id DESC"。
+//
+// 安全性:
+//   - orderField 来自用户请求,支持裸列名 name 或跨表 table.name 两段。
+//     列名必须命中字段白名单 fields(逗号分隔的真实列名,如 DemoFields),否则回退 defaultCol;
+//     若带 table 前缀,表名须经 reIdentifier 校验(仅字母/数字/下划线)。双重校验杜绝注入。
+//   - 裸列名命中时会补上 defaultCol 的表前缀(如 demo.),避免深分页 JOIN 时列名歧义。
+//   - orderType>0 降序,否则升序。
+func (r *Conn) HandleRank(orderField string, orderType int64, fields string, defaultCol string) string {
+	col := defaultCol
+	if orderField != "" {
+		table := ""
+		name := orderField
+		if i := strings.IndexAny(orderField, "."); i >= 0 {
+			table, name = orderField[:i], orderField[i+1:]
+		}
+		// 列名须在白名单;带表名前缀时表名须为合法标识符
+		if reIdentifier.MatchString(name) && strings.Contains(","+fields+",", ","+name+",") {
+			if table != "" {
+				if !reIdentifier.MatchString(table) {
+					col = defaultCol
+				} else {
+					// 跨表排序:保留用户指定表前缀,如 "order_item" + "." + "id"
+					col = table + "." + name
+				}
+			} else if i := strings.IndexByte(defaultCol, '.'); i >= 0 {
+				col = defaultCol[:i+1] + name
+			} else {
+				col = name
+			}
+		}
 	}
 	if orderType > 0 {
-		orderStr = fmt.Sprintf(" %s  DESC", orderStr)
-	} else {
-		orderStr = fmt.Sprintf(" %s  ASC", orderStr)
+		return col + " DESC"
 	}
-	return orderStr
+	return col + " ASC"
 }
 
 func (r *Conn) HandlePage(page, pageSize int64) (offset, limit int) {

@@ -89,16 +89,20 @@ func TracingWithLogger(log *xlog.Logger, serviceName string) gin.HandlerFunc {
 					// 大 body（文件上传等）：不读取，仅记录元数据用于追踪
 					requestBody = []byte(fmt.Sprintf("[large body, %d bytes, skipped]", contentLen))
 				default:
-					// chunked / 未知长度：安全读取最多 64KB，重建供 handler 使用
+					// chunked / 未知长度:完整读取供 handler 使用(不静默截断 body);
+					// 从 pool 缓冲拷贝出独立副本重建 body,避免 pool 复用导致并发写崩坏正在被 handler 读取的数据。
 					buf := bufferPool.Get().(*bytes.Buffer)
 					buf.Reset()
-					limited := io.LimitReader(c.Request.Body, maxRequestBodySize)
-					if _, err := io.Copy(buf, limited); err == nil && buf.Len() > 0 {
-						data := buf.Bytes()
-						requestBody = make([]byte, len(data))
-						copy(requestBody, data)
-						// 重建 body 供 handler 使用
+					if _, err := io.Copy(buf, c.Request.Body); err == nil && buf.Len() > 0 {
+						data := make([]byte, buf.Len())
+						copy(data, buf.Bytes())
 						c.Request.Body = io.NopCloser(bytes.NewReader(data))
+						// 日志仅记录前 maxRequestBodySize 字节,避免大 body 撑爆日志
+						if len(data) > maxRequestBodySize {
+							requestBody = data[:maxRequestBodySize]
+						} else {
+							requestBody = data
+						}
 					}
 					bufferPool.Put(buf)
 				}

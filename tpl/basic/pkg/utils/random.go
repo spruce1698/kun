@@ -17,6 +17,9 @@ const (
 
 // 生成指定长度的字符串
 func GenStr(mode, length int) string {
+	if length <= 0 {
+		return ""
+	}
 	var (
 		pos     int
 		seedStr string

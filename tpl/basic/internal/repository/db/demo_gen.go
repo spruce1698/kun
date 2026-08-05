@@ -13,6 +13,9 @@ var _ demoDb = (*defaultDemoDb)(nil)
 
 const TableDemo = "demo"
 
+// DemoFields 表 demo 的字段白名单,供 HandleRank 校验可排序字段。
+const DemoFields = "id,name,test1,test2,test3,test4,test5,test6,test7,test8,deleted_at,test_a888,test_b"
+
 type (
 	demoDb interface {
 		Insert(ctx context.Context, data *Demo) (int64, error)
@@ -77,6 +80,10 @@ func (d *defaultDemoDb) Insert(ctx context.Context, data *Demo) (int64, error) {
 }
 
 func (d *defaultDemoDb) BatchInsert(ctx context.Context, list []*Demo) ([]int64, error) {
+	// 清零主键,避免调用方误传非零 Id 导致插入指定 Id 或主键冲突
+	for _, v := range list {
+		v.Id = 0
+	}
 	err := d.WithContext(ctx).Create(list).Error
 	if err != nil {
 		return nil, err

@@ -33,17 +33,18 @@ type SQLConfig struct {
 }
 
 type StructMeta struct {
-	DbConn           *gorm.DB
-	FileName         string // generated file name
-	InterfaceName    string // interface name
-	StructName       string // origin/repo struct name
-	TableName        string // table name in db server
-	PackageName      string
-	PrimaryKeyType   string // 主键key类型
-	Fields           []*Field
-	HasPrimaryKey    bool   // 是否有主键
-	PrimaryKeyName   string // 主键 Go 字段名
-	PrimaryKeyColumn string // 主键 DB 列名
+	DbConn                  *gorm.DB
+	FileName                string // generated file name
+	InterfaceName           string // interface name
+	StructName              string // origin/repo struct name
+	TableName               string // table name in db server
+	PackageName             string
+	PrimaryKeyType          string // 主键key类型
+	Fields                  []*Field
+	HasPrimaryKey           bool   // 是否有主键
+	PrimaryKeyName          string // 主键 Go 字段名
+	PrimaryKeyColumn        string // 主键 DB 列名
+	PrimaryKeyAutoIncrement bool   // 主键是否自增(自增主键 Insert/BatchInsert 时清零让 DB 分配;非自增主键保留调用方传入的值)
 }
 
 // user input structures
@@ -213,6 +214,7 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 	var hasPrimaryKey bool
 	var primaryKeyName string
 	var primaryKeyColumn string
+	var primaryKeyAutoIncrement bool
 
 	// 1. First look for IsPrimaryKey = true
 	for _, f := range fields {
@@ -221,6 +223,7 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 			primaryKeyName = f.Name
 			primaryKeyColumn = f.ColumnName
 			primaryKeyType = f.Type
+			primaryKeyAutoIncrement = strings.Contains(f.GORMTag, "autoIncrement:true")
 			break
 		}
 	}
@@ -233,23 +236,25 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 				primaryKeyName = f.Name
 				primaryKeyColumn = f.ColumnName
 				primaryKeyType = f.Type
+				primaryKeyAutoIncrement = strings.Contains(f.GORMTag, "autoIncrement:true")
 				break
 			}
 		}
 	}
 
 	return &StructMeta{
-		DbConn:           g.Conf.DbConn,
-		FileName:         fileName,
-		InterfaceName:    fileName,
-		StructName:       structName,
-		TableName:        tableName,
-		PackageName:      g.Conf.PackageName,
-		PrimaryKeyType:   primaryKeyType,
-		Fields:           fields,
-		HasPrimaryKey:    hasPrimaryKey,
-		PrimaryKeyName:   primaryKeyName,
-		PrimaryKeyColumn: primaryKeyColumn,
+		DbConn:                  g.Conf.DbConn,
+		FileName:                fileName,
+		InterfaceName:           fileName,
+		StructName:              structName,
+		TableName:               tableName,
+		PackageName:             g.Conf.PackageName,
+		PrimaryKeyType:          primaryKeyType,
+		Fields:                  fields,
+		HasPrimaryKey:           hasPrimaryKey,
+		PrimaryKeyName:          primaryKeyName,
+		PrimaryKeyColumn:        primaryKeyColumn,
+		PrimaryKeyAutoIncrement: primaryKeyAutoIncrement,
 	}, nil
 }
 

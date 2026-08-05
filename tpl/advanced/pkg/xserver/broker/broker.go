@@ -50,10 +50,11 @@ type Server struct {
 	// 父进程运行态(仅父进程使用)
 	healthSvr *http.Server
 
-	mu      sync.Mutex // 保护 curCmd
-	curCmd  *exec.Cmd
-	stopCh  chan struct{} // Stop() 关闭,通知 supervisor goroutine 退出
-	cmdExit chan error    // 子进程退出事件(err 由 cmd.Wait 返回)
+	mu       sync.Mutex // 保护 curCmd
+	curCmd   *exec.Cmd
+	stopCh   chan struct{} // Stop() 关闭,通知 supervisor goroutine 退出
+	cmdExit  chan error    // 子进程退出事件(err 由 cmd.Wait 返回)
+	stopOnce sync.Once    // 保证 stopCh 只关闭一次,防止二次调用 panic
 }
 
 func New(conf *xconfig.Conf, log *xlog.Logger, db *xdb.Client, redis *xredis.Client, task *event.Task) (xserver.Engine, error) {
@@ -73,7 +74,7 @@ func (s *Server) Start() error {
 
 	// 是否是子进程
 	if isChild() {
-		childProcess(s.Conf, s.task)
+		childProcess(s.Conf, s.task, s.db, s.redis, s.logger)
 		return nil
 	}
 
@@ -204,7 +205,7 @@ func (s *Server) Stop(signal string) {
 	s.logger.Warn("Broker server stopped")
 
 	// 4. 通知 supervisor 退出(若子进程是异常退出已 return,这里无影响)
-	close(s.stopCh)
+	s.stopOnce.Do(func() { close(s.stopCh) })
 
 	// 日志异步
 	if err := s.logger.Sync(); err != nil {
@@ -277,7 +278,7 @@ func healthServer(conf *xconfig.Conf, log *xlog.Logger) *http.Server {
 	return httpSvr
 }
 
-func childProcess(conf *xconfig.Conf, task *event.Task) {
+func childProcess(conf *xconfig.Conf, task *event.Task, db *xdb.Client, redis *xredis.Client, logger *xlog.Logger) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -288,6 +289,22 @@ func childProcess(conf *xconfig.Conf, task *event.Task) {
 		<-signals
 		cancel()
 	}()
+
+	// closeResources 关闭子进程持有的 db/redis 连接,通知服务端主动断开,避免 Aborted connection。
+	closeResources := func() {
+		if db != nil {
+			if sqlDB, _ := db.DB(); sqlDB != nil {
+				_ = sqlDB.Close()
+			}
+		}
+		if redis != nil {
+			_ = redis.Close()
+		}
+		if logger != nil {
+			_ = logger.Sync()
+		}
+		_ = xlog.Close()
+	}
 
 	var wg sync.WaitGroup
 	sub := event.NewSub(&wg, conf, task, ctx)
@@ -301,6 +318,7 @@ func childProcess(conf *xconfig.Conf, task *event.Task) {
 		cancel()
 		wg.Wait()
 		sub.Close()
+		closeResources()
 		os.Exit(1)
 	}
 	// asynq CronPush(cron 启动失败不致命,记录后继续运行主消费)
@@ -310,4 +328,5 @@ func childProcess(conf *xconfig.Conf, task *event.Task) {
 
 	wg.Wait()
 	sub.Close()
+	closeResources()
 }

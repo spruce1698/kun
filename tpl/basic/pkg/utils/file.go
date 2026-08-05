@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 )
 
@@ -19,7 +18,7 @@ func CheckFileIsExist(fileName string) bool {
 
 // 创建目录
 func BuildDir(absDir string) error {
-	return os.MkdirAll(path.Dir(absDir), os.ModePerm) // 生成多级目录
+	return os.MkdirAll(filepath.Dir(absDir), os.ModePerm) // 生成多级目录
 }
 
 // 删除文件或文件夹

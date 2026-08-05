@@ -34,16 +34,13 @@ func TimeWeek(timestamp int64) int {
 // 获取向上整时时间
 func Hour0(timestamp int64) time.Time {
 	tm := time.Unix(timestamp, 0)
-	tStr := tm.Format("2006-01-02 15") + ":00:00"
-	return Str2Time(tStr, "2006-01-02 15:04:05", nil)
+	return time.Date(tm.Year(), tm.Month(), tm.Day(), tm.Hour(), 0, 0, 0, tm.Location())
 }
 
 // 获取给定日期的零点时间
 func Day0(timestamp int64) time.Time {
 	tm := time.Unix(timestamp, 0)
-	tStr := tm.Format("2006-01-02") + " 00:00:00"
-
-	return Str2Time(tStr, "2006-01-02 15:04:05", nil)
+	return time.Date(tm.Year(), tm.Month(), tm.Day(), 0, 0, 0, 0, tm.Location())
 }
 
 // 获取offset 0点时间

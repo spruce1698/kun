@@ -170,6 +170,7 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 	var hasPrimaryKey bool
 	var primaryKeyName string
 	var primaryKeyColumn string
+	var primaryKeyAutoIncrement bool
 
 	// 1. First look for IsPrimaryKey = true
 	for _, f := range fields {
@@ -178,6 +179,7 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 			primaryKeyName = f.Name
 			primaryKeyColumn = f.ColumnName
 			primaryKeyType = f.Type
+			primaryKeyAutoIncrement = strings.Contains(f.GORMTag, "autoIncrement:true")
 			break
 		}
 	}
@@ -190,6 +192,7 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 				primaryKeyName = f.Name
 				primaryKeyColumn = f.ColumnName
 				primaryKeyType = f.Type
+				primaryKeyAutoIncrement = strings.Contains(f.GORMTag, "autoIncrement:true")
 				break
 			}
 		}
@@ -200,16 +203,17 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 	}
 
 	return &StructMeta{
-		FileName:         fileName,
-		InterfaceName:    fileName,
-		StructName:       structName,
-		TableName:        tableName,
-		PackageName:      "db",
-		PrimaryKeyType:   primaryKeyType,
-		Fields:           fields,
-		HasPrimaryKey:    hasPrimaryKey,
-		PrimaryKeyName:   primaryKeyName,
-		PrimaryKeyColumn: primaryKeyColumn,
+		FileName:                fileName,
+		InterfaceName:           fileName,
+		StructName:              structName,
+		TableName:               tableName,
+		PackageName:             "db",
+		PrimaryKeyType:          primaryKeyType,
+		Fields:                  fields,
+		HasPrimaryKey:           hasPrimaryKey,
+		PrimaryKeyName:          primaryKeyName,
+		PrimaryKeyColumn:        primaryKeyColumn,
+		PrimaryKeyAutoIncrement: primaryKeyAutoIncrement,
 	}
 }
 

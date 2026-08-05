@@ -85,6 +85,8 @@ func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Cache) Set(ctx context.
 	if err != nil {
 		return err
 	}
+	// 同步更新本地缓存,避免 Get 读到脏数据
+	{{ .FileNameFirstChar }}.lCache.Set(key, data, time.Duration(expiration)*time.Second)
 	return nil
 }
 

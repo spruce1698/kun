@@ -135,6 +135,7 @@ func New(path string) *Conf {
 			fmt.Printf("config hot reload unmarshal failed: %s \n", e)
 			return
 		}
+		nc.current.Store(nc)
 		c.current.Store(nc)
 	})
 	go v.WatchConfig()

@@ -9,6 +9,7 @@ package asynq
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -30,8 +31,7 @@ const (
 
 type (
 	Asynq struct {
-		Redis  asynq.RedisClientOpt
-		Client *asynq.Client
+		Redis asynq.RedisClientOpt
 	}
 	Task = asynq.Task
 )
@@ -50,13 +50,14 @@ func (a *Asynq) SyncPub(queue, taskName, payload string) (entryID string, err er
 	if queue == "" {
 		queue = DefaultQueue
 	}
-	a.Client = asynq.NewClient(a.Redis)
-	defer func(Client *asynq.Client) {
-		_ = Client.Close()
-	}(a.Client)
+	// 用局部变量持有 client,避免并发调用时共享字段 a.Client 互相覆盖/误关闭
+	client := asynq.NewClient(a.Redis)
+	defer func() {
+		_ = client.Close()
+	}()
 
 	task := asynq.NewTask(taskName, []byte(payload))
-	info, err := a.Client.Enqueue(task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue))
+	info, err := client.Enqueue(task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue))
 	if err != nil {
 		return "", err
 	}
@@ -68,13 +69,14 @@ func (a *Asynq) DelayPub(queue, taskName, payload string, after time.Duration) (
 	if queue == "" {
 		queue = DefaultQueue
 	}
-	a.Client = asynq.NewClient(a.Redis)
-	defer func(Client *asynq.Client) {
-		_ = Client.Close()
-	}(a.Client)
+	// 用局部变量持有 client,避免并发调用时共享字段 a.Client 互相覆盖/误关闭
+	client := asynq.NewClient(a.Redis)
+	defer func() {
+		_ = client.Close()
+	}()
 
 	task := asynq.NewTask(taskName, []byte(payload))
-	info, err := a.Client.Enqueue(task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue), asynq.ProcessIn(after))
+	info, err := client.Enqueue(task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue), asynq.ProcessIn(after))
 	if err != nil {
 		return "", err
 	}
@@ -103,7 +105,7 @@ func (a *Asynq) CronStaticPub(queue, taskName, payload, cronSpec string) (entryI
 
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
-		panic(err)
+		return entryID, fmt.Errorf("load location Asia/Shanghai: %w", err)
 	}
 	// 创建调度器
 	scheduler := asynq.NewScheduler(
@@ -135,6 +137,7 @@ type Provider struct {
 func (a *Asynq) SetCronPub(taskName, payload, cronSpec string) error {
 	ctx := context.Background()
 	redisClient := a.Redis.MakeRedisClient().(goRedis.UniversalClient)
+	defer func() { _ = redisClient.Close() }()
 
 	// payload 为空 => 删除该周期任务
 	if payload == "" {
@@ -162,6 +165,7 @@ func (a *Asynq) SetCronPub(taskName, payload, cronSpec string) error {
 func (a *Asynq) DelCronPub(taskName string) error {
 	ctx := context.Background()
 	redisClient := a.Redis.MakeRedisClient().(goRedis.UniversalClient)
+	defer func() { _ = redisClient.Close() }()
 
 	_, err := redisClient.HDel(ctx, RedisKey, taskName).Result()
 	return err
@@ -177,6 +181,7 @@ func (cp *cfgProvider) GetConfigs() ([]*asynq.PeriodicTaskConfig, error) {
 	ctx := context.Background()
 
 	redisClient := cp.redis.MakeRedisClient().(goRedis.UniversalClient)
+	defer func() { _ = redisClient.Close() }()
 	configs := redisClient.HGetAll(ctx, RedisKey).Val()
 
 	var tasks []*asynq.PeriodicTaskConfig
@@ -209,7 +214,7 @@ crontab格式 如下所示：
 func (a *Asynq) CronPub() error {
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("load location Asia/Shanghai: %w", err)
 	}
 	manager, err := asynq.NewPeriodicTaskManager(
 		asynq.PeriodicTaskManagerOpts{
@@ -220,7 +225,7 @@ func (a *Asynq) CronPub() error {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("new periodic task manager: %w", err)
 	}
 	return manager.Run()
 }
@@ -250,7 +255,7 @@ func (a *Asynq) Server() *asynq.Server {
 func (a *Asynq) PeriodicTaskManager() (*asynq.PeriodicTaskManager, error) {
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("load location Asia/Shanghai: %w", err)
 	}
 	manager, err := asynq.NewPeriodicTaskManager(
 		asynq.PeriodicTaskManagerOpts{
@@ -261,7 +266,7 @@ func (a *Asynq) PeriodicTaskManager() (*asynq.PeriodicTaskManager, error) {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("new periodic task manager: %w", err)
 	}
 	return manager, nil
 }

@@ -212,6 +212,9 @@ func AESDecryptECB(cipherText, encryptKey string) (string, error) {
 	}
 	// 获取密钥长度
 	blockSize := block.BlockSize()
+	if len(baseByte)%blockSize != 0 {
+		return "", errors.New("cipherText is not a multiple of the block size")
+	}
 	originStr := make([]byte, len(baseByte))
 	for bs, be := 0, blockSize; bs < len(baseByte); bs, be = bs+blockSize, be+blockSize {
 		block.Decrypt(originStr[bs:be], baseByte[bs:be])
@@ -550,6 +553,9 @@ func DESDecryptECB(cipherText, encryptKey string) (string, error) {
 
 	// 获取密钥长度
 	blockSize := block.BlockSize()
+	if len(baseByte)%blockSize != 0 {
+		return "", errors.New("cipherText is not a multiple of the block size")
+	}
 	originStr := make([]byte, len(baseByte))
 	for bs, be := 0, blockSize; bs < len(baseByte); bs, be = bs+blockSize, be+blockSize {
 		block.Decrypt(originStr[bs:be], baseByte[bs:be])
@@ -901,6 +907,9 @@ func DES3DecryptECB(cipherText, encryptKey string) (string, error) {
 
 	// 获取密钥长度
 	blockSize := block.BlockSize()
+	if len(baseByte)%blockSize != 0 {
+		return "", errors.New("cipherText is not a multiple of the block size")
+	}
 	originStr := make([]byte, len(baseByte))
 	for bs, be := 0, blockSize; bs < len(baseByte); bs, be = bs+blockSize, be+blockSize {
 		block.Decrypt(originStr[bs:be], baseByte[bs:be])

@@ -6,7 +6,11 @@
 
 package utils
 
-import "github.com/shopspring/decimal"
+import (
+	"math"
+
+	"github.com/shopspring/decimal"
+)
 
 // 元(字符串)转分,乘100把元转为分，转换后整数部分即为分，小数部分为分之后的单位可忽略
 func YuanStr2Cent(yuan string) (cent int64, err error) {
@@ -19,6 +23,10 @@ func YuanStr2Cent(yuan string) (cent int64, err error) {
 
 // 元转分,乘100把元转为分，转换后整数部分即为分，小数部分为分之后的单位可忽略
 func Yuan2Cent(yuan float64) (cent int64) {
+	// NaN/Inf 会让 decimal.NewFromFloat panic,这里直接返回 0 兜底
+	if math.IsNaN(yuan) || math.IsInf(yuan, 0) {
+		return 0
+	}
 	cent = decimal.NewFromFloat(yuan).Mul(decimal.NewFromInt(100)).IntPart()
 	return
 }

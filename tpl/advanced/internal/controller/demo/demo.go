@@ -357,7 +357,7 @@ func (d *DemoCtrl) Export(ctx *gin.Context) {
 	// 3. 获取 Flusher
 	flusher, ok := ctx.Writer.(http.Flusher)
 	if !ok {
-		// 若不支持 flusher，则回退或直接报错
+		xhttp.BusCode(ctx, xerror.BusinessError, fmt.Errorf("streaming not supported"))
 		return
 	}
 	flusher.Flush()

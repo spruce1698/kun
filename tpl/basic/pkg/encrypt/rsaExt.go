@@ -7,7 +7,6 @@
 package encrypt
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -39,7 +38,11 @@ func getPubKey(publicKey []byte) (*rsa.PublicKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	return pub.(*rsa.PublicKey), err
+	rsaKey, ok := pub.(*rsa.PublicKey)
+	if !ok {
+		return nil, errors.New("unsupported public key type")
+	}
+	return rsaKey, nil
 }
 
 // 设置私钥
@@ -56,51 +59,11 @@ func getPriKey(privateKey []byte) (*rsa.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	return pri2.(*rsa.PrivateKey), nil
-}
-
-// 公钥加密或解密byte
-func pubKeyByte(pub *rsa.PublicKey, in []byte, isEncrytp bool) ([]byte, error) {
-	k := (pub.N.BitLen() + 7) / 8
-	if isEncrytp {
-		k = k - 11
+	rsaKey, ok := pri2.(*rsa.PrivateKey)
+	if !ok {
+		return nil, errors.New("unsupported private key type")
 	}
-	if len(in) <= k {
-		if isEncrytp {
-			return rsa.EncryptPKCS1v15(rand.Reader, pub, in)
-		} else {
-			return pubKeyDecrypt(pub, in)
-		}
-	} else {
-		iv := make([]byte, k)
-		out := bytes.NewBuffer(iv)
-		if err := pubKeyIO(pub, bytes.NewReader(in), out, isEncrytp); err != nil {
-			return nil, err
-		}
-		return io.ReadAll(out)
-	}
-}
-
-// 私钥加密或解密byte
-func priKeyByte(pri *rsa.PrivateKey, in []byte, isEncrytp bool) ([]byte, error) {
-	k := (pri.N.BitLen() + 7) / 8
-	if isEncrytp {
-		k = k - 11
-	}
-	if len(in) <= k {
-		if isEncrytp {
-			return priKeyEncrypt(rand.Reader, pri, in)
-		} else {
-			return rsa.DecryptPKCS1v15(rand.Reader, pri, in)
-		}
-	} else {
-		iv := make([]byte, k)
-		out := bytes.NewBuffer(iv)
-		if err := priKeyIO(pri, bytes.NewReader(in), out, isEncrytp); err != nil {
-			return nil, err
-		}
-		return io.ReadAll(out)
-	}
+	return rsaKey, nil
 }
 
 // 公钥加密或解密Reader
@@ -233,13 +196,6 @@ var bigZero = big.NewInt(0)
 var bigOne = big.NewInt(1)
 
 // 从crypto/rsa复制
-func encrypt(c *big.Int, pub *rsa.PublicKey, m *big.Int) *big.Int {
-	e := big.NewInt(int64(pub.E))
-	c.Exp(m, e, pub.N)
-	return c
-}
-
-// 从crypto/rsa复制
 func decrypt(random io.Reader, priv *rsa.PrivateKey, c *big.Int) (m *big.Int, err error) {
 	if c.Cmp(priv.N) > 0 {
 		err = ErrDecryption
@@ -312,24 +268,6 @@ func copyWithLeftPad(dest, src []byte) {
 		dest[i] = 0
 	}
 	copy(dest[numPaddingBytes:], src)
-}
-
-// 从crypto/rsa复制
-func nonZeroRandomBytes(s []byte, rand io.Reader) (err error) {
-	_, err = io.ReadFull(rand, s)
-	if err != nil {
-		return
-	}
-	for i := 0; i < len(s); i++ {
-		for s[i] == 0 {
-			_, err = io.ReadFull(rand, s[i:i+1])
-			if err != nil {
-				return
-			}
-			s[i] ^= 0x42
-		}
-	}
-	return
 }
 
 // 从crypto/rsa复制

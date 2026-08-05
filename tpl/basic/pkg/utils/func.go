@@ -53,11 +53,13 @@ func TextIntercept(str string, start, length int64) string {
 	return string(runes[start:end])
 }
 
-// 按字典顺序排序
+// 按字典顺序排序(不修改原切片)
 func DictSort(res []string) string {
-	sort.Strings(res)
+	sorted := make([]string, len(res))
+	copy(sorted, res)
+	sort.Strings(sorted)
 	var builder strings.Builder
-	for _, v := range res {
+	for _, v := range sorted {
 		builder.WriteString(v)
 	}
 	return builder.String()

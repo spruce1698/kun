@@ -191,31 +191,21 @@ func IsBankCardNo(cardNumber string) bool {
 		}
 		cardArr = append(cardArr, int(c-'0'))
 	}
-	if len(cardArr) == 16 {
-		sum := 0
-		for i := len(cardArr) - 1; i >= 0; i-- {
-			if i%2 == 0 {
-				cardArr[i] *= 2
-				if cardArr[i] > 9 {
-					cardArr[i] -= 9
-				}
+	// 标准 Luhn:从右数第二位开始翻倍,对任意长度通用
+	sum := 0
+	double := false
+	for i := len(cardArr) - 1; i >= 0; i-- {
+		d := cardArr[i]
+		if double {
+			d *= 2
+			if d > 9 {
+				d -= 9
 			}
-			sum += cardArr[i]
 		}
-		return sum%10 == 0
-	} else {
-		sum := 0
-		for i := len(cardArr) - 1; i >= 0; i-- {
-			if (len(cardArr)-i)%2 == 0 {
-				cardArr[i] *= 2
-				if cardArr[i] > 9 {
-					cardArr[i] -= 9
-				}
-			}
-			sum += cardArr[i]
-		}
-		return sum%10 == 0
+		sum += d
+		double = !double
 	}
+	return sum%10 == 0
 }
 
 // 验证身份证号(18或15位)

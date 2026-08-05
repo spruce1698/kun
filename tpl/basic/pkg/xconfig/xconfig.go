@@ -34,12 +34,12 @@ type (
 		Env string
 		// 改配置需重启
 		Version string
-		Server ServerConf
-		Token TokenConf
-		Log LogConf
-		Mysql MysqlConf
-		Redis RedisConf
-		Jaeger JaegerConf
+		Server  ServerConf
+		Token   TokenConf
+		Log     LogConf
+		Mysql   MysqlConf
+		Redis   RedisConf
+		Jaeger  JaegerConf
 
 		// current 原子持有"当前配置快照"指针,供运行期 Get() 读取,零竞态。
 		current atomic.Pointer[Conf]
@@ -124,6 +124,7 @@ func New(path string) *Conf {
 			fmt.Printf("config hot reload unmarshal failed: %s \n", e)
 			return
 		}
+		nc.current.Store(nc)
 		c.current.Store(nc)
 	})
 	go v.WatchConfig()

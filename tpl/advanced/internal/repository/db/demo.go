@@ -3,12 +3,11 @@ package db
 import (
 	"context"
 
-	"gorm.io/gorm"
-
 	"github.com/pkg/errors"
+	"gorm.io/gorm"
 )
 
-//go:generate mockgen -source=./demo.go -destination=../../../test/mocks/repository/db/demo.go -package mock_repo_db -aux_files mysql=./demo_gen.go
+//go:generate mockgen -source=./demo.go -destination=../../../test/mocks/repository/db/demo.go -package mock_repo_db -aux_files db=./demo_gen.go
 
 var _ DemoDb = (*customDemoDb)(nil)
 
@@ -60,7 +59,7 @@ func (c *customDemoDb) ListWithTotal(ctx context.Context, args *DemoSearch) ([]*
 		return nil, 0, ErrNotFound
 	}
 
-	order := c.HandleRank(args.OrderField, args.OrderType, "`"+TableDemo+"`.`id`")
+	order := c.HandleRank(args.OrderField, args.OrderType, DemoFields, TableDemo+".id")
 	offset, limit := c.HandlePage(args.Page, args.PageSize)
 
 	var model *gorm.DB
@@ -99,7 +98,7 @@ func (c *customDemoDb) ListWithMore(ctx context.Context, args *DemoSearch) ([]*D
 		return d
 	}
 
-	order := c.HandleRank(args.OrderField, args.OrderType, "`"+TableDemo+"`.`id`")
+	order := c.HandleRank(args.OrderField, args.OrderType, DemoFields, TableDemo+".id")
 	offset, limit := c.HandlePage(args.Page, args.PageSize)
 	// 在请求的数据基础上+1，以此来判断是否还有数据
 	want := limit

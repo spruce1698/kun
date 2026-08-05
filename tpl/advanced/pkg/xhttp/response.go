@@ -100,13 +100,13 @@ func BusCode(ctx *gin.Context, code int, err error) {
 
 	var valErrs validator.Errors
 	// validator.Errors 类型错误直接返回
-	if ok := errors.As(err, &valErrs); ok {
+	if err != nil && errors.As(err, &valErrs) {
 		// 对 validator.Errors 类型错误则进行翻译
 		valMsg := validator.Message(valErrs)
 		if len(valMsg) > 0 {
 			r.Message = valMsg[0]
 		}
-	} else { // 非validator.Errors 类型错误直接返回
+	} else if err != nil { // 非validator.Errors 类型错误直接返回
 		r.Message = err.Error()
 	}
 	// 没有错误信息根据code返回

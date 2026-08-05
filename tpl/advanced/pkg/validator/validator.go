@@ -122,29 +122,35 @@ func translate(trans ut.Translator, fe vali10.FieldError) string {
 
 // 以下是自定义校验函数  函数名,函数,错误信息
 var customFuncSet = []customFunc{
-	{"minNow", afterNow, "参数:{0} 不能大于当前时间"},
-	{"maxNow", beforeNow, "参数:{0} 不能小于当前时间"},
+	{"minNow", afterNow, "参数:{0} 不能小于当前时间"},
+	{"maxNow", beforeNow, "参数:{0} 不能大于当前时间"},
 	{"mobile", mobile, "参数:{0} 手机号号码不合法"},
 }
 
-// 自定义校验函数,参数日期不能小于今天
+// 自定义校验函数,参数日期不能晚于当前时间(用于 maxNow: 上限为今天)
 func beforeNow(fl vali10.FieldLevel) bool {
 	field := fl.Field().String()
 	date, err := time.Parse("2006-01-02", field)
 	if err != nil {
 		return false
 	}
-	return time.Now().Before(date)
+	// 用当天零点比较,避免 23:59:59 时拒绝当天日期
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	return !todayStart.Before(date)
 }
 
-// 自定义校验函数,参数日期不能大于今天
+// 自定义校验函数,参数日期不能早于当前时间(用于 minNow: 下限为今天)
 func afterNow(fl vali10.FieldLevel) bool {
 	field := fl.Field().String()
 	date, err := time.Parse("2006-01-02", field)
 	if err != nil {
 		return false
 	}
-	return time.Now().After(date)
+	// 用当天零点比较,避免 00:00:01 时拒绝当天日期
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	return !todayStart.After(date)
 }
 
 // 校验手机号

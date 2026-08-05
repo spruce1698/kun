@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"advanced/internal/controller"
@@ -41,8 +42,9 @@ type Server struct {
 	Redis  *xredis.Client
 	pub    *event.Pub
 
-	Engine *gin.Engine
-	server *http.Server
+	Engine   *gin.Engine
+	server   *http.Server
+	stopOnce sync.Once
 }
 
 func New(
@@ -161,20 +163,25 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Stop(signal string) {
+	// sync.Once 防止 Start 失败的 goroutine 与信号触发的 Stop 并发重复执行
+	s.stopOnce.Do(func() {
+		s.stop(signal)
+	})
+}
 
+func (s *Server) stop(signal string) {
 	s.logger.Warn("Receive a signal", xlog.KVStr("signal", signal))
 
 	s.logger.Warn("Http server stopping ...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
-	defer cancel()
-
-	// 优雅关闭
+	// 每步关闭用独立 ctx,避免 http Shutdown 耗尽超时后 db/redis/tracer 因 ctx 到期失败
 	// 关闭 http server
 	if s.server != nil {
-		if err := s.server.Shutdown(ctx); err != nil {
+		httpCtx, httpCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := s.server.Shutdown(httpCtx); err != nil {
 			s.logger.Warn(fmt.Sprintf("http server shutdown err:%v", err))
 		}
+		httpCancel()
 		s.logger.Warn("Close http server")
 	}
 	// 关闭 db
@@ -202,9 +209,11 @@ func (s *Server) Stop(signal string) {
 	}
 	// 关闭tracer
 	if s.tp != nil {
-		if err := s.tp.Shutdown(ctx); err != nil {
+		tpCtx, tpCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := s.tp.Shutdown(tpCtx); err != nil {
 			s.logger.Error("Failed to shutdown tracer provider", xlog.KVErr(err))
 		}
+		tpCancel()
 	}
 
 	// TODO 其他关闭

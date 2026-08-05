@@ -129,9 +129,10 @@ func (d *demoSvc) Detail(ctx context.Context, id int64) (*Demo, error) {
 		_ = d.ctx.DemoCache.Set(ctx, id, &cache.Demo{
 			Id:     demoDb.Id,
 			Name:   demoDb.Name,
+			Test1:  demoDb.Test1,
 			Test4:  demoDb.Test4,
 			RoleId: demoDb.RoleId,
-		}, 0)
+		}, 300)
 		_ = copier.Copy(result, demoDb)
 		return result, nil
 	}

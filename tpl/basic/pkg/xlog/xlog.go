@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"basic/pkg/xconfig"
 	"google.golang.org/grpc"
@@ -25,9 +26,13 @@ type (
 	}
 )
 
-// kafkaCloser 保存日志 Kafka Writer 的关闭函数,由 New 设置,Close 调用。
-// 仅当启用了日志写 Kafka 时非 nil。
-var kafkaCloser func() error
+// kafkaClosers 保存所有日志 Kafka Writer 的关闭函数,由 New 追加,Close 逐个调用。
+// 支持多次 New(多实例)场景,避免后一次覆盖前一次导致泄漏。
+var (
+	kafkaClosersMu sync.Mutex
+	kafkaClosers   []func() error
+)
+
 // New 创建一个新的日志记录器
 func New(conf *xconfig.Conf) *Logger {
 	opSet := make([]Option, 0)
@@ -99,7 +104,9 @@ func New(conf *xconfig.Conf) *Logger {
 		cores = append(cores, zapcore.NewCore(kafkaEncoder, zapcore.AddSync(opt.kafkaHook), opt.level))
 		// 保存关闭句柄,供进程退出时 Close 调用,避免 Async Writer 缓冲日志丢失
 		if kw, ok := opt.kafkaHook.(*KafkaWriter); ok {
-			kafkaCloser = kw.Close
+			kafkaClosersMu.Lock()
+			kafkaClosers = append(kafkaClosers, kw.Close)
+			kafkaClosersMu.Unlock()
 		}
 	}
 
@@ -119,10 +126,18 @@ func New(conf *xconfig.Conf) *Logger {
 
 // Close 关闭日志组件持有的底层资源(如日志 Kafka Writer),应在进程退出前调用。
 func Close() error {
-	if kafkaCloser != nil {
-		return kafkaCloser()
+	kafkaClosersMu.Lock()
+	closers := make([]func() error, len(kafkaClosers))
+	copy(closers, kafkaClosers)
+	kafkaClosersMu.Unlock()
+
+	var firstErr error
+	for _, closer := range closers {
+		if err := closer(); err != nil && firstErr == nil {
+			firstErr = err
+		}
 	}
-	return nil
+	return firstErr
 }
 
 func KVStr(key string, val string) zap.Field {
