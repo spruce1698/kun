@@ -1,0 +1,79 @@
+/**
+ * @Author: spruce
+ * @Date: 2024-03-28 15:33
+ * @Desc: 协程池
+ */
+
+package utils
+
+import (
+	"fmt"
+	"sync"
+)
+
+// 任务结构体
+type Task struct {
+	ID  int
+	Job func()
+}
+
+// 协程池结构体
+type Pool struct {
+	taskQueue chan Task
+	wg        sync.WaitGroup
+	once      sync.Once
+}
+
+// 创建协程池
+// queueSize 为任务队列缓冲大小,0 表示无缓冲(AddTask 会阻塞直到有空闲 worker);
+// 建议设置一个合理的缓冲,避免调用方在无空闲 worker 时卡死。
+func NewPool(numWorkers, queueSize int) *Pool {
+	p := &Pool{
+		taskQueue: make(chan Task, queueSize),
+	}
+
+	p.wg.Add(numWorkers)
+	for i := 0; i < numWorkers; i++ {
+		go p.worker()
+	}
+
+	return p
+}
+
+// AddTask 添加任务到协程池。
+// 队列满时会阻塞,直到有 worker 取走任务或 Shutdown 关闭队列。
+func (p *Pool) AddTask(task Task) {
+	p.taskQueue <- task
+}
+
+// 工作协程
+func (p *Pool) worker() {
+	defer p.wg.Done()
+	for task := range p.taskQueue {
+		fmt.Printf("Worker started task %d\n", task.ID)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("Worker task %d panic: %v\n", task.ID, r)
+				}
+			}()
+			task.Job()
+		}()
+		fmt.Printf("Worker finished task %d\n", task.ID)
+	}
+}
+
+// Shutdown 关闭任务队列,通知所有 worker 不再接收新任务并处理完剩余任务后退出。
+// 可安全多次调用(用 sync.Once 保证只关闭一次)。
+func (p *Pool) Shutdown() {
+	p.once.Do(func() {
+		close(p.taskQueue)
+	})
+}
+
+// 等待所有任务完成(worker 退出)。
+// 调用前应先 Shutdown 关闭队列,否则会一直阻塞等待 worker 退出。
+func (p *Pool) Wait() {
+	p.Shutdown()
+	p.wg.Wait()
+}

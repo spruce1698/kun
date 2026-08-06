@@ -1,0 +1,46 @@
+env: "debug" # 环境  debug:开发 test:测试 staging:预发布 release:生产
+version: "0.0.1"
+
+server:
+  name: "basic"
+  port: 9999 # http端口
+  readTimeout: 60 #单位s
+  writeTimeout: 60 #单位s
+  allowOrigins: # CORS 允许的来源白名单,为空则允许所有
+    - "*"
+    - "http://127.0.0.1:9999"
+
+token:
+  secret: "123456ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  refreshSecret: "abcdefghijklmnopqrstuvwxyz123456"
+  csrfKey: "abcdefghijklmnopqrstuvwxyz123456" # CSRF 密钥,32位
+  expire: 3600    # 过期时间(秒)
+  refresh: 604800  # 刷新时间(秒)
+  queryKey: "token"   # query 参数 key
+  cacheKey: "token"   # 缓存 key 前缀
+  multiLogin: false   # 是否允许多端登录
+
+log:
+  level: "debug" # 输出日志等级:debug,info,warn,error
+  filePath: "" # "./logs/log.log"
+  stdout: true
+  kafkaTopic: ""   # 日志推送到 kafka 的 topic,为空则不推送
+  kafkaBrokers: [] # kafka brokers 地址
+
+mysql: # mysql服务器地址,第一条默认是主库
+  logLevel: "debug" # 日志等级:debug,error
+  source:
+    - "root:12345678@tcp(127.0.0.1:3306)/basic?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
+  maxIdleConns: 10    # 空闲连接池中连接的最大数量
+  maxOpenConns: 100   # 打开数据库连接的最大数量
+  connMaxLifetime: 3600 # 连接可复用的最大时间(秒)
+
+redis:
+  source: # redis服务器地址,如果redis是集群，则多条
+    - "127.0.0.1:6379"
+  password: "12345678"
+  cluster: false
+  poolSize: 100 # 连接池大小
+
+jaeger:
+  endpoint: "127.0.0.1:4317" # Jaeger collector 地址
