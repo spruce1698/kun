@@ -9,7 +9,7 @@ package xhttp
 type (
 	PageArg struct {
 		OrderField string `form:"orderField"`                                           // 排序字段
-		OrderType  int64  `form:"orderType"`                                            // 排序类型 0:升序,1:降序
+		OrderType  int64  `form:"orderType"`                                            // 排序类型 0:降序(默认),1:升序
 		Page       int64  `form:"page,default=1" binding:"required,min=1"`              // 添加验证规则
 		PageSize   int64  `form:"pageSize,default=20" binding:"required,min=1,max=100"` // 添加验证规则
 		LastId     int64  `form:"lastId"`                                               // 上一页最大id

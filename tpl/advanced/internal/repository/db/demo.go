@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-//go:generate mockgen -source=./demo.go -destination=../../../test/mocks/repository/db/demo.go -package mock_repo_db -aux_files mysql=./demo_gen.go
+//go:generate mockgen -source=./demo.go -destination=../../../test/mocks/repository/db/demo.go -package mock_repo_db -aux_files db=./demo_gen.go
 
 var _ DemoDb = (*customDemoDb)(nil)
 
@@ -60,19 +60,24 @@ func (c *customDemoDb) ListWithTotal(ctx context.Context, args *DemoSearch) ([]*
 		return nil, 0, ErrNotFound
 	}
 
-	order := c.HandleRank(args.OrderField, args.OrderType, "`"+TableDemo+"`.`id`")
+	order := c.HandleRank(
+		args.OrderField,
+		args.OrderType,
+		DemoFields,
+		TableDemo+".id",
+	)
+
 	offset, limit := c.HandlePage(args.Page, args.PageSize)
 
 	var model *gorm.DB
 	switch {
 	case args.LastId > 0 && args.Page > 1: // 游标分页: time>lastTime or (time==lastTime and id>lastId)
-		lastCond := "`id` > ?"
-		if args.OrderType != 0 {
-			lastCond = "`id` < ?"
+		lastCond := "`id` < ?"
+		if args.OrderType == 1 {
+			lastCond = "`id` > ?"
 		}
 		model = filter().Where(lastCond, args.LastId).Order(order).Limit(limit)
-	case offset > 100000: // 深分页: SELECT * FROM demo INNER JOIN (SELECT id FROM demo WHERE ... ORDER BY id LIMIT ?,?) AS tmp USING(id)
-		// 子查询带过滤条件,JOIN 出的 id 集合已是过滤后的;外层用独立的 Model 不带过滤,避免 WHERE 冗余。
+	case offset > 100000: // 深分页: SELECT * FROM Demo INNER JOIN (SELECT id FROM Demo WHERE ... ORDER BY id LIMIT ?,?) AS tmp USING(id)
 		subQuery := filter().Order(order).Select("id").Offset(offset).Limit(limit)
 		model = c.WithContext(ctx).Model(c.model).Order(order).Joins("INNER JOIN (?) AS tmp USING(id)", subQuery)
 	default:
@@ -94,12 +99,18 @@ func (c *customDemoDb) ListWithMore(ctx context.Context, args *DemoSearch) ([]*D
 	// 各调用之间不共享 Statement,天然无污染。过滤逻辑只写这一处。
 	filter := func() *gorm.DB {
 		d := c.WithContext(ctx).Model(c.model)
-		// TODO 业务条件补充
+		// TODO 自定义条件处理
 
 		return d
 	}
 
-	order := c.HandleRank(args.OrderField, args.OrderType, "`"+TableDemo+"`.`id`")
+	order := c.HandleRank(
+		args.OrderField,
+		args.OrderType,
+		DemoFields,
+		TableDemo+".id",
+	)
+
 	offset, limit := c.HandlePage(args.Page, args.PageSize)
 	// 在请求的数据基础上+1，以此来判断是否还有数据
 	want := limit
@@ -107,14 +118,13 @@ func (c *customDemoDb) ListWithMore(ctx context.Context, args *DemoSearch) ([]*D
 
 	var model *gorm.DB
 	switch {
-	case args.LastId > 0 && args.Page > 1:
-		lastCond := "`id` > ?"
-		if args.OrderType != 0 {
-			lastCond = "`id` < ?"
+	case args.LastId > 0 && args.Page > 1: // 游标分页
+		lastCond := "`id` < ?"
+		if args.OrderType == 1 {
+			lastCond = "`id` > ?"
 		}
 		model = filter().Where(lastCond, args.LastId).Order(order).Limit(limit)
 	case offset > 100000: // 深分页
-		// 子查询带过滤条件,JOIN 出的 id 集合已是过滤后的;外层用独立的 Model 不带过滤,避免 WHERE 冗余。
 		subQuery := filter().Order(order).Select("id").Offset(offset).Limit(limit)
 		model = c.WithContext(ctx).Model(c.model).Order(order).Joins("INNER JOIN (?) AS tmp USING(id)", subQuery)
 	default:

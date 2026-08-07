@@ -78,9 +78,9 @@ func (c *customDemoDb) ListWithTotal(ctx context.Context, args *DemoSearch) ([]*
 	var model *gorm.DB
 	switch {
 	case args.LastId > 0 && args.Page > 1: // 游标分页: time>lastTime or (time==lastTime and id>lastId)
-		lastCond := "`id` > ?"
-		if args.OrderType != 0 {
-			lastCond = "`id` < ?"
+		lastCond := "`id` < ?"
+		if args.OrderType == 1 {
+			lastCond = "`id` > ?"
 		}
 		model = filter().Where(lastCond, args.LastId).Order(order).Limit(limit)
 	case offset > 100000: // 深分页: SELECT * FROM demo INNER JOIN (SELECT id FROM demo WHERE ... ORDER BY id LIMIT ?,?) AS tmp USING(id)
@@ -125,9 +125,9 @@ func (c *customDemoDb) ListWithMore(ctx context.Context, args *DemoSearch) ([]*D
 	var model *gorm.DB
 	switch {
 	case args.LastId > 0 && args.Page > 1:
-		lastCond := "`id` > ?"
-		if args.OrderType != 0 {
-			lastCond = "`id` < ?"
+		lastCond := "`id` < ?"
+		if args.OrderType == 1 {
+			lastCond = "`id` > ?"
 		}
 		model = filter().Where(lastCond, args.LastId).Order(order).Limit(limit)
 	case offset > 100000: // 深分页
