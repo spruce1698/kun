@@ -136,7 +136,7 @@ func TracingWithLogger(log *xlog.Logger, serviceName string) gin.HandlerFunc {
 			Referer:    c.Request.Referer(),
 		}
 
-		loggerWithTrace.Info("", xlog.KVAny("content", requestInfo))
+		loggerWithTrace.Info(ctx, "http request", requestInfo)
 
 		c.Next()
 
@@ -154,11 +154,11 @@ func TracingWithLogger(log *xlog.Logger, serviceName string) gin.HandlerFunc {
 		}
 		// 根据状态码选择日志级别
 		if c.Writer.Status() >= 500 {
-			loggerWithTrace.Error("", xlog.KVAny("content", responseInfo))
+			loggerWithTrace.Error(ctx, "http response", nil, responseInfo)
 		} else if c.Writer.Status() >= 400 {
-			loggerWithTrace.Warn("", xlog.KVAny("content", responseInfo))
+			loggerWithTrace.Warn(ctx, "http response", responseInfo)
 		} else {
-			loggerWithTrace.Info("", xlog.KVAny("content", responseInfo))
+			loggerWithTrace.Info(ctx, "http response", responseInfo)
 		}
 
 		// 记录追踪信息

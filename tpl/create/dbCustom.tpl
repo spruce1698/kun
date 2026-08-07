@@ -88,9 +88,6 @@ func (c *custom{{.StructName}}Db) ListWithTotal(ctx context.Context, args *{{.St
 	if err := model.Find(&result).Error; err != nil {
 		return nil, 0, err
 	}
-	if len(result) == 0 {
-		return nil, 0, ErrNotFound
-	}
 	return result, total, nil
 }
 

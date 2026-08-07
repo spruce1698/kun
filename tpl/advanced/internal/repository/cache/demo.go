@@ -14,7 +14,7 @@ import (
 
 	"advanced/pkg/xredis"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 var _ DemoCache = (*demoCache)(nil)
@@ -40,6 +40,12 @@ type (
 		Test4  int32  // 测试4
 		RoleId int64  // 角色id
 	}
+)
+
+const (
+	// defaultExpiration 当调用方未指定(<=0)TTL 时的默认缓存时长。
+	// 避免传 0 时 Redis Set 永不过期,导致脏数据长期残留(需手动 Delete 才能失效)。
+	defaultExpiration = 5 * time.Minute
 )
 
 func NewDemoCache(c *xredis.Client) DemoCache {
@@ -84,7 +90,12 @@ func (d *demoCache) Set(ctx context.Context, id int64, data *Demo, expiration in
 	if valueErr != nil {
 		return valueErr
 	}
-	err := d.common.Set(ctx, key, string(value), time.Duration(expiration)*time.Second).Err()
+	// expiration<=0 时用默认 TTL,避免 Redis key 永不过期导致脏数据残留
+	ttl := time.Duration(expiration) * time.Second
+	if expiration <= 0 {
+		ttl = defaultExpiration
+	}
+	err := d.common.Set(ctx, key, string(value), ttl).Err()
 	if err != nil {
 		return err
 	}

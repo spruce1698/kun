@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"os"
 	"runtime/debug"
 	"strings"
@@ -49,10 +48,12 @@ func Recovery(stack bool) gin.HandlerFunc {
 					}
 				}
 
-				httpRequest, _ := httputil.DumpRequest(ctx.Request, false)
+				// 脱敏:DumpRequest 包含原始请求头(Authorization等),不直接记入日志,
+				// 改为仅记录过滤后的 headers map,防止 panic 日志泄漏凭证。
+				sanitizedHeaders := xlog.FilterHeaders(ctx.Request.Header)
 				if brokenPipe {
 					xlog.Error(lCtx, "Recovery HTTP request", panicErr, map[string]any{
-						"request": string(httpRequest),
+						"headers": sanitizedHeaders,
 						"url":     ctx.Request.URL.Path,
 					})
 					// If the connection is dead, we can't write a status to it.
@@ -63,14 +64,16 @@ func Recovery(stack bool) gin.HandlerFunc {
 
 				if stack {
 					xlog.Error(lCtx, "[Recovery from panic]", panicErr, map[string]any{
-						"request": string(httpRequest),
+						"method":  ctx.Request.Method,
 						"url":     ctx.Request.URL.Path,
+						"headers": sanitizedHeaders,
 						"stack":   string(debug.Stack()),
 					})
 				} else {
 					xlog.Error(lCtx, "[Recovery from panic]", panicErr, map[string]any{
-						"request": string(httpRequest),
+						"method":  ctx.Request.Method,
 						"url":     ctx.Request.URL.Path,
+						"headers": sanitizedHeaders,
 					})
 				}
 				ctx.AbortWithStatus(http.StatusInternalServerError)

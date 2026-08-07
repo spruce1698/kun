@@ -19,22 +19,39 @@ const (
 var (
 	// 需要过滤的敏感字段
 	sensitiveFields = map[string]struct{}{
+		// 认证凭证
 		"password":      {},
+		"passwd":        {},
+		"pwd":           {},
 		"token":         {},
 		"secret":        {},
 		"authorization": {},
 		"api_key":       {},
+		"apikey":        {},
 		"access_token":  {},
 		"refresh_token": {},
-		"credit_card":   {},
-		"card_number":   {},
-		"cvv":           {},
-		"pin":           {},
-		"key":           {},
-		"cert":          {},
-		"private":       {},
-		"cookie":        {},
+		"bearer":        {},
+		"credential":    {},
+		"session_id":    {},
 		"session":       {},
+		"cookie":        {},
+		// 加密密钥
+		"key":         {},
+		"cert":        {},
+		"private":     {},
+		"private_key": {},
+		"signing_key": {},
+		// 支付信息
+		"credit_card":  {},
+		"card_number":  {},
+		"cvv":          {},
+		"cvc":          {},
+		"pin":          {},
+		"bank_account": {},
+		// 个人隐私
+		"id_card":  {},
+		"idnumber": {},
+		"ssn":      {},
 	}
 
 	// 支持的内容类型
@@ -197,6 +214,7 @@ func FilterContent(contentType string, content []byte) string {
 }
 
 // FilterHeaders 过滤请求头中的敏感信息
+// 多值 header 用 ", " 拼接(如 Set-Cookie),敏感 header 整体脱敏。
 func FilterHeaders(headers map[string][]string) map[string]string {
 	if len(headers) == 0 {
 		return nil
@@ -211,13 +229,15 @@ func FilterHeaders(headers map[string][]string) map[string]string {
 		if isSensitive(key) {
 			filtered[key] = maskValue
 		} else {
-			filtered[key] = values[0]
+			filtered[key] = strings.Join(values, ", ")
 		}
 	}
 	return filtered
 }
 
 // FilterStruct 过滤结构体
+// 递归遍历结构体字段,对敏感字段进行脱敏。
+// 对非 string 类型(如 []byte, int, float 等)统一替换为零值,避免信息泄漏。
 func FilterStruct(v interface{}) interface{} {
 	val := reflect.ValueOf(v)
 	if val.Kind() == reflect.Ptr {
@@ -234,9 +254,8 @@ func FilterStruct(v interface{}) interface{} {
 		fieldType := val.Type().Field(i)
 
 		if isSensitive(fieldType.Name) || isSensitive(fieldType.Tag.Get("json")) {
-			if field.Kind() == reflect.String {
-				result.Field(i).SetString(maskValue)
-			}
+			// 所有敏感字段统一清零,不再区分 string/非 string
+			result.Field(i).Set(reflect.Zero(field.Type()))
 			continue
 		}
 

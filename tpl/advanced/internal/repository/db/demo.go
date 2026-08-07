@@ -2,10 +2,9 @@ package db
 
 import (
 	"context"
+	"errors"
 
 	"gorm.io/gorm"
-
-	"github.com/pkg/errors"
 )
 
 //go:generate mockgen -source=./demo.go -destination=../../../test/mocks/repository/db/demo.go -package mock_repo_db -aux_files db=./demo_gen.go
@@ -88,9 +87,8 @@ func (c *customDemoDb) ListWithTotal(ctx context.Context, args *DemoSearch) ([]*
 	if err := model.Find(&result).Error; err != nil {
 		return nil, 0, err
 	}
-	if len(result) == 0 {
-		return nil, 0, ErrNotFound
-	}
+	// total>0 但本页结果为空(如并发删除/分页越界),返回空列表 + 真实 total,不当作 ErrNotFound,
+	// 让上层据此正确渲染分页(而非误判"无数据")。total==0 在上面已提前返回 ErrNotFound。
 	return result, total, nil
 }
 
@@ -170,14 +168,17 @@ func (c *customDemoDb) UpdateTrans(ctx context.Context, id int64, upData *Demo) 
 }
 
 func (c *customDemoDb) FindStream(ctx context.Context, handler func(*Demo) error) error {
-	rows, err := c.WithContext(ctx).Model(c.model).Order("`id` ASC").Rows()
+	// 复用同一 *gorm.DB session 扫描,避免每行都 WithContext 重新派生。
+	// rows 生命周期由 ctx 控制:ctx 取消时 Rows()/Next() 返回错误退出。
+	db := c.WithContext(ctx).Model(c.model).Order("`id` ASC")
+	rows, err := db.Rows()
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var item Demo
-		if err := c.WithContext(ctx).ScanRows(rows, &item); err != nil {
+		if err := db.ScanRows(rows, &item); err != nil {
 			return err
 		}
 		if err := handler(&item); err != nil {

@@ -8,6 +8,7 @@ package token
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -20,7 +21,6 @@ import (
 	"advanced/pkg/xredis"
 
 	v5 "github.com/golang-jwt/jwt/v5"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -162,15 +162,17 @@ func (j *Jwt) Gen(userId, roleId int64) (*JwtToken, error) {
 }
 
 // Refresh 刷新token AccessToken和RefreshToken
-func (j *Jwt) Refresh(accessToken, refreshToken string) (*JwtToken, error) {
-	ctx := context.Background()
+func (j *Jwt) Refresh(ctx context.Context, accessToken, refreshToken string) (*JwtToken, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	keepOld := true
 	// 先判断 refresh token 是否有效
 	refreshClaims, err := j.Parse(ctx, refreshToken, TokenTypeRefresh)
 	if err != nil {
 		return nil, err
 	}
-	// 3min前的token生成新的token,3min内不变
+	// 3min前的token生成新的token,3min内不变(防抖:避免短时间内重复刷新产生大量轮换)
 	if refreshClaims.IssuedAt.Unix() < time.Now().Unix()-180 {
 		keepOld = false
 	}
@@ -187,6 +189,10 @@ func (j *Jwt) Refresh(accessToken, refreshToken string) (*JwtToken, error) {
 	}
 
 	if keepOld {
+		// 防抖窗口内复用旧 token:需校验 ExpiresAt 非 nil,过期/异常 claims 不返回有效时间戳
+		if accessClaims.ExpiresAt == nil || refreshClaims.ExpiresAt == nil {
+			return nil, ErrInvalidToken
+		}
 		return &JwtToken{
 			AccessToken:     accessToken,                    // 访问token
 			AccessExpireAt:  accessClaims.ExpiresAt.Unix(),  // 访问token过期时间戳
@@ -195,15 +201,26 @@ func (j *Jwt) Refresh(accessToken, refreshToken string) (*JwtToken, error) {
 		}, nil
 	}
 
-	// 原子抢占旧 refreshToken:失败说明已被其它请求轮换过 => 视为复用(泄露信号),
-	// 立即吊销该用户的整个 token 家族(access + refresh 都会被按用户黑名单挡掉)
+	// 原子抢占旧 refreshToken:
+	//   - claimed=true:本次轮换成功,继续签发新 token
+	//   - claimed=false && err==nil:已被其它请求轮换过 => 视为复用(泄露信号),
+	//     立即吊销该用户的整个 token 家族(access + refresh 都会被按用户黑名单挡掉)
+	//   - err!=nil:Redis 故障,无法判定是否复用,不触发封禁,返回错误让调用方重试,
+	//     避免 Redis 抖动误封禁用户
 	now := time.Now()
+	if refreshClaims.ExpiresAt == nil {
+		return nil, ErrExpiredToken
+	}
 	refreshRemain := refreshClaims.ExpiresAt.Unix() - now.Unix()
 	if refreshRemain <= 0 {
 		// refresh token 已过期(解析阶段允许过期,到这里才真正判定),直接返回错误,不再尝试抢占
 		return nil, ErrExpiredToken
 	}
-	if claimed, _ := j.DisuseIfAbsent(ctx, refreshToken, refreshRemain); !claimed {
+	claimed, claimedErr := j.DisuseIfAbsent(ctx, refreshToken, refreshRemain)
+	if claimedErr != nil {
+		return nil, fmt.Errorf("refresh token 轮换失败,请重试: %w", claimedErr)
+	}
+	if !claimed {
 		_ = j.Disuse(ctx, refreshClaims.Subject, refreshRemain)
 		return nil, ErrInvalidToken
 	}
@@ -212,8 +229,10 @@ func (j *Jwt) Refresh(accessToken, refreshToken string) (*JwtToken, error) {
 	token, tokenErr := j.Gen(userId, roleId)
 	if tokenErr == nil && token != nil {
 		// 旧 accessToken 一并废弃(若仍未过期),刷新后立即失效,避免旧 token 在自然过期前继续可用
-		if accessRemain := accessClaims.ExpiresAt.Unix() - now.Unix(); accessRemain > 0 {
-			_ = j.Disuse(ctx, accessToken, accessRemain)
+		if accessClaims.ExpiresAt != nil {
+			if accessRemain := accessClaims.ExpiresAt.Unix() - now.Unix(); accessRemain > 0 {
+				_ = j.Disuse(ctx, accessToken, accessRemain)
+			}
 		}
 	}
 	return token, tokenErr

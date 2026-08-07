@@ -7,11 +7,11 @@
 package utils
 
 import (
+	"errors"
 	"net"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pkg/errors"
 )
 
 // 获取有效的端口
