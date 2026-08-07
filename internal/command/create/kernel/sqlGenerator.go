@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"runtime"
 	"strings"
 	"text/template"
 	"unicode"
@@ -121,8 +120,6 @@ var (
 		},
 	}
 )
-
-func init() { runtime.GOMAXPROCS(runtime.NumCPU()) }
 
 // code generator
 type Generator struct {

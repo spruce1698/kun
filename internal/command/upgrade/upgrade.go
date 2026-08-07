@@ -1,6 +1,7 @@
 package upgrade
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 
@@ -14,15 +15,15 @@ var CmdUpgrade = &cobra.Command{
 	Short:   "Upgrade the kun command.",
 	Long:    "Upgrade the kun command.",
 	Example: "kun upgrade",
-	Run: func(_ *cobra.Command, _ []string) {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		output.Success("go install %s", config.KunUrl)
 		cmd := exec.Command("go", "install", config.KunUrl)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			output.Error("go install %s error: %s", config.KunUrl, err)
-			return
+			return fmt.Errorf("go install %s error: %w", config.KunUrl, err)
 		}
 		output.Success("kun upgrade successfully!")
+		return nil
 	},
 }

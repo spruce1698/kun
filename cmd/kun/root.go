@@ -2,20 +2,23 @@ package kun
 
 import (
 	"github.com/spruce1698/kun/config"
-	"github.com/spruce1698/kun/internal/command/wire"
-
-	"github.com/spf13/cobra"
 	"github.com/spruce1698/kun/internal/command/create"
 	"github.com/spruce1698/kun/internal/command/new"
 	"github.com/spruce1698/kun/internal/command/run"
 	"github.com/spruce1698/kun/internal/command/upgrade"
+	"github.com/spruce1698/kun/internal/command/wire"
+
+	"github.com/spf13/cobra"
 )
 
 var CmdRoot = &cobra.Command{
-	Use:     "kun",
-	Example: "kun new demo",
-	Short:   config.Short,
-	Version: config.Short,
+	Use:               "kun",
+	Example:           "kun new demo",
+	Short:             config.Short,
+	Version:           config.Version,
+	SilenceErrors:     true, // 子命令失败由其自行 output.Error 提示,避免重复打印 "Error: ..."
+	SilenceUsage:      true, // 运行期错误不打印 usage,仅参数校验错误由 cobra 打印
+	CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 }
 
 func init() {

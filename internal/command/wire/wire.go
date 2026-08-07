@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,7 +19,7 @@ var CmdWire = &cobra.Command{
 	Short:   "kun wire [wire.go path]",
 	Long:    "kun wire [wire.go path]",
 	Example: "kun wire server/wire",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cmdArgs, _ := helper.SplitArgs(cmd, args)
 		var dir string
 		if len(cmdArgs) > 0 {
@@ -26,21 +27,18 @@ var CmdWire = &cobra.Command{
 		}
 		base, err := os.Getwd()
 		if err != nil {
-			output.Error("Error: %s", err)
-			return
+			return fmt.Errorf("getwd error: %w", err)
 		}
 		if dir == "" {
 			// find the directory containing the cmd/*
 			wirePath, err := findWire(base)
 
 			if err != nil {
-				output.Error("Error: %s", err)
-				return
+				return err
 			}
 			switch len(wirePath) {
 			case 0:
-				output.Error("Error: The wire.go cannot be found in the current directory")
-				return
+				return fmt.Errorf("the wire.go cannot be found in the current directory")
 			case 1:
 				for _, v := range wirePath {
 					dir = v
@@ -58,12 +56,13 @@ var CmdWire = &cobra.Command{
 				}
 				e := survey.AskOne(prompt, &dir)
 				if e != nil || dir == "" {
-					return
+					// 交互中断,静默退出
+					return nil
 				}
 				dir = wirePath[dir]
 			}
 		}
-		wire(dir)
+		return wireRun(dir)
 	},
 }
 var CmdWireAll = &cobra.Command{
@@ -71,7 +70,7 @@ var CmdWireAll = &cobra.Command{
 	Short:   "kun wire all",
 	Long:    "kun wire all",
 	Example: "kun wire all",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cmdArgs, _ := helper.SplitArgs(cmd, args)
 		var dir string
 		if len(cmdArgs) > 0 {
@@ -79,40 +78,44 @@ var CmdWireAll = &cobra.Command{
 		}
 		base, err := os.Getwd()
 		if err != nil {
-			output.Error("Error: %s", err)
-			return
+			return fmt.Errorf("getwd error: %w", err)
 		}
 		if dir == "" {
 			// find the directory containing the cmd/*
 			wirePath, err := findWire(base)
 
 			if err != nil {
-				output.Error("Error: %s", err)
-				return
+				return err
 			}
 			switch len(wirePath) {
 			case 0:
-				output.Error("Error: The wire.go cannot be found in the current directory")
-				return
+				return fmt.Errorf("the wire.go cannot be found in the current directory")
 			default:
+				// 逐个执行;收集错误但继续处理剩余 wire.go,最终汇总返回首个错误。
+				var firstErr error
 				for _, v := range wirePath {
-					wire(v)
+					if err := wireRun(v); err != nil && firstErr == nil {
+						firstErr = err
+					}
 				}
+				return firstErr
 			}
 		}
-
+		return nil
 	},
 }
 
-func wire(wirePath string) {
+// wireRun 在指定目录执行 wire 命令。
+func wireRun(wirePath string) error {
 	output.Success("wire.go path: %s", wirePath)
 	cmd := exec.Command("wire")
 	cmd.Dir = wirePath
 	out, err := cmd.CombinedOutput()
-	if err != nil {
-		output.Error("wire fail: %s", err)
-	}
 	output.Success(string(out))
+	if err != nil {
+		return fmt.Errorf("wire fail (%s): %w", wirePath, err)
+	}
+	return nil
 }
 func findWire(base string) (map[string]string, error) {
 	wd, err := os.Getwd()
@@ -125,11 +128,12 @@ func findWire(base string) (map[string]string, error) {
 		wd += "/"
 	}
 
-	// walkDir 向上搜索 wire.go 文件，返回找到的 wire.go 路径映射和是否已到达项目根目录（含 go.mod）
+	// walkDir 在 dir 范围内搜索 wire.go 文件，返回找到的 wire.go 路径映射和是否已到达项目根目录（含 go.mod）。
+	// 注意: walkErr 使用局部 := 声明,避免捕获/污染外层 err。
 	walkDir := func(dir string) (map[string]string, bool, error) {
 		wirePath := make(map[string]string)
 		foundRoot := false
-		err = filepath.Walk(dir, func(walkPath string, info os.FileInfo, err error) error {
+		walkErr := filepath.Walk(dir, func(walkPath string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
@@ -144,10 +148,13 @@ func findWire(base string) (map[string]string, error) {
 			}
 			return nil
 		})
-		return wirePath, foundRoot, err
+		return wirePath, foundRoot, walkErr
 	}
 
-	for i := 0; i < 5; i++ {
+	// 向上最多搜索 5 层目录。正常 monorepo/嵌套项目 cmd 层级不会超过此深度;
+	// 到达含 go.mod 的根目录即停止。若仍找不到,返回空映射由调用方报错。
+	const maxUpLevels = 5
+	for i := 0; i < maxUpLevels; i++ {
 		cmd, reachedRoot, walkErr := walkDir(base)
 		if walkErr != nil {
 			return nil, walkErr

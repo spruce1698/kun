@@ -7,7 +7,3 @@ var CreateTplFS embed.FS
 
 //go:embed basic.zip advanced.zip
 var NewTplZipFS embed.FS
-
-//
-// //go:embed basic/* advanced/*
-// var NewTplDirFS embed.FS

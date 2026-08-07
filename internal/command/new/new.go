@@ -27,7 +27,7 @@ var CmdNew = &cobra.Command{
 	Example: "kun new demo",
 	Short:   "create a new project.",
 	Long:    `create a new project with kun layout.`,
-	Run:     run,
+	RunE:    run,
 }
 var (
 	repoURL string
@@ -41,7 +41,7 @@ func NewProject() *Project {
 	return &Project{}
 }
 
-func run(_ *cobra.Command, args []string) {
+func run(_ *cobra.Command, args []string) error {
 	p := NewProject()
 	switch len(args) {
 	case 0:
@@ -51,38 +51,36 @@ func run(_ *cobra.Command, args []string) {
 			Suggest: nil,
 		}, &p.ProjectName, survey.WithValidator(survey.Required))
 		if err != nil {
-			return
+			// 交互中断(Ctrl+C / EOF)不计为错误,静默退出
+			return nil
 		}
 	case 1:
 		p.ProjectName = args[0]
 	default:
-		output.Error("accepts %d arg(s), received %d", 1, len(args))
-		return
+		return fmt.Errorf("accepts %d arg(s), received %d", 1, len(args))
 	}
 
 	// clone repo
 	yes, err := p.cloneTemplate()
 	if err != nil || !yes {
-		return
+		return err
 	}
 
-	err = p.replacePackageName()
-	if err != nil {
-		return
+	if err = p.replacePackageName(); err != nil {
+		return err
 	}
-	err = p.modTidy()
-	if err != nil {
-		return
+	if err = p.modTidy(); err != nil {
+		return err
 	}
 	p.rmGit()
 	if err := p.installWire(); err != nil {
-		output.Error("project created but wire install failed: %s", err)
-		return
+		return fmt.Errorf("project created but wire install failed: %w", err)
 	}
 	output.Success("Project [ %s ] created successfully!", p.ProjectName)
 	output.Success("Done. Now run:")
 	output.Success("› cd %s ", p.ProjectName)
 	output.Success("› kun run \n")
+	return nil
 }
 
 func (p *Project) cloneTemplate() (bool, error) {
@@ -97,15 +95,14 @@ func (p *Project) cloneTemplate() (bool, error) {
 		}
 		err := survey.AskOne(prompt, &overwrite)
 		if err != nil {
-			return false, err
+			// 交互中断,静默退出
+			return false, nil
 		}
 		if !overwrite {
 			return false, nil
 		}
-		err = os.RemoveAll(p.ProjectName)
-		if err != nil {
-			output.Error("remove old project error: %s", err)
-			return false, err
+		if err = os.RemoveAll(p.ProjectName); err != nil {
+			return false, fmt.Errorf("remove old project error: %w", err)
 		}
 	}
 
@@ -126,12 +123,8 @@ func (p *Project) cloneTemplate() (bool, error) {
 		}
 		err := survey.AskOne(prompt, &layout)
 		if err != nil {
-			return false, err
-		}
-		err = os.RemoveAll(p.ProjectName)
-		if err != nil {
-			output.Error("remove old project error: %s", err)
-			return false, err
+			// 交互中断,静默退出
+			return false, nil
 		}
 
 		templateName := "basic"
@@ -141,19 +134,15 @@ func (p *Project) cloneTemplate() (bool, error) {
 
 		output.Success("Generate code from template: %s", templateName)
 
-		err = handlerZip(p.ProjectName, templateName)
-		if err != nil {
-			output.Error("Generate code from template: %s, error: %s", templateName, err)
-			return false, err
+		if err = handlerZip(p.ProjectName, templateName); err != nil {
+			return false, fmt.Errorf("generate code from template %s error: %w", templateName, err)
 		}
 
 	} else { // clone from repoURL
 		output.Success("git clone %s", repoURL)
 		cmd := exec.Command("git", "clone", repoURL, p.ProjectName)
-		_, err := cmd.CombinedOutput()
-		if err != nil {
-			output.Error("git clone %s error: %s", repoURL, err)
-			return false, err
+		if _, err := cmd.CombinedOutput(); err != nil {
+			return false, fmt.Errorf("git clone %s error: %w", repoURL, err)
 		}
 	}
 	return true, nil
@@ -165,17 +154,14 @@ func (p *Project) replacePackageName() error {
 		return err
 	}
 
-	err = p.replaceFiles(packageName)
-	if err != nil {
+	if err = p.replaceFiles(packageName); err != nil {
 		return err
 	}
 
 	cmd := exec.Command("go", "mod", "edit", "-module", p.ProjectName)
 	cmd.Dir = p.ProjectName
-	_, err = cmd.CombinedOutput()
-	if err != nil {
-		output.Error("go mod edit error: %s", err)
-		return err
+	if _, err = cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("go mod edit error: %w", err)
 	}
 	return nil
 }
@@ -184,8 +170,7 @@ func (p *Project) modTidy() error {
 	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Dir = p.ProjectName
 	if err := cmd.Run(); err != nil {
-		output.Error("go mod tidy error: %s", err)
-		return err
+		return fmt.Errorf("go mod tidy error: %w", err)
 	}
 	return nil
 }
@@ -230,8 +215,7 @@ func (p *Project) replaceFiles(packageName string) error {
 		return nil
 	})
 	if err != nil {
-		output.Error("walk file error: %s", err)
-		return err
+		return fmt.Errorf("walk file error: %w", err)
 	}
 	return nil
 }

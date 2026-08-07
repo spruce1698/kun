@@ -82,16 +82,17 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
 该项目的架构采用了典型的分层架构，主要包括以下几个模块：
 
 - cmd: 应用程序的主要入口。
+
   - server: http服务的入口，包含主函数和依赖注入的代码。
     - wire: 依赖注入代码
       - wire.go: 使用Wire库生成的依赖注入代码。
         - wire_gen.go: 使用Wire库生成的依赖注入代码。
     - main.go: 主函数，用于启动应用http服务。
-
 - config: 应用程序的配置文件。
-  - local.yml: 本地环境的配置文件。
 
+  - local.yml: 本地环境的配置文件。
 - internal: 应用程序的内部代码。
+
   - controller: 处理HTTP请求的控制器。
     - serverDI.go: server的控制器依赖注入文件。
   - global: 常量/全局变量代码。
@@ -120,6 +121,7 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
     - serverDI.go: server的服务依赖注入文件。。
 - pkg: 应用程序的公共包。
 - scripts:  项目脚本。
+
   - swagger.sh: 生成swagger文档的脚本。
 - test: mock代码
 - go.mod: Go模块文件。
@@ -131,7 +133,7 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
 
 要使用kun，您需要在系统上安装以下软件：
 
-* Golang 1.25.9或更高版本
+* Golang `1.25.11`或更高版本
 * Git
 * Docker (可选)
 * MySQL5.7或更高版本(可选)

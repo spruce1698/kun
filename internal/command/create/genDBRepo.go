@@ -79,11 +79,10 @@ func detectDBType(dsn string) DBType {
 	return dbMySQL
 }
 
-func genDBRepo(cmd *cobra.Command, args []string) {
+func genDBRepo(cmd *cobra.Command, args []string) error {
 	// 如果参数是 .sql 文件，则解析 SQL 文件生成 repo
 	if strings.HasSuffix(args[0], ".sql") {
-		genDBRepoFromSQL(args)
-		return
+		return genDBRepoFromSQL(args)
 	}
 
 	cmdConf := &CmdParams{
@@ -101,12 +100,10 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 
 	gormDb, err := connectDB(DBType(cmdConf.DBType), cmdConf.DSN)
 	if err != nil {
-		output.Error("connect db server fail: %s", err)
-		return
+		return fmt.Errorf("connect db server fail: %w", err)
 	}
 	if gormDb == nil {
-		output.Error("gorm db is nil")
-		return
+		return fmt.Errorf("gorm db is nil")
 	}
 	// 自定义命名策略
 	gormDb.Config.NamingStrategy = schema.NamingStrategy{
@@ -123,8 +120,7 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 		// Execute tasks for all tables in the database
 		tablesList, err = gormDb.Migrator().GetTables()
 		if err != nil {
-			output.Error("GORM migrator get all tables fail: %s", err)
-			return
+			return fmt.Errorf("GORM migrator get all tables fail: %w", err)
 		}
 	} else {
 		tablesList = cmdConf.Tables
@@ -134,6 +130,7 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 	}
 
 	g.Execute()
+	return nil
 }
 
 // defaultSQLConfig 构建默认 SQLConfig（DB 和 SQL 文件路径共用）
@@ -155,21 +152,20 @@ func defaultSQLConfig() kernel.SQLConfig {
 }
 
 // genDBRepoFromSQL 从 .sql 文件解析 CREATE TABLE 语句并生成 repo
-func genDBRepoFromSQL(args []string) {
+func genDBRepoFromSQL(args []string) error {
 	conf := defaultSQLConfig()
 
 	metas, err := kernel.ParseSQLFile(args[0], &conf)
 	if err != nil {
-		output.Error("parse sql file fail: %s", err)
-		return
+		return fmt.Errorf("parse sql file fail: %w", err)
 	}
 	if len(metas) == 0 {
 		output.Warn("no CREATE TABLE found in file: %s", args[0])
-		return
+		return nil
 	}
 
 	var tableFilter []string
-	if len(args) > 1 && args[1] != "" && args[1] != "*" && args[1] != "." {
+	if len(args) > 1 && args[1] != "" && args[1] != "*" {
 		tableFilter = strings.Split(args[1], ",")
 	}
 
@@ -195,4 +191,5 @@ func genDBRepoFromSQL(args []string) {
 	}
 
 	g.Execute()
+	return nil
 }

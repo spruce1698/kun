@@ -25,16 +25,12 @@ const (
 )
 
 var (
-	// 仅用于 cobra flag 绑定，业务逻辑通过 Create 结构体传递
-	cmdTplPath string
-	cmdForce   bool
-
 	CmdCreate = &cobra.Command{
 		Use:     "create [type] [name]",
 		Short:   "Create a new ctrl/svc/cs/rt/db/cache",
 		Example: "kun create ctrl user",
 		Args:    cobra.ExactArgs(2),
-		Run:     func(cmd *cobra.Command, args []string) {},
+		RunE:    func(cmd *cobra.Command, args []string) error { return nil },
 	}
 
 	CmdCreateController = &cobra.Command{
@@ -42,7 +38,7 @@ var (
 		Short:   "Create a new controller",
 		Example: "kun create ctrl user",
 		Args:    cobra.ExactArgs(1),
-		Run:     runCreate,
+		RunE:    runCreate,
 	}
 
 	CmdCreateService = &cobra.Command{
@@ -50,7 +46,7 @@ var (
 		Short:   "Create a new service",
 		Example: "kun create svc user",
 		Args:    cobra.ExactArgs(1),
-		Run:     runCreate,
+		RunE:    runCreate,
 	}
 
 	CmdCreateControllerAndService = &cobra.Command{
@@ -58,7 +54,7 @@ var (
 		Short:   "Create a new controller & service",
 		Example: "kun create cs user",
 		Args:    cobra.ExactArgs(1),
-		Run:     runCreate,
+		RunE:    runCreate,
 	}
 
 	CmdCreateRouter = &cobra.Command{
@@ -66,7 +62,7 @@ var (
 		Short:   "Create a new router",
 		Example: "kun create rt user",
 		Args:    cobra.ExactArgs(1),
-		Run:     runCreate,
+		RunE:    runCreate,
 	}
 
 	CmdCreateDBRepository = &cobra.Command{
@@ -74,7 +70,7 @@ var (
 		Short:   "Create a new DB repository from DB connection or SQL file",
 		Example: `kun create db "name:pwd@tcp(127.0.0.1:3306)/dbname" [t1,t2|t1|*]  OR  kun create db "schema.sql" [t1,t2|*]`,
 		Args:    cobra.RangeArgs(1, 2),
-		Run:     genDBRepo,
+		RunE:    genDBRepo,
 	}
 
 	CmdCreateCacheRepository = &cobra.Command{
@@ -82,27 +78,24 @@ var (
 		Short:   "Create a new cache repository",
 		Example: "kun create cache ",
 		Args:    cobra.ExactArgs(1),
-		Run:     runCreate,
+		RunE:    runCreate,
 	}
 )
 
 func init() {
-	CmdCreateController.Flags().StringVarP(&cmdTplPath, "tpl-path", "t", cmdTplPath, "template path")
-	CmdCreateController.Flags().BoolVarP(&cmdForce, "force", "f", false, "force override existing file")
-
-	CmdCreateService.Flags().StringVarP(&cmdTplPath, "tpl-path", "t", cmdTplPath, "template path")
-	CmdCreateService.Flags().BoolVarP(&cmdForce, "force", "f", false, "force override existing file")
-
-	CmdCreateControllerAndService.Flags().StringVarP(&cmdTplPath, "tpl-path", "t", cmdTplPath, "template path")
-	CmdCreateControllerAndService.Flags().BoolVarP(&cmdForce, "force", "f", false, "force override existing file")
-
-	CmdCreateRouter.Flags().StringVarP(&cmdTplPath, "tpl-path", "t", cmdTplPath, "template path")
-	CmdCreateRouter.Flags().BoolVarP(&cmdForce, "force", "f", false, "force override existing file")
-
-	CmdCreateDBRepository.Flags().StringVarP(&cmdTplPath, "tpl-path", "t", cmdTplPath, "template path")
-
-	CmdCreateCacheRepository.Flags().StringVarP(&cmdTplPath, "tpl-path", "t", cmdTplPath, "template path")
-	CmdCreateCacheRepository.Flags().BoolVarP(&cmdForce, "force", "f", false, "force override existing file")
+	// flag 绑定到各子命令;业务逻辑通过 cmd.Flags().Get* 读取,避免包级变量在多次调用间泄漏。
+	for _, c := range []*cobra.Command{
+		CmdCreateController, CmdCreateService, CmdCreateControllerAndService,
+		CmdCreateRouter, CmdCreateDBRepository, CmdCreateCacheRepository,
+	} {
+		c.Flags().StringP("tpl-path", "t", "", "template path")
+	}
+	for _, c := range []*cobra.Command{
+		CmdCreateController, CmdCreateService, CmdCreateControllerAndService,
+		CmdCreateRouter, CmdCreateCacheRepository,
+	} {
+		c.Flags().BoolP("force", "f", false, "force override existing file")
+	}
 }
 
 type Create struct {
@@ -188,12 +181,11 @@ var genConfigs = map[string]genConfig{
 	},
 }
 
-func runCreate(cmd *cobra.Command, args []string) {
+func runCreate(cmd *cobra.Command, args []string) error {
 	c := NewCreate()
 	projectName, err := helper.GetProjectName(".")
 	if err != nil {
-		output.Error("get project name error: %s", err)
-		return
+		return fmt.Errorf("get project name error: %w", err)
 	}
 	c.ProjectName = projectName
 	// 从当前命令的 flag 读取，避免全局变量在多次调用间泄漏
@@ -217,68 +209,71 @@ func runCreate(cmd *cobra.Command, args []string) {
 	switch c.CmdType {
 	case "ctrl":
 		c.CreateType = TypeController
-		c.generateFile()
+		return c.generateFile()
 
 	case "svc":
 		c.CreateType = TypeService
-		c.generateFile()
+		return c.generateFile()
 
 	case "cs":
 		c.CreateType = TypeController
-		c.generateFile()
-
+		if err := c.generateFile(); err != nil {
+			return err
+		}
 		c.CreateType = TypeService
-		c.generateFile()
+		return c.generateFile()
 
 	case "rt":
 		c.CreateType = TypeRouter
-		c.generateFile()
+		return c.generateFile()
 
 	case "cache":
 		c.CreateType = TypeCache
-		c.generateFile()
+		return c.generateFile()
 
 	default:
-		output.Error("Invalid type: %s", c.CmdType)
+		return fmt.Errorf("invalid type: %s", c.CmdType)
 	}
 
 }
 
-func (c *Create) generateFile() {
+func (c *Create) generateFile() error {
 	config, ok := genConfigs[c.CreateType]
 	if !ok {
-		output.Error("Invalid type: %s", c.CmdType)
-		return
+		return fmt.Errorf("invalid type: %s", c.CmdType)
 	}
 
 	fileName := strings.ToLower(string(c.FileName[0])) + c.FileName[1:] + ".go"
 
-	// 构建文件路径
+	// 构建文件路径(统一用正斜杠,跨平台一致)
 	filePath := c.FilePath
 	if filePath == "" {
-		filePath = filepath.Join(BasePath, config.typePath)
+		filePath = filepath.ToSlash(filepath.Join(BasePath, config.typePath))
 	} else {
-		filePath = filepath.Join(BasePath, config.typePath, filePath)
+		filePath = filepath.ToSlash(filepath.Join(BasePath, config.typePath, filePath))
 	}
-	filePath = strings.ReplaceAll(strings.ReplaceAll(filePath+"/", "//", "/"), "\\", "/")
+	filePath = strings.TrimSuffix(filePath, "/")
 
-	absPath, err := filepath.Abs(filepath.Dir(filepath.Join(filePath, fileName)))
+	absPath, err := filepath.Abs(filepath.Join(filePath, fileName))
 	if err != nil {
-		output.Error("create %s error: %s", c.CreateType, err)
-		return
+		return fmt.Errorf("create %s error: %w", c.CreateType, err)
 	}
-	absLinuxPath := strings.ReplaceAll(absPath, "\\", "/") + "/"
-	if strings.LastIndex(absLinuxPath, filePath) < 1 {
-		output.Error("create %s error: %s", c.CreateType, "not in internal")
-		return
+	absDir := filepath.Dir(absPath)
+	absLinuxPath := filepath.ToSlash(absDir) + "/"
+
+	// 校验生成路径确实落在项目的 internal/<typePath> 下,避免误生成到外部目录。
+	// 用 ToSlash 统一后检查路径段,而非依赖脆弱的子串 LastIndex。
+	expectedSeg := "/internal/" + config.typePath
+	if !strings.Contains(absLinuxPath, expectedSeg) {
+		return fmt.Errorf("create %s error: target path %s is not under %s", c.CreateType, absLinuxPath, expectedSeg)
 	}
 
 	// 计算相对 internal/ 的层级，用于模板中的 ../ 引用（如 mockgen 目标路径）。
 	// 深度 = 自定义子路径（c.FilePath）的路径段数；默认路径时为 0，模板已含固定 ../../../。
-	c.AddUPPath = strings.Repeat("../", strings.Count(strings.ReplaceAll(c.FilePath, "\\", "/"), "/"))
+	c.AddUPPath = strings.Repeat("../", strings.Count(filepath.ToSlash(c.FilePath), "/"))
 
-	// 设置包名
-	_, c.PackageName = filepath.Split(absPath)
+	// 设置包名:取目标目录名(如 controller/service),而非文件名。
+	c.PackageName = filepath.Base(absDir)
 	if c.PackageName == "" {
 		c.PackageName = config.defaultPkg
 	}
@@ -291,54 +286,52 @@ func (c *Create) generateFile() {
 		t, err = template.ParseFiles(path.Join(c.TplPath, fmt.Sprintf("%s.tpl", c.CreateType)))
 	}
 	if err != nil {
-		output.Error("create %s error: %s", c.CreateType, err)
-		return
+		return fmt.Errorf("create %s error: %w", c.CreateType, err)
 	}
 	f, existed, err := createFile(filePath, fileName, c.Force)
 	if err != nil {
-		output.Error("create %s error: %s", c.CreateType, err)
-		return
+		return fmt.Errorf("create %s error: %w", c.CreateType, err)
 	}
 	if existed {
 		output.Warn("warn: file %s%s %s", absLinuxPath, fileName, "already exists.")
-		return
+		return nil
 	}
 	defer func(f *os.File) {
 		_ = f.Close()
 	}(f)
 
-	err = t.Execute(f, c)
-	if err != nil {
-		output.Error("create %s error: %s", c.CreateType, err)
-		return
+	if err = t.Execute(f, c); err != nil {
+		return fmt.Errorf("create %s error: %w", c.CreateType, err)
 	}
 	output.Success("created new %s: %s", c.CreateType, filepath.Join(absLinuxPath, fileName))
 
 	if c.CreateType == TypeCache {
 		if err = generateKeysFile(absLinuxPath, c); err != nil {
-			output.Error("generate keys.go error: %s", err)
-			return
+			return fmt.Errorf("generate keys.go error: %w", err)
 		}
 		output.Success("generate keys.go in %s", absLinuxPath)
 	}
 
 	// 更新DI文件
+	// DI 文件位置:cache 的 DI 文件在 repository/(生成目录 repository/cache 的父级),
+	// 其余类型的 DI 文件就在生成目录本身(controller/service-svc/router)。
+	// 统一传"生成目录",由 Wire2DIFile 向上逐级查找 marker DI 文件。
 	diPath := absLinuxPath
 	if c.CreateType != TypeCache {
-		diPath = strings.ReplaceAll(filepath.Dir(filepath.Join(BasePath, c.CreateType)), "\\", "/")
+		diPath = filepath.ToSlash(filepath.Join(BasePath, config.typePath))
 	}
 
 	contentMap := config.diBuilder(c)
 	if c.PackageName != config.defaultPkg {
-		contentMap["github.com/google/wire"] = "\t\"" + c.ProjectName + "/" + strings.TrimRight(filePath, "/") + "\""
-		contentMap["// ==== Add Rt import  before this line, don't edit this line.===="] = "\t\"" + c.ProjectName + "/" + strings.TrimRight(filePath, "/") + "\""
+		contentMap["github.com/google/wire"] = "\t\"" + c.ProjectName + "/" + filePath + "\""
+		contentMap["// ==== Add Rt import  before this line, don't edit this line.===="] = "\t\"" + c.ProjectName + "/" + filePath + "\""
 	}
 
 	if err = kernel.Wire2DIFile(diPath, contentMap); err != nil {
-		output.Error("generate insert New%s%s to DI file error: %s", c.FileName, config.structSuffix, err)
-		return
+		return fmt.Errorf("generate insert New%s%s to DI file error: %w", c.FileName, config.structSuffix, err)
 	}
 	output.Success("generate insert New%s%s to DI file", c.FileName, config.structSuffix)
+	return nil
 }
 
 // createFile 创建文件。返回 (file, existed, err)：existed 表示文件已存在且未强制覆盖。

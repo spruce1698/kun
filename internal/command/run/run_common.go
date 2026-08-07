@@ -1,6 +1,7 @@
 package run
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -33,7 +34,7 @@ var CmdRun = &cobra.Command{
 	Short:   "kun run [main.go path]",
 	Long:    "kun run [main.go path]",
 	Example: "kun run cmd",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cmdArgs, programArgs := helper.SplitArgs(cmd, args)
 		var dir string
 		if len(cmdArgs) > 0 {
@@ -41,20 +42,17 @@ var CmdRun = &cobra.Command{
 		}
 		base, err := os.Getwd()
 		if err != nil {
-			output.Error("Error: %s", err)
-			return
+			return fmt.Errorf("getwd error: %w", err)
 		}
 		if dir == "" {
 			cmdPath, err := helper.FindMain(base, excludeDir)
 
 			if err != nil {
-				output.Error("Error: %s", err)
-				return
+				return err
 			}
 			switch len(cmdPath) {
 			case 0:
-				output.Error("Error: The cmd directory cannot be found in the current directory")
-				return
+				return fmt.Errorf("the cmd directory cannot be found in the current directory")
 			case 1:
 				for _, v := range cmdPath {
 					dir = v
@@ -73,7 +71,8 @@ var CmdRun = &cobra.Command{
 				}
 				e := survey.AskOne(prompt, &dir)
 				if e != nil || dir == "" {
-					return
+					// 交互中断,静默退出
+					return nil
 				}
 				dir = cmdPath[dir]
 			}
@@ -83,6 +82,7 @@ var CmdRun = &cobra.Command{
 		output.Success("Watch excludeDir %s", excludeDir)
 		output.Success("Watch includeExt %s", includeExt)
 		watch(dir, programArgs)
+		return nil
 	},
 }
 
@@ -225,6 +225,13 @@ func isProcessRunning(cmd *exec.Cmd) bool {
 	return isProcessAlive(cmd)
 }
 
+// buildProbeDelay 是判断 `go run` 是否"立即编译失败"的等待时长。
+// 这是无奈的启发式:`go run` 先编译再运行,无法可靠区分"还在编译"与"已成功启动"。
+// - 取太小:大项目编译耗时超过该值会被误判为成功(实际仍在编译,真正的失败要等 cmdExit)。
+// - 取太大:小项目失败时拖慢重启节奏。
+// 300ms 是经验值;真正可靠的方案应是先 `go build` 到临时二进制再执行,此处为简化实现而妥协。
+const buildProbeDelay = 300 * time.Millisecond
+
 func start(dir string, programArgs []string) *exec.Cmd {
 	cmd := exec.Command("go", append([]string{"run", dir}, programArgs...)...)
 	applyProcAttr(cmd)
@@ -240,7 +247,7 @@ func start(dir string, programArgs []string) *exec.Cmd {
 	// go run 需先编译再运行,短暂等待判断是否编译失败立即退出。
 	// 注意: 这里不调用 cmd.Wait(),Wait 由 watch 统一管理(同一 cmd 只能 Wait 一次)。
 	output.Success("building & running...") // 提示用户正在编译启动,避免误以为卡住
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(buildProbeDelay)
 	if !isProcessRunning(cmd) {
 		// 进程已退出,Wait 一次拿回编译错误(此时 Wait 不会阻塞,进程已死)
 		if waitErr := cmd.Wait(); waitErr != nil {
