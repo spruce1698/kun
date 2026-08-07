@@ -1,15 +1,7 @@
-package fmt
+package output
 
 import (
-	"fmt"
-
 	"github.com/fatih/color"
-)
-
-var (
-	Fscanf  = fmt.Fscanf
-	Sprintf = fmt.Sprintf
-	Errorf  = fmt.Errorf
 )
 
 func Green(format string, args ...any) {

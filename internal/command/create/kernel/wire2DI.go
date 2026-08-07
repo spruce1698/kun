@@ -2,11 +2,10 @@ package kernel
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/spruce1698/kun/pkg/fmt"
 )
 
 // 写入都DI文件,
@@ -18,23 +17,36 @@ func Wire2DIFile(filePath string, contentMap map[string]string) error {
 	if err != nil {
 		return fmt.Errorf("failed to read the directory: %w", err)
 	}
-	DIFileFound := false
-	// 遍历文件
+
+	// 找出确实包含任一 marker 的 DI 文件，避免对无关文件做无意义的改写
+	diFiles := make([]string, 0, len(fileInfos))
 	for _, fileInfo := range fileInfos {
 		if fileInfo.IsDir() {
 			continue
 		}
-		DIFileFound = true
-		DIPath := filepath.Join(dirName, fileInfo.Name())
-		for markerLine, appendContent := range contentMap {
-			if err = wireProcess(DIPath, markerLine, appendContent); err != nil {
-				return fmt.Errorf("processing files %s Failed: %w", DIPath, err)
+		p := filepath.Join(dirName, fileInfo.Name())
+		content, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		for markerLine := range contentMap {
+			if bytes.Contains(content, []byte(markerLine)) {
+				diFiles = append(diFiles, p)
+				break
 			}
 		}
 	}
-	// 没有找到DI文件
-	if !DIFileFound {
+
+	if len(diFiles) == 0 {
 		return fmt.Errorf("the DI file does not exist")
+	}
+
+	for _, diFile := range diFiles {
+		for markerLine, appendContent := range contentMap {
+			if err = wireProcess(diFile, markerLine, appendContent); err != nil {
+				return fmt.Errorf("processing files %s Failed: %w", diFile, err)
+			}
+		}
 	}
 	return nil
 }

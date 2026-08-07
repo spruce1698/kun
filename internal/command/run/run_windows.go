@@ -6,211 +6,28 @@ package run
 import (
 	"os"
 	"os/exec"
-	"os/signal"
-	"path/filepath"
-	"sort"
 	"strconv"
-	"strings"
 	"syscall"
-	"time"
-
-	"github.com/AlecAivazis/survey/v2"
-	"github.com/fsnotify/fsnotify"
-	"github.com/spf13/cobra"
-
-	"github.com/spruce1698/kun/config"
-	"github.com/spruce1698/kun/pkg/fmt"
-	"github.com/spruce1698/kun/pkg/helper"
 )
 
-var quit = make(chan os.Signal, 1)
-
-type Run struct {
+// signals 返回本平台需要监听的退出信号。
+func signals() []os.Signal {
+	return []os.Signal{syscall.SIGINT, syscall.SIGTERM}
 }
 
-var excludeDir string
-var includeExt string
-
-func init() {
-	CmdRun.Flags().StringVarP(&excludeDir, "excludeDir", "", excludeDir, `eg: kun run --excludeDir="tmp,vendor,.git,.idea"`)
-	CmdRun.Flags().StringVarP(&includeExt, "includeExt", "", includeExt, `eg: kun run --includeExt="go,tpl,tmpl,html,yaml,yml,toml,ini,json"`)
-	if excludeDir == "" {
-		excludeDir = config.RunExcludeDir
-	}
-	if includeExt == "" {
-		includeExt = config.RunIncludeExt
-	}
-}
-
-var CmdRun = &cobra.Command{
-	Use:     "run",
-	Short:   "kun run [main.go path]",
-	Long:    "kun run [main.go path]",
-	Example: "kun run cmd",
-	Run: func(cmd *cobra.Command, args []string) {
-		cmdArgs, programArgs := helper.SplitArgs(cmd, args)
-		var dir string
-		if len(cmdArgs) > 0 {
-			dir = cmdArgs[0]
-		}
-		base, err := os.Getwd()
-		if err != nil {
-			fmt.Error("Error: %s", err)
-			return
-		}
-		if dir == "" {
-			cmdPath, err := helper.FindMain(base, excludeDir)
-
-			if err != nil {
-				fmt.Error("Error: %s", err)
-				return
-			}
-			switch len(cmdPath) {
-			case 0:
-				fmt.Error("Error: The cmd directory cannot be found in the current directory")
-				return
-			case 1:
-				for _, v := range cmdPath {
-					dir = v
-				}
-			default:
-				var cmdPaths []string
-				for k := range cmdPath {
-					cmdPaths = append(cmdPaths, k)
-				}
-				sort.Strings(cmdPaths)
-				prompt := &survey.Select{
-					Message:  "Which directory do you want to run?",
-					Options:  cmdPaths,
-					PageSize: 10,
-				}
-				e := survey.AskOne(prompt, &dir)
-				if e != nil || dir == "" {
-					return
-				}
-				dir = cmdPath[dir]
-			}
-		}
-		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-		fmt.Success("kun run %s.", dir)
-		fmt.Success("Watch excludeDir %s", excludeDir)
-		fmt.Success("Watch includeExt %s", includeExt)
-		watch(dir, programArgs)
-
-	},
-}
-
-func watch(dir string, programArgs []string) {
-
-	// Listening file path
-	watchPath := "./"
-
-	// Create a new file watcher
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		fmt.Error("Error: %s", err)
-		return
-	}
-	defer watcher.Close()
-
-	excludeDirArr := strings.Split(excludeDir, ",")
-
-	// 添加所有非排除目录到 watcher（监听目录而非单个文件，新文件自动被覆盖）
-	err = filepath.Walk(watchPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			return nil
-		}
-		for _, s := range excludeDirArr {
-			if s != "" && (path == s || strings.HasPrefix(path, s+"/") || strings.HasPrefix(path, s+"\\")) {
-				return filepath.SkipDir
-			}
-		}
-		if addErr := watcher.Add(path); addErr != nil {
-			fmt.Error("Error: %s", addErr)
-		}
-		return nil
-	})
-	if err != nil {
-		fmt.Error("Error: %s", err)
-		return
-	}
-
-	cmd := start(dir, programArgs)
-
-	// Loop listening file modification
-	for {
-		select {
-		case <-quit:
-			if cmd.Process != nil {
-				err = killProcess(cmd)
-				if err != nil {
-					fmt.Error("server exit error: %s", err)
-					return
-				}
-			}
-			fmt.Success("server exiting...")
-			os.Exit(0)
-
-		case event := <-watcher.Events:
-			// 文件被修改或删除时重启
-			if event.Op&fsnotify.Write == fsnotify.Write ||
-				event.Op&fsnotify.Remove == fsnotify.Remove {
-				fmt.Success("file modified: %s", event.Name)
-				if cmd.Process != nil {
-					_ = killProcess(cmd)
-				}
-				cmd = start(dir, programArgs)
-			}
-			// 新建目录时加入 watcher，使其内部文件也被监听
-			if event.Op&fsnotify.Create == fsnotify.Create {
-				evPath := strings.ReplaceAll(event.Name, "\\", "/")
-				for _, s := range excludeDirArr {
-					if s != "" && (evPath == s || strings.HasPrefix(evPath, s+"/")) {
-						goto skipWatch
-					}
-				}
-				if fi, fiErr := os.Stat(event.Name); fiErr == nil && fi.IsDir() {
-					_ = watcher.Add(event.Name)
-				}
-			skipWatch:
-			}
-		case err := <-watcher.Errors:
-			fmt.Error("Error: %s", err)
-		}
-	}
-}
-
-func killProcess(cmd *exec.Cmd) error {
-	if cmd.Process == nil {
+// killProcessGroup 杀死整个进程树(windows 用 taskkill /T)。
+func killProcessGroup(cmd *exec.Cmd) error {
+	if cmd == nil || cmd.Process == nil {
 		return nil
 	}
-	// 获取进程ID
-	pid := cmd.Process.Pid
-	// 构造taskkill命令
-	taskkill := exec.Command("taskkill", "/F", "/T", "/PID", strconv.Itoa(pid))
-	err := taskkill.Run()
-	if err != nil {
-		return err
-	}
-	return nil
+	taskkill := exec.Command("taskkill", "/F", "/T", "/PID", strconv.Itoa(cmd.Process.Pid))
+	return taskkill.Run()
 }
 
-func start(dir string, programArgs []string) *exec.Cmd {
-	cmd := exec.Command("go", append([]string{"run", dir}, programArgs...)...)
-	// Set a new process group to kill all child processes when the program exits
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	err := cmd.Start()
-	if err != nil {
-		fmt.Error("cmd run failed")
-	}
-	// 等待进程启动后再提示，避免编译耗时导致误报
-	time.Sleep(200 * time.Millisecond)
-	fmt.Success("running...")
-	return cmd
+// isProcessAlive 通过 signal 0 探测进程是否存活。
+func isProcessAlive(cmd *exec.Cmd) bool {
+	return cmd.Process.Signal(syscall.Signal(0)) == nil
 }
+
+// applyProcAttr windows 下无需额外进程组属性(taskkill /T 负责杀子进程树)。
+func applyProcAttr(cmd *exec.Cmd) {}

@@ -9,8 +9,8 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/spf13/cobra"
-	"github.com/spruce1698/kun/pkg/fmt"
 	"github.com/spruce1698/kun/pkg/helper"
+	"github.com/spruce1698/kun/pkg/output"
 )
 
 var CmdWire = &cobra.Command{
@@ -26,7 +26,7 @@ var CmdWire = &cobra.Command{
 		}
 		base, err := os.Getwd()
 		if err != nil {
-			fmt.Error("Error: %s", err)
+			output.Error("Error: %s", err)
 			return
 		}
 		if dir == "" {
@@ -34,12 +34,12 @@ var CmdWire = &cobra.Command{
 			wirePath, err := findWire(base)
 
 			if err != nil {
-				fmt.Error("Error: %s", err)
+				output.Error("Error: %s", err)
 				return
 			}
 			switch len(wirePath) {
 			case 0:
-				fmt.Error("Error: The wire.go cannot be found in the current directory")
+				output.Error("Error: The wire.go cannot be found in the current directory")
 				return
 			case 1:
 				for _, v := range wirePath {
@@ -79,7 +79,7 @@ var CmdWireAll = &cobra.Command{
 		}
 		base, err := os.Getwd()
 		if err != nil {
-			fmt.Error("Error: %s", err)
+			output.Error("Error: %s", err)
 			return
 		}
 		if dir == "" {
@@ -87,12 +87,12 @@ var CmdWireAll = &cobra.Command{
 			wirePath, err := findWire(base)
 
 			if err != nil {
-				fmt.Error("Error: %s", err)
+				output.Error("Error: %s", err)
 				return
 			}
 			switch len(wirePath) {
 			case 0:
-				fmt.Error("Error: The wire.go cannot be found in the current directory")
+				output.Error("Error: The wire.go cannot be found in the current directory")
 				return
 			default:
 				for _, v := range wirePath {
@@ -105,20 +105,22 @@ var CmdWireAll = &cobra.Command{
 }
 
 func wire(wirePath string) {
-	fmt.Success("wire.go path: %s", wirePath)
+	output.Success("wire.go path: %s", wirePath)
 	cmd := exec.Command("wire")
 	cmd.Dir = wirePath
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		fmt.Error("wire fail: %s", err)
+		output.Error("wire fail: %s", err)
 	}
-	fmt.Success(string(out))
+	output.Success(string(out))
 }
 func findWire(base string) (map[string]string, error) {
 	wd, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
+	// 统一为正斜杠,避免 Windows 下 / 与 \ 混合导致 TrimPrefix 失效
+	wd = filepath.ToSlash(wd)
 	if !strings.HasSuffix(wd, "/") {
 		wd += "/"
 	}
@@ -134,7 +136,7 @@ func findWire(base string) (map[string]string, error) {
 			// 多级目录不在 wire.go 所在目录下搜索
 			if strings.HasSuffix(walkPath, "wire.go") {
 				p, _ := filepath.Split(walkPath)
-				wirePath[strings.TrimPrefix(walkPath, wd)] = p
+				wirePath[strings.TrimPrefix(filepath.ToSlash(walkPath), wd)] = p
 				return nil
 			}
 			if info.Name() == "go.mod" {
@@ -158,5 +160,5 @@ func findWire(base string) (map[string]string, error) {
 		}
 		base = filepath.Join(base, "..")
 	}
-	return map[string]string{"": base}, nil
+	return map[string]string{}, nil
 }

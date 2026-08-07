@@ -85,6 +85,8 @@ func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Cache) Set(ctx context.
 	if err != nil {
 		return err
 	}
+	// 同步更新本地缓存,避免 Get 读到脏数据
+	{{ .FileNameFirstChar }}.lCache.Set(key, data, time.Duration(expiration)*time.Second)
 	return nil
 }
 
@@ -92,7 +94,7 @@ func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Cache) Delete(ctx conte
 	key := fmt.Sprintf({{ .FileName }}DataKey, id)
 
 	if err := {{ .FileNameFirstChar }}.common.Del(ctx, key).Err(); err != nil {
-		return errors.New("delete cache failed")
+		return err
 	}
 
 	// 设置本地缓存

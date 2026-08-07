@@ -3,16 +3,18 @@ package new
 import (
 	"archive/zip"
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/spf13/cobra"
 	"github.com/spruce1698/kun/config"
-	"github.com/spruce1698/kun/pkg/fmt"
 	"github.com/spruce1698/kun/pkg/helper"
+	"github.com/spruce1698/kun/pkg/output"
 	"github.com/spruce1698/kun/tpl"
 )
 
@@ -54,7 +56,7 @@ func run(_ *cobra.Command, args []string) {
 	case 1:
 		p.ProjectName = args[0]
 	default:
-		fmt.Error("accepts %d arg(s), received %d", 1, len(args))
+		output.Error("accepts %d arg(s), received %d", 1, len(args))
 		return
 	}
 
@@ -73,11 +75,14 @@ func run(_ *cobra.Command, args []string) {
 		return
 	}
 	p.rmGit()
-	p.installWire()
-	fmt.Success("Project [ %s ] created successfully!", p.ProjectName)
-	fmt.Success("Done. Now run:")
-	fmt.Success("› cd %s ", p.ProjectName)
-	fmt.Success("› kun run \n")
+	if err := p.installWire(); err != nil {
+		output.Error("project created but wire install failed: %s", err)
+		return
+	}
+	output.Success("Project [ %s ] created successfully!", p.ProjectName)
+	output.Success("Done. Now run:")
+	output.Success("› cd %s ", p.ProjectName)
+	output.Success("› kun run \n")
 }
 
 func (p *Project) cloneTemplate() (bool, error) {
@@ -99,7 +104,7 @@ func (p *Project) cloneTemplate() (bool, error) {
 		}
 		err = os.RemoveAll(p.ProjectName)
 		if err != nil {
-			fmt.Error("remove old project error: %s", err)
+			output.Error("remove old project error: %s", err)
 			return false, err
 		}
 	}
@@ -125,7 +130,7 @@ func (p *Project) cloneTemplate() (bool, error) {
 		}
 		err = os.RemoveAll(p.ProjectName)
 		if err != nil {
-			fmt.Error("remove old project error: %s", err)
+			output.Error("remove old project error: %s", err)
 			return false, err
 		}
 
@@ -134,20 +139,20 @@ func (p *Project) cloneTemplate() (bool, error) {
 			templateName = "advanced"
 		}
 
-		fmt.Success("Generate code from template: %s", templateName)
+		output.Success("Generate code from template: %s", templateName)
 
 		err = handlerZip(p.ProjectName, templateName)
 		if err != nil {
-			fmt.Error("Generate code from template: %s, error: %s", templateName, err)
+			output.Error("Generate code from template: %s, error: %s", templateName, err)
 			return false, err
 		}
 
 	} else { // clone from repoURL
-		fmt.Success("git clone %s", repoURL)
+		output.Success("git clone %s", repoURL)
 		cmd := exec.Command("git", "clone", repoURL, p.ProjectName)
 		_, err := cmd.CombinedOutput()
 		if err != nil {
-			fmt.Error("git clone %s error: %s", repoURL, err)
+			output.Error("git clone %s error: %s", repoURL, err)
 			return false, err
 		}
 	}
@@ -155,9 +160,12 @@ func (p *Project) cloneTemplate() (bool, error) {
 }
 
 func (p *Project) replacePackageName() error {
-	packageName := helper.GetProjectName(p.ProjectName)
+	packageName, err := helper.GetProjectName(p.ProjectName)
+	if err != nil {
+		return err
+	}
 
-	err := p.replaceFiles(packageName)
+	err = p.replaceFiles(packageName)
 	if err != nil {
 		return err
 	}
@@ -166,17 +174,17 @@ func (p *Project) replacePackageName() error {
 	cmd.Dir = p.ProjectName
 	_, err = cmd.CombinedOutput()
 	if err != nil {
-		fmt.Error("go mod edit error: %s", err)
+		output.Error("go mod edit error: %s", err)
 		return err
 	}
 	return nil
 }
 func (p *Project) modTidy() error {
-	fmt.Success("go mod tidy")
+	output.Success("go mod tidy")
 	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Dir = p.ProjectName
 	if err := cmd.Run(); err != nil {
-		fmt.Error("go mod tidy error: %s", err)
+		output.Error("go mod tidy error: %s", err)
 		return err
 	}
 	return nil
@@ -184,17 +192,23 @@ func (p *Project) modTidy() error {
 func (p *Project) rmGit() {
 	_ = os.RemoveAll(p.ProjectName + "/.git")
 }
-func (p *Project) installWire() {
-	fmt.Success("go install %s", config.WireUrl)
+func (p *Project) installWire() error {
+	output.Success("go install %s", config.WireUrl)
 	cmd := exec.Command("go", "install", config.WireUrl)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Error("go install %s error", err)
+		return fmt.Errorf("go install %s: %w", config.WireUrl, err)
 	}
+	return nil
 }
 
 func (p *Project) replaceFiles(packageName string) error {
+	// 只替换 import path 前缀("packageName/"),避免全文替换误伤注释/字符串里的同名词。
+	// 例如 packageName="advanced" 时,"advanced/pkg/xlog" -> "myproj/pkg/xlog",
+	// 但不会改动注释里的 "advanced usage" 或字符串 "basic auth"。
+	oldImport := "\"" + packageName + "/"
+	newImport := "\"" + p.ProjectName + "/"
 	err := filepath.Walk(p.ProjectName, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -209,14 +223,14 @@ func (p *Project) replaceFiles(packageName string) error {
 		if err != nil {
 			return err
 		}
-		newData := bytes.ReplaceAll(data, []byte(packageName), []byte(p.ProjectName))
+		newData := bytes.ReplaceAll(data, []byte(oldImport), []byte(newImport))
 		if err := os.WriteFile(path, newData, 0644); err != nil {
 			return err
 		}
 		return nil
 	})
 	if err != nil {
-		fmt.Error("walk file error: %s", err)
+		output.Error("walk file error: %s", err)
 		return err
 	}
 	return nil
@@ -239,8 +253,20 @@ func handlerZip(projectName, templateName string) error {
 	}
 
 	// 遍历 zip 包里的文件
+	baseAbs, err := filepath.Abs(projectName)
+	if err != nil {
+		return err
+	}
 	for _, file := range zipReader.File {
-		path := filepath.Join(projectName, file.Name)
+		// 防 zip slip：拒绝任何逃逸出目标目录的路径
+		name := filepath.Clean(filepath.FromSlash(file.Name))
+		if strings.HasPrefix(name, ".."+string(filepath.Separator)) || filepath.IsAbs(name) {
+			return fmt.Errorf("zip entry %q has unsafe path", file.Name)
+		}
+		path := filepath.Join(projectName, name)
+		if !strings.HasPrefix(filepath.Clean(path), baseAbs+string(filepath.Separator)) && filepath.Clean(path) != baseAbs {
+			return fmt.Errorf("zip entry %q escapes target directory", file.Name)
+		}
 		fileMode := file.Mode()
 		// 如果是目录，就创建目录
 		if file.FileInfo().IsDir() {

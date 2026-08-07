@@ -5,11 +5,12 @@
 package kernel
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
 
-	"github.com/spruce1698/kun/pkg/fmt"
+	"github.com/spruce1698/kun/pkg/output"
 	"gorm.io/gorm/schema"
 )
 
@@ -18,7 +19,7 @@ var (
 	reCreateTable = regexp.MustCompile(`(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?` + "`?" + `(\w+)` + "`?" + `\s*\(`)
 	rePrimaryKey  = regexp.MustCompile(`(?i)PRIMARY\s+KEY\s*\(` + "`?" + `(\w+)` + "`?" + `\)`)
 	reUniqueKey   = regexp.MustCompile(`(?i)UNIQUE\s+KEY\s+` + "`" + `(\w+)` + "`" + `\s*\(([^)]+)\)`)
-	reComment     = regexp.MustCompile(`(?i)COMMENT\s+'([^']*)'`)
+	reComment     = regexp.MustCompile(`(?i)COMMENT\s+'((?:[^']|''|\\.)*)'`)
 	reDefault     = regexp.MustCompile(`(?i)DEFAULT\s+('[^']*'|[\w.]+|NULL)`)
 	reNoiseClause = regexp.MustCompile(`(?i)\b(CHARACTER\s+SET\s+\w+|COLLATE\s+\w+)\b`)
 )
@@ -64,7 +65,7 @@ func ParseSQLFile(filePath string, conf *SQLConfig) ([]*StructMeta, error) {
 		parenStart := loc[1] - 1
 		parenEnd := findMatchingParen(remaining, parenStart)
 		if parenEnd < 0 {
-			fmt.Warn("skip table <%s>: cannot find matching ')'", tableName)
+			output.Warn("skip table <%s>: cannot find matching ')'", tableName)
 			remaining = remaining[loc[1]:]
 			continue
 		}
@@ -88,6 +89,10 @@ func findMatchingParen(s string, start int) int {
 	for i := start; i < len(s); i++ {
 		ch := s[i]
 		if inString {
+			if ch == '\\' && i+1 < len(s) {
+				i++ // 跳过反斜杠转义的字符
+				continue
+			}
 			if ch == '\'' {
 				// 检查转义的单引号 ''
 				if i+1 < len(s) && s[i+1] == '\'' {
@@ -166,6 +171,7 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 	var hasPrimaryKey bool
 	var primaryKeyName string
 	var primaryKeyColumn string
+	var primaryKeyAutoIncrement bool
 
 	// 1. First look for IsPrimaryKey = true
 	for _, f := range fields {
@@ -174,6 +180,7 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 			primaryKeyName = f.Name
 			primaryKeyColumn = f.ColumnName
 			primaryKeyType = f.Type
+			primaryKeyAutoIncrement = strings.Contains(f.GORMTag, "autoIncrement:true")
 			break
 		}
 	}
@@ -186,6 +193,7 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 				primaryKeyName = f.Name
 				primaryKeyColumn = f.ColumnName
 				primaryKeyType = f.Type
+				primaryKeyAutoIncrement = strings.Contains(f.GORMTag, "autoIncrement:true")
 				break
 			}
 		}
@@ -196,16 +204,17 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 	}
 
 	return &StructMeta{
-		FileName:         fileName,
-		InterfaceName:    fileName,
-		StructName:       structName,
-		TableName:        tableName,
-		PackageName:      "db",
-		PrimaryKeyType:   primaryKeyType,
-		Fields:           fields,
-		HasPrimaryKey:    hasPrimaryKey,
-		PrimaryKeyName:   primaryKeyName,
-		PrimaryKeyColumn: primaryKeyColumn,
+		FileName:                fileName,
+		InterfaceName:           fileName,
+		StructName:              structName,
+		TableName:               tableName,
+		PackageName:             "db",
+		PrimaryKeyType:          primaryKeyType,
+		Fields:                  fields,
+		HasPrimaryKey:           hasPrimaryKey,
+		PrimaryKeyName:          primaryKeyName,
+		PrimaryKeyColumn:        primaryKeyColumn,
+		PrimaryKeyAutoIncrement: primaryKeyAutoIncrement,
 	}
 }
 
@@ -218,6 +227,10 @@ func splitByComma(s string) []string {
 	for i := 0; i < len(s); i++ {
 		ch := s[i]
 		if inString {
+			if ch == '\\' && i+1 < len(s) {
+				i++ // 跳过反斜杠转义的字符
+				continue
+			}
 			if ch == '\'' {
 				// 检查转义的单引号 ''
 				if i+1 < len(s) && s[i+1] == '\'' {
@@ -386,6 +399,9 @@ func extractTypeWithParens(s string) (string, string, string) {
 
 // normalizeTypeParams 去掉类型参数中逗号前后的空格: "(10, 2)" → "(10,2)"
 func normalizeTypeParams(params string) string {
+	if len(params) < 2 {
+		return params
+	}
 	return "(" + strings.ReplaceAll(params[1:len(params)-1], " ", "") + ")"
 }
 
@@ -423,7 +439,7 @@ func buildField(cd *columnDef, uniqueIdxs []uniqueIndexInfo, conf *SQLConfig) *F
 
 	// 提取 COMMENT
 	if cre := reComment.FindStringSubmatch(cd.Constraints); cre != nil {
-		comment = cre[1]
+		comment = unescapeSQLString(cre[1])
 	}
 
 	// 提取 DEFAULT（支持字符串、数字、NULL）
@@ -516,6 +532,13 @@ func toLowerCamel(s string) string {
 // compactSpaces 将连续空白压缩为单个空格
 func compactSpaces(s string) string {
 	return strings.TrimSpace(strings.Join(strings.Fields(s), " "))
+}
+
+// unescapeSQLString 还原 SQL 字符串字面量中的转义：” → '，\' → '
+func unescapeSQLString(s string) string {
+	s = strings.ReplaceAll(s, "''", "'")
+	s = strings.ReplaceAll(s, "\\'", "'")
+	return s
 }
 
 // isZeroDefault 判断默认值是否是 Go 零值（无需写入 gorm default tag）

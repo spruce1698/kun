@@ -1,6 +1,7 @@
 package create
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -9,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spruce1698/kun/internal/command/create/kernel"
-	"github.com/spruce1698/kun/pkg/fmt"
 	"github.com/spruce1698/kun/pkg/helper"
+	"github.com/spruce1698/kun/pkg/output"
 	"github.com/spruce1698/kun/tpl"
 )
 
@@ -189,12 +190,15 @@ var genConfigs = map[string]genConfig{
 
 func runCreate(cmd *cobra.Command, args []string) {
 	c := NewCreate()
-	c.ProjectName = helper.GetProjectName(".")
-	if c.ProjectName == "" {
+	projectName, err := helper.GetProjectName(".")
+	if err != nil {
+		output.Error("get project name error: %s", err)
 		return
 	}
-	c.TplPath = cmdTplPath
-	c.Force = cmdForce
+	c.ProjectName = projectName
+	// 从当前命令的 flag 读取，避免全局变量在多次调用间泄漏
+	c.TplPath, _ = cmd.Flags().GetString("tpl-path")
+	c.Force, _ = cmd.Flags().GetBool("force")
 
 	c.CmdType = cmd.Use
 	arg := args[0]
@@ -235,7 +239,7 @@ func runCreate(cmd *cobra.Command, args []string) {
 		c.generateFile()
 
 	default:
-		fmt.Error("Invalid type: %s", c.CmdType)
+		output.Error("Invalid type: %s", c.CmdType)
 	}
 
 }
@@ -243,7 +247,7 @@ func runCreate(cmd *cobra.Command, args []string) {
 func (c *Create) generateFile() {
 	config, ok := genConfigs[c.CreateType]
 	if !ok {
-		fmt.Error("Invalid type: %s", c.CmdType)
+		output.Error("Invalid type: %s", c.CmdType)
 		return
 	}
 
@@ -254,21 +258,24 @@ func (c *Create) generateFile() {
 	if filePath == "" {
 		filePath = filepath.Join(BasePath, config.typePath)
 	} else {
-		c.AddUPPath = strings.Repeat("../", strings.Count(filePath, "/"))
 		filePath = filepath.Join(BasePath, config.typePath, filePath)
 	}
 	filePath = strings.ReplaceAll(strings.ReplaceAll(filePath+"/", "//", "/"), "\\", "/")
 
 	absPath, err := filepath.Abs(filepath.Dir(filepath.Join(filePath, fileName)))
 	if err != nil {
-		fmt.Error("create %s error: %s", c.CreateType, err)
+		output.Error("create %s error: %s", c.CreateType, err)
 		return
 	}
 	absLinuxPath := strings.ReplaceAll(absPath, "\\", "/") + "/"
 	if strings.LastIndex(absLinuxPath, filePath) < 1 {
-		fmt.Error("create %s error: %s", c.CreateType, "not in internal")
+		output.Error("create %s error: %s", c.CreateType, "not in internal")
 		return
 	}
+
+	// 计算相对 internal/ 的层级，用于模板中的 ../ 引用（如 mockgen 目标路径）。
+	// 深度 = 自定义子路径（c.FilePath）的路径段数；默认路径时为 0，模板已含固定 ../../../。
+	c.AddUPPath = strings.Repeat("../", strings.Count(strings.ReplaceAll(c.FilePath, "\\", "/"), "/"))
 
 	// 设置包名
 	_, c.PackageName = filepath.Split(absPath)
@@ -284,12 +291,16 @@ func (c *Create) generateFile() {
 		t, err = template.ParseFiles(path.Join(c.TplPath, fmt.Sprintf("%s.tpl", c.CreateType)))
 	}
 	if err != nil {
-		fmt.Error("create %s error: %s", c.CreateType, err)
+		output.Error("create %s error: %s", c.CreateType, err)
 		return
 	}
-	f := createFile(filePath, fileName, c.Force)
-	if f == nil {
-		fmt.Warn("warn: file %s%s %s", absLinuxPath, fileName, "already exists.")
+	f, existed, err := createFile(filePath, fileName, c.Force)
+	if err != nil {
+		output.Error("create %s error: %s", c.CreateType, err)
+		return
+	}
+	if existed {
+		output.Warn("warn: file %s%s %s", absLinuxPath, fileName, "already exists.")
 		return
 	}
 	defer func(f *os.File) {
@@ -298,17 +309,17 @@ func (c *Create) generateFile() {
 
 	err = t.Execute(f, c)
 	if err != nil {
-		fmt.Error("create %s error: %s", c.CreateType, err)
+		output.Error("create %s error: %s", c.CreateType, err)
 		return
 	}
-	fmt.Success("created new %s: %s", c.CreateType, filepath.Join(absLinuxPath, fileName))
+	output.Success("created new %s: %s", c.CreateType, filepath.Join(absLinuxPath, fileName))
 
 	if c.CreateType == TypeCache {
 		if err = generateKeysFile(absLinuxPath, c); err != nil {
-			fmt.Error("generate keys.go error: %s", err)
+			output.Error("generate keys.go error: %s", err)
 			return
 		}
-		fmt.Success("generate keys.go in %s", absLinuxPath)
+		output.Success("generate keys.go in %s", absLinuxPath)
 	}
 
 	// 更新DI文件
@@ -324,29 +335,27 @@ func (c *Create) generateFile() {
 	}
 
 	if err = kernel.Wire2DIFile(diPath, contentMap); err != nil {
-		fmt.Error("generate insert New%s%s to DI file error: %s", c.FileName, config.structSuffix, err)
+		output.Error("generate insert New%s%s to DI file error: %s", c.FileName, config.structSuffix, err)
 		return
 	}
-	fmt.Success("generate insert New%s%s to DI file", c.FileName, config.structSuffix)
+	output.Success("generate insert New%s%s to DI file", c.FileName, config.structSuffix)
 }
 
-func createFile(dirPath string, filename string, force bool) *os.File {
+// createFile 创建文件。返回 (file, existed, err)：existed 表示文件已存在且未强制覆盖。
+func createFile(dirPath string, filename string, force bool) (*os.File, bool, error) {
 	filePath := filepath.Join(dirPath, filename)
 	err := os.MkdirAll(dirPath, os.ModePerm)
 	if err != nil {
-		fmt.Error("failed to create dir %s: %v", dirPath, err)
-		return nil
+		return nil, false, fmt.Errorf("failed to create dir %s: %w", dirPath, err)
 	}
-	stat, _ := os.Stat(filePath)
-	if stat != nil && !force {
-		return nil
+	if stat, err := os.Stat(filePath); err == nil && stat != nil && !force {
+		return nil, true, nil
 	}
 	file, err := os.Create(filePath)
 	if err != nil {
-		fmt.Error("failed to create file %s: %v", filePath, err)
+		return nil, false, fmt.Errorf("failed to create file %s: %w", filePath, err)
 	}
-
-	return file
+	return file, false, nil
 }
 
 func generateKeysFile(dirPath string, c *Create) error {

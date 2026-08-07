@@ -1,8 +1,10 @@
 package main
 
 import (
+	"os"
+
 	"github.com/spruce1698/kun/cmd/kun"
-	"github.com/spruce1698/kun/pkg/fmt"
+	"github.com/spruce1698/kun/pkg/output"
 )
 
 // go run main.go create db "root:123456@tcp(127.0.0.1:3306)/dbname" *
@@ -12,6 +14,7 @@ import (
 func main() {
 	err := kun.Execute()
 	if err != nil {
-		fmt.Error("execute error: ", err.Error())
+		output.Error("execute error: %v", err)
+		os.Exit(1)
 	}
 }

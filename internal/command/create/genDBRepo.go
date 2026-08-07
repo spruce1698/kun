@@ -7,12 +7,13 @@
 package create
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spruce1698/kun/internal/command/create/kernel"
-	"github.com/spruce1698/kun/pkg/fmt"
+	"github.com/spruce1698/kun/pkg/output"
 	"gorm.io/driver/clickhouse"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
@@ -100,11 +101,11 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 
 	gormDb, err := connectDB(DBType(cmdConf.DBType), cmdConf.DSN)
 	if err != nil {
-		fmt.Error("connect db server fail: %s", err)
+		output.Error("connect db server fail: %s", err)
 		return
 	}
 	if gormDb == nil {
-		fmt.Error("gorm db is nil")
+		output.Error("gorm db is nil")
 		return
 	}
 	// 自定义命名策略
@@ -122,7 +123,7 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 		// Execute tasks for all tables in the database
 		tablesList, err = gormDb.Migrator().GetTables()
 		if err != nil {
-			fmt.Error("GORM migrator get all tables fail: %s", err)
+			output.Error("GORM migrator get all tables fail: %s", err)
 			return
 		}
 	} else {
@@ -139,14 +140,14 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 func defaultSQLConfig() kernel.SQLConfig {
 	outPath, err := filepath.Abs(DefaultOutPath)
 	if err != nil {
-		fmt.Error("outPath is invalid: %s, using default", err)
+		output.Error("outPath is invalid: %s, using default", err)
 		outPath = DefaultOutPath
 	}
 	return kernel.SQLConfig{
 		OutPath:           outPath,
 		PackageName:       "db",
 		FieldCoverable:    false, // 当字段具有默认值时生成指针，以解决无法分配零值的问题
-		FieldNullable:     true,  // 当字段可为空时生成指针
+		FieldNullable:     true,  // 当字段可为空时生成指针。注意：此默认值会让所有可空列生成 *T 指针类型，若希望生成值类型请改为 false
 		FieldWithIndexTag: true,  // 生成字段包含 索引 标记
 		FieldWithTypeTag:  true,  // 生成字段包含 列类型 标记
 		FieldSignable:     false, // 检测整数字段的无符号类型，调整生成的数据类型
@@ -159,11 +160,11 @@ func genDBRepoFromSQL(args []string) {
 
 	metas, err := kernel.ParseSQLFile(args[0], &conf)
 	if err != nil {
-		fmt.Error("parse sql file fail: %s", err)
+		output.Error("parse sql file fail: %s", err)
 		return
 	}
 	if len(metas) == 0 {
-		fmt.Warn("no CREATE TABLE found in file: %s", args[0])
+		output.Warn("no CREATE TABLE found in file: %s", args[0])
 		return
 	}
 

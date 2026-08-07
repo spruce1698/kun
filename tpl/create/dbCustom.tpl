@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-//go:generate mockgen -source=./{{.InterfaceName}}.go -destination=../../../test/mocks/repository/db/{{.InterfaceName}}.go -package mock_repo_db -aux_files mysql=./{{.InterfaceName}}_gen.go
+//go:generate mockgen -source=./{{.InterfaceName}}.go -destination=../../../test/mocks/repository/db/{{.InterfaceName}}.go -package mock_repo_db -aux_files {{.PackageName}}=./{{.InterfaceName}}_gen.go
 
 var _ {{.StructName}}Db = (*custom{{.StructName}}Db)(nil)
 
@@ -56,15 +56,16 @@ func (c *custom{{.StructName}}Db) ListWithTotal(ctx context.Context, args *{{.St
 		return nil, 0, ErrNotFound
 	}
 
+	offset, limit := c.HandlePage(args.Page, args.PageSize)
+
+	var model *gorm.DB
+	{{if .HasPrimaryKey -}}
 	order := c.HandleRank(
 		args.OrderField,
 		args.OrderType,
-		{{if .HasPrimaryKey}}"`"+Table{{.StructName}}+"`.`{{.PrimaryKeyColumn}}`"{{else}}""{{end}},
+		{{.StructName}}Fields,
+		Table{{.StructName}}+".{{.PrimaryKeyColumn}}",
 	)
-	offset, limit := c.HandlePage(args.Page, args.PageSize)
-
-	{{if .HasPrimaryKey -}}
-	var model *gorm.DB
 	switch {
 	case args.LastId > 0 && args.Page > 1 : // 游标分页: time>lastTime or (time==lastTime and id>lastId)
 		lastCond :="`{{.PrimaryKeyColumn}}` > ?"
@@ -103,18 +104,19 @@ func (c *custom{{.StructName}}Db) ListWithMore(ctx context.Context, args *{{.Str
         return d
     }
 
-	order := c.HandleRank(
-		args.OrderField,
-		args.OrderType,
-		{{if .HasPrimaryKey}}"`"+Table{{.StructName}}+"`.`{{.PrimaryKeyColumn}}`"{{else}}""{{end}},
-	)
 	offset, limit := c.HandlePage(args.Page, args.PageSize)
 	// 在请求的数据基础上+1，以此来判断是否还有数据
 	want := limit
 	limit++
 
-	{{if .HasPrimaryKey -}}
 	var model *gorm.DB
+	{{if .HasPrimaryKey -}}
+	order := c.HandleRank(
+		args.OrderField,
+		args.OrderType,
+		{{.StructName}}Fields,
+		Table{{.StructName}}+".{{.PrimaryKeyColumn}}",
+	)
     switch {
     case args.LastId > 0 && args.Page > 1 :
 		lastCond :="`{{.PrimaryKeyColumn}}` > ?"

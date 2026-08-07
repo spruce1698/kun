@@ -1,34 +1,38 @@
 package helper
 
 import (
+	"bufio"
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spruce1698/kun/pkg/fmt"
 )
 
 var reMainFunc = regexp.MustCompile(`func\s+main\s*\(`)
 
-func GetProjectName(dir string) string {
-	modFile, err := os.Open(dir + "/go.mod")
+// GetProjectName 从 dir 目录的 go.mod 读取 module 名称。
+// 返回 error 而非静默返回空串,调用方必须检查,避免空包名流入代码生成。
+func GetProjectName(dir string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 	if err != nil {
-		fmt.Error("go.mod does not exist error: %s", err)
-		return ""
+		return "", fmt.Errorf("go.mod does not exist: %w", err)
 	}
-	defer func(modFile *os.File) {
-		_ = modFile.Close()
-	}(modFile)
 
-	var moduleName string
-	_, err = fmt.Fscanf(modFile, "module %s", &moduleName)
-	if err != nil {
-		fmt.Error("read go mod error: %s", err)
-		return ""
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "module ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "module ")), nil
+		}
 	}
-	return moduleName
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("read go.mod error: %w", err)
+	}
+	return "", fmt.Errorf("module declaration not found in go.mod")
 }
 
 func SplitArgs(cmd *cobra.Command, args []string) (cmdArgs, programArgs []string) {
@@ -44,24 +48,35 @@ func FindMain(base, excludeDir string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 统一为正斜杠,避免 Windows 下 / 与 \ 混合导致 TrimPrefix 失效
+	wd = filepath.ToSlash(wd)
 	if !strings.HasSuffix(wd, "/") {
 		wd += "/"
 	}
 	excludeDirArr := strings.Split(excludeDir, ",")
+	for i := range excludeDirArr {
+		excludeDirArr[i] = strings.TrimSpace(excludeDirArr[i])
+	}
 	cmdPath := make(map[string]string)
 	err = filepath.Walk(base, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		for _, s := range excludeDirArr {
-			if strings.HasPrefix(path, s) {
-				return nil
-			}
+		if info.IsDir() && IsExcluded(path, excludeDirArr) {
+			return filepath.SkipDir
 		}
 		if !info.IsDir() && filepath.Ext(path) == ".go" {
 			// 只检查 cmd/ 目录下的文件，避免读取无关文件
-			if !strings.Contains(path, "cmd"+string(filepath.Separator)) &&
-				!strings.Contains(path, "cmd/") {
+			// 用路径分段判断,避免 Contains 误匹配 mycmd/、acmd.go 等
+			segs := strings.Split(filepath.ToSlash(path), "/")
+			hasCmdSeg := false
+			for _, s := range segs {
+				if s == "cmd" {
+					hasCmdSeg = true
+					break
+				}
+			}
+			if !hasCmdSeg {
 				return nil
 			}
 			content, err := os.ReadFile(path)
@@ -77,7 +92,7 @@ func FindMain(base, excludeDir string) (map[string]string, error) {
 					return absErr
 				}
 				d, _ := filepath.Split(absPath)
-				cmdPath[strings.TrimPrefix(absPath, wd)] = d
+				cmdPath[strings.TrimPrefix(filepath.ToSlash(absPath), wd)] = d
 			}
 		}
 		return nil
@@ -86,4 +101,20 @@ func FindMain(base, excludeDir string) (map[string]string, error) {
 		return nil, err
 	}
 	return cmdPath, nil
+}
+
+// IsExcluded 判断 path 是否位于任一排除目录下（或本身就是排除目录）。
+// 统一用正斜杠比较,跨平台一致。
+func IsExcluded(path string, excludeDirs []string) bool {
+	clean := filepath.ToSlash(filepath.Clean(path))
+	for _, dir := range excludeDirs {
+		dir = strings.TrimSpace(dir)
+		if dir == "" {
+			continue
+		}
+		if clean == dir || strings.HasPrefix(clean, dir+"/") {
+			return true
+		}
+	}
+	return false
 }

@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spruce1698/kun/config"
-	"github.com/spruce1698/kun/pkg/fmt"
+	"github.com/spruce1698/kun/pkg/output"
 )
 
 var CmdUpgrade = &cobra.Command{
@@ -15,13 +15,14 @@ var CmdUpgrade = &cobra.Command{
 	Long:    "Upgrade the kun command.",
 	Example: "kun upgrade",
 	Run: func(_ *cobra.Command, _ []string) {
-		fmt.Success("go install %s", config.KunUrl)
+		output.Success("go install %s", config.KunUrl)
 		cmd := exec.Command("go", "install", config.KunUrl)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			fmt.Error("go install %s error", err)
+			output.Error("go install %s error: %s", config.KunUrl, err)
+			return
 		}
-		fmt.Success("kun upgrade successfully!")
+		output.Success("kun upgrade successfully!")
 	},
 }
