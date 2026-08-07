@@ -234,13 +234,21 @@ func start(dir string, programArgs []string) *exec.Cmd {
 
 	err := cmd.Start()
 	if err != nil {
-		output.Error("cmd run failed")
+		output.Error("cmd run failed: %s", err)
 		return nil
 	}
-	// 等待进程真正启动，而非固定 sleep 1 秒
-	time.Sleep(200 * time.Millisecond)
+	// go run 需先编译再运行,短暂等待判断是否编译失败立即退出。
+	// 注意: 这里不调用 cmd.Wait(),Wait 由 watch 统一管理(同一 cmd 只能 Wait 一次)。
+	output.Success("building & running...") // 提示用户正在编译启动,避免误以为卡住
+	time.Sleep(300 * time.Millisecond)
 	if !isProcessRunning(cmd) {
-		output.Error("process exited immediately after start")
+		// 进程已退出,Wait 一次拿回编译错误(此时 Wait 不会阻塞,进程已死)
+		if waitErr := cmd.Wait(); waitErr != nil {
+			output.Error("process exited immediately: %s", waitErr)
+		} else {
+			output.Error("process exited immediately")
+		}
+		return nil
 	}
 	output.Success("running...")
 	return cmd

@@ -264,7 +264,14 @@ func handlerZip(projectName, templateName string) error {
 			return fmt.Errorf("zip entry %q has unsafe path", file.Name)
 		}
 		path := filepath.Join(projectName, name)
-		if !strings.HasPrefix(filepath.Clean(path), baseAbs+string(filepath.Separator)) && filepath.Clean(path) != baseAbs {
+		// 防 zip slip:解析为绝对路径后,必须仍在 baseAbs 之下。
+		// 不能拿相对 path 和绝对 baseAbs 直接比前缀,否则永远不匹配(如 .dockerignore)。
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		absPath = filepath.Clean(absPath)
+		if absPath != baseAbs && !strings.HasPrefix(absPath, baseAbs+string(filepath.Separator)) {
 			return fmt.Errorf("zip entry %q escapes target directory", file.Name)
 		}
 		fileMode := file.Mode()

@@ -13,6 +13,7 @@ import (
 //go:generate mockgen -source=./mysql.go -destination=../../../test/mocks/repository/db/mysql.go  -package mock_repo_db
 
 type ctxDbKeyType struct{}
+
 const (
 	defaultPageSize int64 = 20
 )

@@ -28,6 +28,7 @@ type (
 // kafkaCloser 保存日志 Kafka Writer 的关闭函数,由 New 设置,Close 调用。
 // 仅当启用了日志写 Kafka 时非 nil。
 var kafkaCloser func() error
+
 // New 创建一个新的日志记录器
 func New(conf *xconfig.Conf) *Logger {
 	opSet := make([]Option, 0)
