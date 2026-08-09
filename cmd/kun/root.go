@@ -2,11 +2,11 @@ package kun
 
 import (
 	"github.com/spruce1698/kun/config"
-	"github.com/spruce1698/kun/internal/command/create"
-	"github.com/spruce1698/kun/internal/command/new"
-	"github.com/spruce1698/kun/internal/command/run"
-	"github.com/spruce1698/kun/internal/command/upgrade"
-	"github.com/spruce1698/kun/internal/command/wire"
+	"github.com/spruce1698/kun/internal/create"
+	"github.com/spruce1698/kun/internal/new"
+	"github.com/spruce1698/kun/internal/run"
+	"github.com/spruce1698/kun/internal/upgrade"
+	"github.com/spruce1698/kun/internal/wire"
 
 	"github.com/spf13/cobra"
 )
