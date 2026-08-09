@@ -89,16 +89,20 @@ func TracingWithLogger(log *xlog.Logger, serviceName string) gin.HandlerFunc {
 					// 大 body（文件上传等）：不读取，仅记录元数据用于追踪
 					requestBody = []byte(fmt.Sprintf("[large body, %d bytes, skipped]", contentLen))
 				default:
-					// chunked / 未知长度：安全读取最多 64KB，重建供 handler 使用
+					// chunked / 未知长度:读出前 64KB 用于日志,并用 MultiReader
+					// 把"已读前缀"+"原始剩余流"拼回,恢复完整 body 给 handler。
+					// 不能用 io.Copy(LimitReader) 后直接替换 body —— 那样会把 >64KB
+					// 的 chunked 请求体静默截断,导致 handler 收到损坏数据。
+					// 注意 requestBody 是独立拷贝,不能用 buf.Bytes():buffer 归还池后
+					// 可能被并发请求覆写,导致 handler 读到被篡改的 body。
 					buf := bufferPool.Get().(*bytes.Buffer)
 					buf.Reset()
-					limited := io.LimitReader(c.Request.Body, maxRequestBodySize)
-					if _, err := io.Copy(buf, limited); err == nil && buf.Len() > 0 {
+					if _, err := io.Copy(buf, io.LimitReader(c.Request.Body, maxRequestBodySize)); err == nil && buf.Len() > 0 {
 						data := buf.Bytes()
 						requestBody = make([]byte, len(data))
 						copy(requestBody, data)
-						// 重建 body 供 handler 使用
-						c.Request.Body = io.NopCloser(bytes.NewReader(data))
+						// 已读前缀 + 剩余原文 => 完整 body;size==0 的余量由 EOF 自然收尾
+						c.Request.Body = io.NopCloser(io.MultiReader(bytes.NewReader(requestBody), c.Request.Body))
 					}
 					bufferPool.Put(buf)
 				}

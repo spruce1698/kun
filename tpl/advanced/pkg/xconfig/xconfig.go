@@ -48,17 +48,19 @@ type (
 	}
 
 	ServerConf struct {
-		Name         string
-		Port         int64
-		ReadTimeout  int64
-		WriteTimeout int64
-		AllowOrigins []string // CORS 允许的来源白名单,为空则允许所有
+		Name           string
+		Port           int64
+		ReadTimeout    int64
+		WriteTimeout   int64
+		AllowOrigins   []string // CORS 允许的来源白名单,为空则允许所有
+		TrustedProxies []string // 可信上游代理网段,为空则不信任何 X-Forwarded-For/X-Real-IP(防 IP 伪造)
 	}
 	BrokerConf struct {
-		Name         string
-		Port         int64
-		ReadTimeout  int64
-		WriteTimeout int64
+		Name           string
+		Port           int64
+		ReadTimeout    int64
+		WriteTimeout   int64
+		TrustedProxies []string // 同 ServerConf.TrustedProxies,用于 broker health 服务
 	}
 
 	TokenConf struct {
@@ -111,6 +113,11 @@ func New(path string) *Conf {
 	// 设置配置文件信息
 	v.SetConfigFile(confPath) // 设置文件的类型
 
+	// 启用环境变量:必须在首次 ReadInConfig/Unmarshal 之前设置,
+	// 否则 SERVER_PORT 等环境变量覆盖在首次加载时不生效,只有热重载后才生效。
+	v.AutomaticEnv()                                   // 自动识别环境变量
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_")) // 将 . 替换为 _   SERVER_PORT=10088 覆盖文件中 server下面port值
+
 	// 读取配置文件
 	if e := v.ReadInConfig(); e != nil {
 		panic(fmt.Errorf("Fatal error config file: %s \n", e))
@@ -121,10 +128,6 @@ func New(path string) *Conf {
 	}
 	// current 初始指向自身,使 Get() 在热重载前后都能返回最新快照
 	c.current.Store(c)
-
-	// 启用环境变量
-	v.AutomaticEnv()                                   // 自动识别环境变量
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_")) // 将 . 替换为 _   SERVER_PORT=10088 覆盖文件中 server下面port值
 
 	// 热重载:配置文件变更时,Unmarshal 到全新 *Conf,原子替换 current 指针(供 Get())。
 	// 字段本身不更新,运行期读取必须走 Get() 才能拿到新值。

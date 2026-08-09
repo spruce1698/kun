@@ -15,8 +15,10 @@ import (
 
 // CSRF 中间件
 // 密钥应从配置或环境变量读取，禁止硬编码
+// csrf.Protect 的 options 解析/令牌存储初始化成本属于一次性投入,在路由注册时执行一次,
+// 之后仅按请求用同一中间件包装 handler(gorilla/csrf 支持并发复用)。
 func CSRF(authKey []byte) gin.HandlerFunc {
-	csrfProtection := csrf.Protect(
+	csrfProtect := csrf.Protect(
 		authKey,
 		csrf.Secure(false),               // 是否只在 HTTPS 中启用，开发阶段可以设置为 false
 		csrf.RequestHeader("CSRF-Token"), // 通过header(CSRF-Token)获取 csrftoken
@@ -49,7 +51,7 @@ func CSRF(authKey []byte) gin.HandlerFunc {
 			req = csrf.PlaintextHTTPRequest(req)
 		}
 
-		csrfHandler := csrfProtection(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		csrfHandler := csrfProtect(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx.Request = r
 			passed = true
 		}))

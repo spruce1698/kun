@@ -66,7 +66,7 @@ func WireApp(env string) (*xserver.Server, error) {
 		DemoCtrl: demoCtrl,
 	}
 	v := router.WireServerSet()
-	engine, err := http.New(conf, logger, gormDB, client, pub, serverCtrlCtx, v)
+	engine, err := http.New(conf, logger, gormDB, client, jwt, pub, serverCtrlCtx, v)
 	if err != nil {
 		return nil, err
 	}

@@ -286,7 +286,7 @@ func (d *demoSvc) Login(ctx context.Context, name, password string) (*token.JwtT
 
 // RefreshToken 刷新双token
 func (d *demoSvc) RefreshToken(ctx context.Context, accessToken, refreshToken string) (*token.JwtToken, error) {
-	tokenInfo, err := d.ctx.Jwt.Refresh(accessToken, refreshToken)
+	tokenInfo, err := d.ctx.Jwt.Refresh(ctx, accessToken, refreshToken)
 	if err != nil {
 		return nil, xerror.NewError(ctx, xerror.AuthRefreshErr, "刷新token失败", err)
 	}

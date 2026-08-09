@@ -15,6 +15,7 @@ import (
 	"advanced/pkg/asynq"
 	"advanced/pkg/kafka"
 	"advanced/pkg/xconfig"
+	"advanced/pkg/xlog"
 
 	githubAsynq "github.com/hibiken/asynq"
 )
@@ -24,6 +25,7 @@ type (
 		wg     *sync.WaitGroup
 		conf   *xconfig.Conf
 		ctx    context.Context
+		log    *xlog.Logger
 		aQueue *asynq.Asynq
 		task   *Task
 		// asynq server / cron manager,关闭时需要 Shutdown
@@ -46,11 +48,12 @@ type (
 	}
 )
 
-func NewSub(wg *sync.WaitGroup, conf *xconfig.Conf, task *Task, ctx context.Context) *Sub {
+func NewSub(wg *sync.WaitGroup, conf *xconfig.Conf, log *xlog.Logger, task *Task, ctx context.Context) *Sub {
 	return &Sub{
 		wg:     wg,
 		conf:   conf,
 		ctx:    ctx,
+		log:    log,
 		aQueue: asynq.New(conf),
 		task:   task,
 	}
@@ -63,7 +66,7 @@ func (s *Sub) Kafka() {
 		return
 	}
 
-	s.kSub = kafka.NewSubscriber(s.conf)
+	s.kSub = kafka.NewSubscriber(s.conf, s.log)
 
 	s.wg.Add(len(s.task.KafkaSet))
 	for _, kq := range s.task.KafkaSet {
@@ -92,7 +95,7 @@ func (s *Sub) Asynq() error {
 	// 用 Start(非阻塞) + Shutdown 主动控制生命周期,
 	// 避免 srv.Run 自带的信号处理与 broker 信号处理冲突。
 	if err := srv.Start(mux); err != nil {
-		fmt.Printf("!!!CronJobErr!!! run err:%+v \n ", err)
+		s.log.Error(s.ctx, "asynq server start err", err)
 		srv.Shutdown()
 		return fmt.Errorf("asynq server start err: %w", err)
 	}
@@ -112,12 +115,12 @@ func (s *Sub) Asynq() error {
 func (s *Sub) AsynqCron() error {
 	mgr, err := s.aQueue.PeriodicTaskManager()
 	if err != nil {
-		fmt.Printf("!!!AsynqCronErr!!! new manager err:%+v \n", err)
+		s.log.Error(s.ctx, "asynq cron new manager err", err)
 		return fmt.Errorf("asynq cron new manager err: %w", err)
 	}
 	s.aMgr = mgr
 	if err := mgr.Start(); err != nil {
-		fmt.Printf("!!!AsynqCronErr!!! start err:%+v \n", err)
+		s.log.Error(s.ctx, "asynq cron start err", err)
 		return fmt.Errorf("asynq cron start err: %w", err)
 	}
 

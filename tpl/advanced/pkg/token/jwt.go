@@ -21,6 +21,7 @@ import (
 	"advanced/pkg/xredis"
 
 	v5 "github.com/golang-jwt/jwt/v5"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -273,11 +274,6 @@ func (j *Jwt) Parse(ctx context.Context, tokenStr string, optType ...string) (*v
 	if tokenStr == "" {
 		return nil, ErrEmptyToken
 	}
-	// tokenStr 在黑名单
-	hasBlacklist, _ := j.Cache.Exists(ctx, j.CacheKey+encrypt.MD5(tokenStr)).Result()
-	if hasBlacklist > 0 {
-		return nil, ErrInvalidToken
-	}
 
 	tokenType := TokenTypeAccess
 	secret := []byte(j.Secret)
@@ -311,14 +307,27 @@ func (j *Jwt) Parse(ctx context.Context, tokenStr string, optType ...string) (*v
 	if payload.Issuer == "" {
 		return nil, ErrInvalidToken
 	}
-	hasBlacklist, _ = j.Cache.Exists(ctx, j.CacheKey+encrypt.MD5(payload.Subject)).Result()
-	if hasBlacklist > 0 {
-		return nil, ErrInvalidToken
-	}
 
 	// 判断token类型是否错误
 	if payload.ID == "" {
 		return nil, ErrInvalidToken
+	}
+
+	// 合并 token 黑名单 + 用户黑名单两次 Exists 为一次 Redis 往返(pipeline),
+	// 避免每个请求 2 次 RTT。
+	// 任一命中黑名单即拒绝:登出/轮换后旧 token 被拒,封禁用户后其全部 token 被拒。
+	cmds, err := j.Cache.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		pipe.Exists(ctx, j.CacheKey+encrypt.MD5(tokenStr))
+		pipe.Exists(ctx, j.CacheKey+encrypt.MD5(payload.Subject))
+		return nil
+	})
+	if err != nil {
+		return nil, ErrInvalidToken
+	}
+	for _, cmd := range cmds {
+		if n, e := cmd.(*redis.IntCmd).Result(); e == nil && n > 0 {
+			return nil, ErrInvalidToken
+		}
 	}
 
 	// 是否还未生效 生效时间大于过期时间

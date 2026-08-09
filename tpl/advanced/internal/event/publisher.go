@@ -7,6 +7,7 @@
 package event
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -36,16 +37,17 @@ func NewPub(conf *xconfig.Conf, log *xlog.Logger) *Pub {
 // Close 关闭底层 kafka Writer 等资源,应在进程退出前调用。
 func (p *Pub) Close() {
 	if err := p.kQueue.Close(); err != nil {
-		p.logger.Warn(fmt.Sprintf("kafka publisher close err: %v", err))
+		p.logger.Warn(context.Background(), fmt.Sprintf("kafka publisher close err: %v", err))
 	}
 }
 
 // Kafka 发布kafka异步消息
+// 错误信息不包含 message 正文,避免 payload 中敏感数据泄漏进错误日志。
 func (p *Pub) Kafka(topic global.EventTopic, message []byte) error {
 	topicStr := string(topic)
 	err := p.kQueue.Pub(topicStr, message)
 	if err != nil {
-		return fmt.Errorf("kafka topic:%s 发布消息:%s 失败, error:%w", topicStr, message, err)
+		return fmt.Errorf("kafka topic:%s 发布消息(共%d字节)失败, error:%w", topicStr, len(message), err)
 	}
 	return nil
 }
@@ -56,7 +58,7 @@ func (p *Pub) KafkaWithType(topic global.EventTopic, msgType global.EventType, m
 	msgTypeStr := string(msgType)
 	err := p.kQueue.PubWithKey(topicStr, msgTypeStr, message)
 	if err != nil {
-		return fmt.Errorf("kafka topic:%s 发布类型:%s 消息:%s 失败, error:%w", topicStr, msgTypeStr, message, err)
+		return fmt.Errorf("kafka topic:%s 发布类型:%s 失败(共%d字节), error:%w", topicStr, msgTypeStr, len(message), err)
 	}
 	return nil
 }
@@ -66,7 +68,7 @@ func (p *Pub) Delay(topic global.EventTopic, message string, delay int64) error 
 	topicStr := string(topic)
 	_, err := p.aQueue.DelayPub(asynq.CriticalQueue, topicStr, message, time.Duration(delay)*time.Second)
 	if err != nil {
-		return fmt.Errorf("topic:%s  发布延时消息:%s 失败, error:%w", topicStr, message, err)
+		return fmt.Errorf("topic:%s 发布延时消息失败, error:%w", topicStr, err)
 	}
 	return nil
 }
@@ -76,7 +78,7 @@ func (p *Pub) Sync(topic global.EventTopic, message string) error {
 	topicStr := string(topic)
 	_, err := p.aQueue.SyncPub(asynq.DefaultQueue, topicStr, message)
 	if err != nil {
-		return fmt.Errorf("topic:%s  发布异步消息:%s 失败, error:%w", topicStr, message, err)
+		return fmt.Errorf("topic:%s 发布异步消息失败, error:%w", topicStr, err)
 	}
 	return nil
 }
@@ -86,7 +88,7 @@ func (p *Pub) Cron(topic global.EventTopic, message, cronSpec string) error {
 	topicStr := string(topic)
 	err := p.aQueue.SetCronPub(topicStr, message, cronSpec)
 	if err != nil {
-		return fmt.Errorf("topic:%s  发布周期/定时消息:%s 失败, error:%w", topicStr, message, err)
+		return fmt.Errorf("topic:%s 发布周期/定时消息失败, error:%w", topicStr, err)
 	}
 	return nil
 }

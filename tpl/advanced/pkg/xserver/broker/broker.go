@@ -73,7 +73,7 @@ func (s *Server) Start() error {
 
 	// 是否是子进程
 	if isChild() {
-		childProcess(s.Conf, s.task)
+		childProcess(s.logger, s.Conf, s.task)
 		return nil
 	}
 
@@ -104,7 +104,7 @@ func (s *Server) supervisor() {
 		}
 
 		if err := cmd.Start(); err != nil {
-			s.logger.Warn("Broker start child process err: " + err.Error())
+			s.logger.Warn(context.Background(), "Broker start child process err: "+err.Error())
 			return
 		}
 
@@ -128,16 +128,16 @@ func (s *Server) supervisor() {
 		// 是否已收到停止信号
 		select {
 		case <-s.stopCh:
-			s.logger.Warn("Broker parent process exit")
+			s.logger.Warn(context.Background(), "Broker parent process exit")
 			return
 		default:
 		}
 
 		// 未主动停止却退出 -> 子进程异常,父进程也退出
 		if waitErr != nil {
-			s.logger.Warn(fmt.Sprintf("Broker child process %d exit err: %s", cmd.Process.Pid, waitErr.Error()))
+			s.logger.Warn(context.Background(), fmt.Sprintf("Broker child process %d exit err: %s", cmd.Process.Pid, waitErr.Error()))
 		} else {
-			s.logger.Warn(fmt.Sprintf("Broker child process %d exit", cmd.Process.Pid))
+			s.logger.Warn(context.Background(), fmt.Sprintf("Broker child process %d exit", cmd.Process.Pid))
 		}
 		return
 	}
@@ -149,8 +149,8 @@ func (s *Server) supervisor() {
 // 3. 关闭 db/redis;
 // 4. 通知 supervisor 退出。
 func (s *Server) Stop(signal string) {
-	s.logger.Warn("Receive a signal", xlog.KVStr("signal", signal))
-	s.logger.Warn("Broker server stopping ...")
+	s.logger.Warn(context.Background(), fmt.Sprintf("Receive a signal: %s", signal))
+	s.logger.Warn(context.Background(), "Broker server stopping ...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
@@ -158,9 +158,9 @@ func (s *Server) Stop(signal string) {
 	// 1. 先关 health server,探针变红,上游摘流量
 	if s.healthSvr != nil {
 		if err := s.healthSvr.Shutdown(ctx); err != nil {
-			s.logger.Warn(fmt.Sprintf("http server shutdown err:%v", err))
+			s.logger.Warn(ctx, fmt.Sprintf("http server shutdown err:%v", err))
 		}
-		s.logger.Warn("Close http server")
+		s.logger.Warn(ctx, "Close http server")
 	}
 
 	// 2. 通知子进程退出并等待
@@ -173,9 +173,9 @@ func (s *Server) Stop(signal string) {
 
 		select {
 		case <-s.cmdExit:
-			s.logger.Warn("Broker child process exited")
+			s.logger.Warn(ctx, "Broker child process exited")
 		case <-time.After(time.Second * 5):
-			s.logger.Warn("Broker child process shutdown timeout, killing")
+			s.logger.Warn(ctx, "Broker child process shutdown timeout, killing")
 			_ = cmd.Process.Kill()
 			<-s.cmdExit
 		}
@@ -186,22 +186,22 @@ func (s *Server) Stop(signal string) {
 		sqlDB, _ := s.db.DB()
 		if sqlDB != nil {
 			if err := sqlDB.Close(); err != nil {
-				s.logger.Warn(fmt.Sprintf("db Close err:%v", err))
+				s.logger.Warn(ctx, fmt.Sprintf("db Close err:%v", err))
 			}
-			s.logger.Warn("Close Db")
+			s.logger.Warn(ctx, "Close Db")
 		}
 	}
 	// 关闭 redis
 	if s.redis != nil {
 		if err := s.redis.Close(); err != nil {
-			s.logger.Warn(fmt.Sprintf("redis Close err:%v", err))
+			s.logger.Warn(ctx, fmt.Sprintf("redis Close err:%v", err))
 		}
-		s.logger.Warn("Close redis")
+		s.logger.Warn(ctx, "Close redis")
 	}
 
 	// TODO 其他关闭
 
-	s.logger.Warn("Broker server stopped")
+	s.logger.Warn(ctx, "Broker server stopped")
 
 	// 4. 通知 supervisor 退出(若子进程是异常退出已 return,这里无影响)
 	close(s.stopCh)
@@ -211,7 +211,7 @@ func (s *Server) Stop(signal string) {
 		fmt.Printf("Failed to sync logger: %v\n", err)
 	}
 	// 关闭日志组件底层资源(如日志 Kafka Writer)
-	if err := xlog.Close(); err != nil {
+	if err := s.logger.Close(); err != nil {
 		fmt.Printf("Failed to close xlog: %v\n", err)
 	}
 }
@@ -222,6 +222,11 @@ func isChild() bool {
 
 func healthServer(conf *xconfig.Conf, log *xlog.Logger) *http.Server {
 	engine := gin.New()
+
+	// 显式收紧可信代理,与 http 引擎一致,防止伪造 X-Forwarded-For 绕过 trace/限流。
+	if err := engine.SetTrustedProxies(conf.Broker.TrustedProxies); err != nil {
+		panic(fmt.Sprintf("broker invalid trusted proxies: %v", err))
+	}
 
 	if conf.Env == xconfig.EnvStaging || conf.Env == xconfig.EnvRelease {
 		gin.SetMode(gin.ReleaseMode)
@@ -260,24 +265,26 @@ func healthServer(conf *xconfig.Conf, log *xlog.Logger) *http.Server {
 
 	// 初始化HTTP服务
 	httpSvr := &http.Server{
-		Addr:         fmt.Sprintf(":%d", port),
-		Handler:      engine,
-		ReadTimeout:  readTimeout,
-		WriteTimeout: writeTimeout,
+		Addr:              fmt.Sprintf(":%d", port),
+		Handler:           engine,
+		ReadTimeout:       readTimeout,
+		ReadHeaderTimeout: 10 * time.Second, // 防止 slowloris:慢读请求头长期占用连接
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       120 * time.Second, // 保持连接空闲上限,配合 KeepAlive 释放资源
 	}
 
 	// 启动成功
-	log.Warn(fmt.Sprintf("Broker Server 启动 (Host: 0.0.0.0:%d  Pid:%d)", port, os.Getpid()))
+	log.Warn(context.Background(), fmt.Sprintf("Broker Server 启动 (Host: 0.0.0.0:%d  Pid:%d)", port, os.Getpid()))
 
 	go func() {
 		if err := httpSvr.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Warn(fmt.Sprintf("listen: %s", err))
+			log.Warn(context.Background(), fmt.Sprintf("listen: %s", err))
 		}
 	}()
 	return httpSvr
 }
 
-func childProcess(conf *xconfig.Conf, task *event.Task) {
+func childProcess(log *xlog.Logger, conf *xconfig.Conf, task *event.Task) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -290,14 +297,14 @@ func childProcess(conf *xconfig.Conf, task *event.Task) {
 	}()
 
 	var wg sync.WaitGroup
-	sub := event.NewSub(&wg, conf, task, ctx)
+	sub := event.NewSub(&wg, conf, log, task, ctx)
 
 	// kafka subscriber
 	sub.Kafka()
 	// asynq subscriber
 	if err := sub.Asynq(); err != nil {
 		// 启动失败:cancel ctx 触发已启动的消费者退出,等待收尾后退出进程
-		fmt.Printf("!!!BrokerErr!!! asynq subscriber start failed: %v\n", err)
+		log.Error(ctx, "!!!BrokerErr!!! asynq subscriber start failed", err)
 		cancel()
 		wg.Wait()
 		sub.Close()
@@ -305,7 +312,7 @@ func childProcess(conf *xconfig.Conf, task *event.Task) {
 	}
 	// asynq CronPush(cron 启动失败不致命,记录后继续运行主消费)
 	if err := sub.AsynqCron(); err != nil {
-		fmt.Printf("!!!BrokerErr!!! asynq cron start failed: %v\n", err)
+		log.Error(ctx, "!!!BrokerErr!!! asynq cron start failed", err)
 	}
 
 	wg.Wait()
