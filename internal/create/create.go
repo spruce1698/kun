@@ -9,7 +9,7 @@ import (
 	"text/template"
 
 	"github.com/spf13/cobra"
-	"github.com/spruce1698/kun/internal/command/create/kernel"
+	"github.com/spruce1698/kun/internal/create/kernel"
 	"github.com/spruce1698/kun/pkg/helper"
 	"github.com/spruce1698/kun/pkg/output"
 	"github.com/spruce1698/kun/tpl"
