@@ -40,10 +40,6 @@ var errCodeReplacer = strings.NewReplacer(
 	"I", "1",
 )
 
-// NewError 创建业务错误并记录日志(err 非 nil 时自动调用 xlog.Errorf)。
-// 适用场景:业务层明确需要即时记录错误(如 service 层构造的包装错误)。
-// 注意:构造函数有写日志的副作用;若仅需构造错误而不触发日志(如中间件层判错),
-// 请使用 NewErrorSilent。
 func NewError(ctx context.Context, code int, message string, err error) error {
 	e := &defaultError{
 		code:    code,
@@ -68,16 +64,6 @@ func (e *defaultError) Error() string {
 // Unwrap 支持 errors.Is / errors.As 穿透错误链
 func (e *defaultError) Unwrap() error {
 	return e.err
-}
-
-// NewErrorSilent 创建业务错误但不记录日志。
-// 适用场景:中间件层、参数校验层等只需构造错误交由上层统一处理的场景。
-func NewErrorSilent(ctx context.Context, code int, message string, err error) error {
-	return &defaultError{
-		code:    code,
-		message: message,
-		err:     err,
-	}
 }
 
 func (e *defaultError) Log(ctx context.Context) {

@@ -50,19 +50,11 @@ func New(
 	log *xlog.Logger,
 	db *xdb.Client,
 	redis *xredis.Client,
-	jwt *token.Jwt,
 	pub *event.Pub,
 	ctl *controller.ServerCtrlCtx,
 	rtrs []router.Router,
 ) (xserver.Engine, error) {
 	eng := gin.New()
-
-	// 显式收紧可信代理:默认 gin 信任全部代理(0.0.0.0/0),
-	// 会采信伪造的 X-Forwarded-For/X-Real-IP 绕过限流与审计,必须收敛。
-	// 空列表 = 不信任何代理头,只取直连 peer 地址;部署在代理后请在配置中填 LB/网关网段。
-	if err := eng.SetTrustedProxies(conf.Server.TrustedProxies); err != nil {
-		panic(fmt.Sprintf("http invalid trusted proxies: %v", err))
-	}
 
 	if conf.Env == xconfig.EnvStaging || conf.Env == xconfig.EnvRelease {
 		gin.SetMode(gin.ReleaseMode)
@@ -94,7 +86,10 @@ func New(
 
 	// 全局: 有 token 就解析写入 context,没有也放行(不强制)
 	// 配合各业务组的 Auth() 中间件实现"默认公开,显式加锁"
-	// jwt 由 wire 注入,与 svc 层共享同一实例,避免重复初始化
+	jwt, err := token.NewJwt(conf, redis)
+	if err != nil {
+		return nil, fmt.Errorf("jwt 初始化失败: %w", err)
+	}
 	eng.Use(middleware.WriteAuth(conf, jwt))
 
 	// 限制
@@ -145,20 +140,18 @@ func (s *Server) Start() error {
 	}
 	// 初始化HTTP/JOB服务
 	svr := &http.Server{
-		Addr:              fmt.Sprintf(":%d", port),
-		Handler:           s.Engine,
-		ReadTimeout:       readTimeout,
-		ReadHeaderTimeout: 10 * time.Second, // 防止 slowloris:慢读请求头长期占用连接
-		WriteTimeout:      writeTimeout,
-		IdleTimeout:       120 * time.Second, // 保持连接空闲上限,配合 KeepAlive 释放资源
+		Addr:         fmt.Sprintf(":%d", port),
+		Handler:      s.Engine,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
 	}
 
 	// 启动成功
-	s.logger.Warn(context.Background(), fmt.Sprintf("Http server 启动 (Host: 0.0.0.0:%d  Pid:%d)", port, os.Getpid()))
+	s.logger.Warn(fmt.Sprintf("Http server 启动 (Host: 0.0.0.0:%d  Pid:%d)", port, os.Getpid()))
 
 	go func() {
 		if err := svr.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			s.logger.Error(context.Background(), "http server listen error", err)
+			s.logger.Error(fmt.Sprintf("%s ", err))
 			s.Stop("")
 		}
 	}()
@@ -169,9 +162,9 @@ func (s *Server) Start() error {
 
 func (s *Server) Stop(signal string) {
 
-	s.logger.Warn(context.Background(), fmt.Sprintf("Receive a signal: %s", signal))
+	s.logger.Warn("Receive a signal", xlog.KVStr("signal", signal))
 
-	s.logger.Warn(context.Background(), "Http server stopping ...")
+	s.logger.Warn("Http server stopping ...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
 	defer cancel()
@@ -180,49 +173,49 @@ func (s *Server) Stop(signal string) {
 	// 关闭 http server
 	if s.server != nil {
 		if err := s.server.Shutdown(ctx); err != nil {
-			s.logger.Warn(ctx, fmt.Sprintf("http server shutdown err:%v", err))
+			s.logger.Warn(fmt.Sprintf("http server shutdown err:%v", err))
 		}
-		s.logger.Warn(ctx, "Close http server")
+		s.logger.Warn("Close http server")
 	}
 	// 关闭 db
 	if s.db != nil {
 		sqlDB, _ := s.db.DB()
 		if sqlDB != nil {
 			if err := sqlDB.Close(); err != nil {
-				s.logger.Warn(ctx, fmt.Sprintf("db shutdown err:%v", err))
+				s.logger.Warn(fmt.Sprintf("db shutdown err:%v", err))
 			}
 		}
-		s.logger.Warn(ctx, "Close Db")
+		s.logger.Warn("Close Db")
 	}
 
 	// 关闭 redis
 	if s.Redis != nil {
 		if err := s.Redis.Close(); err != nil {
-			s.logger.Warn(ctx, fmt.Sprintf("redis shutdown err:%v", err))
+			s.logger.Warn(fmt.Sprintf("redis shutdown err:%v", err))
 		}
-		s.logger.Warn(ctx, "Close redis")
+		s.logger.Warn("Close redis")
 	}
 	// 关闭 kafka publisher(底层 Writer)
 	if s.pub != nil {
 		s.pub.Close()
-		s.logger.Warn(ctx, "Close kafka publisher")
+		s.logger.Warn("Close kafka publisher")
 	}
 	// 关闭tracer
 	if s.tp != nil {
 		if err := s.tp.Shutdown(ctx); err != nil {
-			s.logger.Error(ctx, "Failed to shutdown tracer provider", err)
+			s.logger.Error("Failed to shutdown tracer provider", xlog.KVErr(err))
 		}
 	}
 
 	// TODO 其他关闭
-	s.logger.Warn(ctx, "Http server stopped")
+	s.logger.Warn("Http server stopped")
 
 	// 日志异步
 	if err := s.logger.Sync(); err != nil {
 		fmt.Printf("Failed to sync logger: %v\n", err)
 	}
 	// 关闭日志组件底层资源(如日志 Kafka Writer)
-	if err := s.logger.Close(); err != nil {
+	if err := xlog.Close(); err != nil {
 		fmt.Printf("Failed to close xlog: %v\n", err)
 	}
 }

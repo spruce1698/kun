@@ -10,19 +10,17 @@ server:
   allowOrigins: # CORS 允许的来源白名单,为空则允许所有
     - "*"
     - "http://127.0.0.1:9998"
-  trustedProxies: [] # 可信上游代理网段,(如 "10.0.0.0/8");为空则不信任任何 X-Forwarded-For/X-Real-IP,防 IP 伪造
 
 broker:
   name: "advanced-broker"
   port: 9999 # broker端口
   readTimeout: 60 # 单位s
   writeTimeout: 60 # 单位s
-  trustedProxies: [] # 同 server.trustedProxies,用于 broker health 服务
 
 token:
-  secret: "123456ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-  refreshSecret: "abcdefghijklmnopqrstuvwxyz123456"
-  csrfKey: "abcdefghijklmnopqrstuvwxyz123456" # CSRF 密钥,32位
+  secret: "123456ABCDEFGHIJKLMNOPQRSTUVWXYZ" # 示例后面正式要切换
+  refreshSecret: "abcdefghijklmnopqrstuvwxyz123456" # 示例后面正式要切换
+  csrfKey: "abcdefghijklmnopqrstuvwxyz123456" # CSRF 密钥,32位 ,示例后面正式要切换
   expire: 3600    # 过期时间(秒)
   refresh: 604800  # 刷新时间(秒)
   queryKey: "Authorization"   # query 参数 key

@@ -53,6 +53,15 @@ func (d *DemoCtrl) Detail(ctx *gin.Context) {
 		xhttp.BusCode(ctx, xerror.ParamError, err)
 		return
 	}
+	type minMaxStruct struct {
+		Min string `form:"min" binding:"required,minNow"`
+		Max string `form:"max" binding:"required,maxNow"` // 自定义校验
+	}
+	var minMax minMaxStruct
+	if err := ctx.ShouldBind(&minMax); err != nil {
+		xhttp.BusCode(ctx, xerror.ParamError, err)
+		return
+	}
 	id := urlId.Id
 
 	info, err := d.DemoSvc.Detail(ctx.Request.Context(), id)

@@ -76,17 +76,21 @@ func WithNotFoundPath(ctx *gin.Context) {
 }
 
 // BusFail 业务错误
+// 仅 xerror.Error 类型错误向客户端暴露其 message;其余错误(如 gorm/redis 原始错误)
+// 可能含 SQL/表名/连接串等内部信息,统一返回通用消息,避免信息泄漏。
 func BusFail(ctx *gin.Context, err error) {
 	r := &RespData{
 		Data: "",
 	}
-	r.Code = xerror.BusinessError
-	r.Message = err.Error()
 
 	var e xerror.Error
 	if ok := errors.As(err, &e); ok {
 		r.Code = e.Code()
 		r.Message = e.Error()
+	} else {
+		// 非业务错误:返回通用消息,详细错误已在 service 层经 xerror.NewError 记录日志。
+		r.Code = xerror.BusinessError
+		r.Message = xerror.CodeMap[xerror.BusinessError]
 	}
 
 	ctx.JSON(http.StatusOK, r)

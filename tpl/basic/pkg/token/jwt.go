@@ -8,6 +8,7 @@ package token
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -20,7 +21,6 @@ import (
 	"basic/pkg/xredis"
 
 	v5 "github.com/golang-jwt/jwt/v5"
-	"github.com/pkg/errors"
 )
 
 const (

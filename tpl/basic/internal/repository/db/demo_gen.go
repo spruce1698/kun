@@ -13,6 +13,9 @@ var _ demoDb = (*defaultDemoDb)(nil)
 
 const TableDemo = "demo"
 
+// DemoFields 表 demo 的字段白名单,供 HandleRank 校验可排序字段。
+const DemoFields = "id,name,test1,test2,test3,test4,test5,test6,test7,test8,deleted_at,test_a888,test_b"
+
 type (
 	demoDb interface {
 		Insert(ctx context.Context, data *Demo) (int64, error)
@@ -68,7 +71,7 @@ func newDemoDb(c *Conn) *defaultDemoDb {
 
 func (d *defaultDemoDb) Insert(ctx context.Context, data *Demo) (int64, error) {
 	var zero int64
-	data.Id = zero
+	data.Id = zero // 自增主键:清零让 DB 分配;非自增主键保留调用方传入值
 	err := d.WithContext(ctx).Create(data).Error
 	if err != nil {
 		return zero, err
@@ -77,6 +80,10 @@ func (d *defaultDemoDb) Insert(ctx context.Context, data *Demo) (int64, error) {
 }
 
 func (d *defaultDemoDb) BatchInsert(ctx context.Context, list []*Demo) ([]int64, error) {
+	// 清零主键,避免调用方误传非零 Id 导致插入指定 Id 或主键冲突;非自增主键保留调用方传入值
+	for _, v := range list {
+		v.Id = *new(int64)
+	}
 	err := d.WithContext(ctx).Create(list).Error
 	if err != nil {
 		return nil, err
@@ -99,7 +106,12 @@ func (d *defaultDemoDb) Find(ctx context.Context, id int64) (*Demo, error) {
 
 func (d *defaultDemoDb) FindFields(ctx context.Context, id int64, fields ...string) (*Demo, error) {
 	result := &Demo{}
-	err := d.WithContext(ctx).Select(fields).First(result, id).Error
+	query := d.WithContext(ctx)
+	// 空 fields 时执行全字段查询,避免 Select([]) 生成无列 SELECT
+	if len(fields) > 0 {
+		query = query.Select(fields)
+	}
+	err := query.First(result, id).Error
 	if err != nil {
 		return nil, err
 	}

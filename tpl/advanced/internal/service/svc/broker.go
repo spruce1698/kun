@@ -48,17 +48,17 @@ func (b *brokerSvc) SubPayRecharge(key, value string) error {
 	case global.EventTypePayRecharge: // 充值
 		msg := &global.PayRecharge{}
 		if err := json.Unmarshal([]byte(value), msg); err != nil {
-			b.ctx.Logger.Error(context.Background(), "SubPayRecharge 反序列化失败", err, value)
+			b.ctx.Logger.Error("SubPayRecharge 反序列化失败: " + err.Error() + " value: " + value)
 			return err
 		}
 
-		b.ctx.Logger.Info(context.Background(), fmt.Sprintf("SubPayRecharge-type:消费时间:%s:%s", utils.TimeStr(time.Now()), value))
+		b.ctx.Logger.Info(fmt.Sprintf("SubPayRecharge-type:消费时间:%s:%s", utils.TimeStr(time.Now()), value))
 
 		// TODO: do something 逻辑处理start...
 
 		return nil
 	default:
-		b.ctx.Logger.Error(context.Background(), "未知的支付事件类型: "+key+value, nil)
+		b.ctx.Logger.Error("未知的支付事件类型:" + key + value)
 	}
 	return nil
 }
@@ -67,12 +67,12 @@ func (b *brokerSvc) SubPayRecharge(key, value string) error {
 func (b *brokerSvc) KQPayDemo(key, value string) error {
 	msg := &global.PayRecharge{}
 	if err := json.Unmarshal([]byte(value), msg); err != nil {
-		b.ctx.Logger.Error(context.Background(), "KQPayDemo 反序列化失败", err, value)
+		b.ctx.Logger.Error("KQPayDemo 反序列化失败: " + err.Error() + " value: " + value)
 		return err
 	}
 
-	b.ctx.Logger.Info(context.Background(), fmt.Sprintf("KQPayDemo:not key 消费时间:%s:%s", utils.TimeStr(time.Now()), value))
-	b.ctx.Logger.Info(context.Background(), b.ctx.Conf.Get().Env+" 测试:"+key+value)
+	b.ctx.Logger.Info(fmt.Sprintf("KQPayDemo:not key 消费时间:%s:%s", utils.TimeStr(time.Now()), value))
+	b.ctx.Logger.Info(b.ctx.Conf.Get().Env + " 测试:" + key + value)
 
 	// TODO: do something 逻辑处理start...
 
@@ -81,7 +81,7 @@ func (b *brokerSvc) KQPayDemo(key, value string) error {
 
 // SubAqPay aq订阅
 func (b *brokerSvc) SubAqPay(ctx context.Context, task *asynq.Task) error {
-	b.ctx.Logger.Info(ctx, fmt.Sprintf("SubAqPay:消费时间:%s: %s %s", utils.TimeStr(time.Now()), task.Type(), task.Payload()))
+	b.ctx.Logger.Info(fmt.Sprintf("SubAqPay:消费时间:%s: %s %s", utils.TimeStr(time.Now()), task.Type(), task.Payload()))
 
 	// TODO: do something 逻辑处理start...
 
@@ -89,7 +89,7 @@ func (b *brokerSvc) SubAqPay(ctx context.Context, task *asynq.Task) error {
 }
 
 func (b *brokerSvc) SubAqPay1(ctx context.Context, task *asynq.Task) error {
-	b.ctx.Logger.Info(ctx, fmt.Sprintf("SubAqPay1:消费时间:%s: %s %s", utils.TimeStr(time.Now()), task.Type(), task.Payload()))
+	b.ctx.Logger.Info(fmt.Sprintf("SubAqPay1:消费时间:%s: %s %s", utils.TimeStr(time.Now()), task.Type(), task.Payload()))
 
 	// TODO: do something 逻辑处理start...
 	return nil

@@ -2,12 +2,12 @@ package db
 
 import (
 	"context"
+	"errors"
 
-	"github.com/pkg/errors"
 	"gorm.io/gorm"
 )
 
-//go:generate mockgen -source=./demo.go -destination=../../../test/mocks/repository/db/demo.go -package mock_repo_db -aux_files mysql=./demo_gen.go
+//go:generate mockgen -source=./demo.go -destination=../../../test/mocks/repository/db/demo.go -package mock_repo_db -aux_files db=./demo_gen.go
 
 var _ DemoDb = (*customDemoDb)(nil)
 
@@ -72,7 +72,13 @@ func (c *customDemoDb) ListWithTotal(ctx context.Context, args *DemoSearch) ([]*
 		return nil, 0, ErrNotFound
 	}
 
-	order := c.HandleRank(args.OrderField, args.OrderType, "`"+TableDemo+"`.`id`")
+	order := c.HandleRank(
+		args.OrderField,
+		args.OrderType,
+		DemoFields,
+		TableDemo+".id",
+	)
+
 	offset, limit := c.HandlePage(args.Page, args.PageSize)
 
 	var model *gorm.DB
@@ -95,9 +101,8 @@ func (c *customDemoDb) ListWithTotal(ctx context.Context, args *DemoSearch) ([]*
 	if err := model.Find(&result).Error; err != nil {
 		return nil, 0, err
 	}
-	if len(result) == 0 {
-		return nil, 0, ErrNotFound
-	}
+	// total>0 但本页结果为空(如并发删除/分页越界),返回空列表 + 真实 total,不当作 ErrNotFound,
+	// 让上层据此正确渲染分页(而非误判"无数据")。total==0 在上面已提前返回 ErrNotFound。
 	return result, total, nil
 }
 
@@ -106,7 +111,7 @@ func (c *customDemoDb) ListWithMore(ctx context.Context, args *DemoSearch) ([]*D
 	// 各调用之间不共享 Statement,天然无污染。过滤逻辑只写这一处。
 	filter := func() *gorm.DB {
 		d := c.WithContext(ctx).Model(c.model)
-		// TODO 业务条件补充
+		// TODO 自定义条件处理
 		if args.Name != "" {
 			d = d.Where(" name LIKE ? ", "%"+args.Name+"%")
 		}
@@ -116,7 +121,13 @@ func (c *customDemoDb) ListWithMore(ctx context.Context, args *DemoSearch) ([]*D
 		return d
 	}
 
-	order := c.HandleRank(args.OrderField, args.OrderType, "`"+TableDemo+"`.`id`")
+	order := c.HandleRank(
+		args.OrderField,
+		args.OrderType,
+		DemoFields,
+		TableDemo+".id",
+	)
+
 	offset, limit := c.HandlePage(args.Page, args.PageSize)
 	// 在请求的数据基础上+1，以此来判断是否还有数据
 	want := limit
@@ -124,7 +135,7 @@ func (c *customDemoDb) ListWithMore(ctx context.Context, args *DemoSearch) ([]*D
 
 	var model *gorm.DB
 	switch {
-	case args.LastId > 0 && args.Page > 1:
+	case args.LastId > 0 && args.Page > 1: // 游标分页
 		lastCond := "`id` < ?"
 		if args.OrderType == 1 {
 			lastCond = "`id` > ?"

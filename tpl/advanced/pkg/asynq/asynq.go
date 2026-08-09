@@ -30,7 +30,8 @@ const (
 
 type (
 	Asynq struct {
-		Redis asynq.RedisClientOpt
+		Redis  asynq.RedisClientOpt
+		Client *asynq.Client
 	}
 	Task = asynq.Task
 )
@@ -49,14 +50,13 @@ func (a *Asynq) SyncPub(queue, taskName, payload string) (entryID string, err er
 	if queue == "" {
 		queue = DefaultQueue
 	}
-	// client 仅本调用使用,用局部变量而非共享字段,避免并发发布互相覆盖/关闭对方 client
-	client := asynq.NewClient(a.Redis)
-	defer func() {
-		_ = client.Close()
-	}()
+	a.Client = asynq.NewClient(a.Redis)
+	defer func(Client *asynq.Client) {
+		_ = Client.Close()
+	}(a.Client)
 
 	task := asynq.NewTask(taskName, []byte(payload))
-	info, err := client.Enqueue(task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue))
+	info, err := a.Client.Enqueue(task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue))
 	if err != nil {
 		return "", err
 	}
@@ -68,14 +68,13 @@ func (a *Asynq) DelayPub(queue, taskName, payload string, after time.Duration) (
 	if queue == "" {
 		queue = DefaultQueue
 	}
-	// client 仅本调用使用,用局部变量而非共享字段,避免并发发布互相覆盖/关闭对方 client
-	client := asynq.NewClient(a.Redis)
-	defer func() {
-		_ = client.Close()
-	}()
+	a.Client = asynq.NewClient(a.Redis)
+	defer func(Client *asynq.Client) {
+		_ = Client.Close()
+	}(a.Client)
 
 	task := asynq.NewTask(taskName, []byte(payload))
-	info, err := client.Enqueue(task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue), asynq.ProcessIn(after))
+	info, err := a.Client.Enqueue(task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue), asynq.ProcessIn(after))
 	if err != nil {
 		return "", err
 	}

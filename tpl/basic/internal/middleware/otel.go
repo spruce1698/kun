@@ -58,8 +58,9 @@ func InitTracer(cfg TracingConfig) *sdktrace.TracerProvider {
 	// 创建 TracerProvider
 	tp := sdktrace.NewTracerProvider(
 		append(opts,
-			// 设置采样策略：生产环境使用 10% 比例采样，避免全量采样带来的性能开销,始终采样:sdktrace.AlwaysSample()
-			sdktrace.WithSampler(sdktrace.TraceIDRatioBased(0.1)),
+			// 设置采样策略：生产环境使用 10% 比例采样，避免全量采样带来的性能开销
+			//sdktrace.WithSampler(sdktrace.AlwaysSample()), // 全量采样
+			sdktrace.WithSampler(sdktrace.TraceIDRatioBased(0.1)), // 生产环境使用 10% 比例采样
 		)...,
 	)
 

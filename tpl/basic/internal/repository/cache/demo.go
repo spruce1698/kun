@@ -14,7 +14,7 @@ import (
 
 	"basic/pkg/xredis"
 
-	"github.com/pkg/errors"
+	"errors"
 )
 
 var _ DemoCache = (*demoCache)(nil)

@@ -13,7 +13,7 @@ import (
 
 	"basic/pkg/xlog"
 
-	"github.com/pkg/errors"
+	"errors"
 
 	"gorm.io/gorm/logger"
 	"gorm.io/gorm/utils"

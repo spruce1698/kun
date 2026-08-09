@@ -19,22 +19,39 @@ const (
 var (
 	// 需要过滤的敏感字段
 	sensitiveFields = map[string]struct{}{
+		// 认证凭证
 		"password":      {},
+		"passwd":        {},
+		"pwd":           {},
 		"token":         {},
 		"secret":        {},
 		"authorization": {},
 		"api_key":       {},
+		"apikey":        {},
 		"access_token":  {},
 		"refresh_token": {},
-		"credit_card":   {},
-		"card_number":   {},
-		"cvv":           {},
-		"pin":           {},
-		"key":           {},
-		"cert":          {},
-		"private":       {},
-		"cookie":        {},
+		"bearer":        {},
+		"credential":    {},
+		"session_id":    {},
 		"session":       {},
+		"cookie":        {},
+		// 加密密钥
+		"key":         {},
+		"cert":        {},
+		"private":     {},
+		"private_key": {},
+		"signing_key": {},
+		// 支付信息
+		"credit_card":  {},
+		"card_number":  {},
+		"cvv":          {},
+		"cvc":          {},
+		"pin":          {},
+		"bank_account": {},
+		// 个人隐私
+		"id_card":  {},
+		"idnumber": {},
+		"ssn":      {},
 	}
 
 	// 支持的内容类型

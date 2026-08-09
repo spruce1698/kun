@@ -191,7 +191,7 @@ func (d *demoSvc) Update(ctx context.Context, args *Demo) error {
 	if args.Id > 0 {
 		// 两种事务方式
 		// 方式1:
-		// err := d.ctx.Conn.Tx(ctx, func(ctx context.Context) error {
+		//err := d.ctx.Conn.Tx(ctx, func(ctx context.Context) error {
 		//    preOneId := args.Id - 1
 		//    demo, err := d.ctx.DemoDb.Find(ctx, preOneId)
 		//    if err != nil {
@@ -206,7 +206,7 @@ func (d *demoSvc) Update(ctx context.Context, args *Demo) error {
 		//    }
 		//    _, err = d.ctx.DemoDb.UpdateFields(ctx, args.Id, map[string]any{"name": args.Name, "test1": args.Test1, "test4": args.Test4})
 		//    return err
-		// })
+		//})
 		// 方式2:
 		err := d.ctx.DemoDb.UpdateTrans(ctx, args.Id, &db.Demo{
 			Name:  args.Name,
@@ -286,7 +286,7 @@ func (d *demoSvc) Login(ctx context.Context, name, password string) (*token.JwtT
 
 // RefreshToken 刷新双token
 func (d *demoSvc) RefreshToken(ctx context.Context, accessToken, refreshToken string) (*token.JwtToken, error) {
-	tokenInfo, err := d.ctx.Jwt.Refresh(ctx, accessToken, refreshToken)
+	tokenInfo, err := d.ctx.Jwt.Refresh(accessToken, refreshToken)
 	if err != nil {
 		return nil, xerror.NewError(ctx, xerror.AuthRefreshErr, "刷新token失败", err)
 	}
