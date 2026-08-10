@@ -7,29 +7,29 @@
 package v0
 
 import (
-	"basic/internal/controller"
 	"basic/internal/global"
+	"basic/internal/handler"
 	"basic/internal/middleware"
 	"basic/pkg/token"
 
 	"github.com/gin-gonic/gin"
 )
 
-func Demo(e *gin.Engine, jwt *token.Jwt, ctx *controller.ServerCtrlCtx) {
+func Demo(e *gin.Engine, jwt *token.Jwt, ctx *handler.Ctx) {
 	// api Demo路由
 	apiGroup := e.Group(global.RouterPrefixApi)
 	{
-		apiGroup.GET("/demo/:id", ctx.DemoCtrl.Detail)
-		apiGroup.GET("/demo/list", ctx.DemoCtrl.List)
-		apiGroup.POST("/demo/create", ctx.DemoCtrl.Create)
-		apiGroup.POST("/demo/update", ctx.DemoCtrl.Update)
-		apiGroup.POST("/demo/delete", ctx.DemoCtrl.Delete)
-		apiGroup.POST("/demo/softdelete", ctx.DemoCtrl.SoftDelete)
+		apiGroup.GET("/demo/:id", ctx.DemoHandler.Detail)
+		apiGroup.GET("/demo/list", ctx.DemoHandler.List)
+		apiGroup.POST("/demo/create", ctx.DemoHandler.Create)
+		apiGroup.POST("/demo/update", ctx.DemoHandler.Update)
+		apiGroup.POST("/demo/delete", ctx.DemoHandler.Delete)
+		apiGroup.POST("/demo/softdelete", ctx.DemoHandler.SoftDelete)
 
 	}
 	// mgr Demo路由
 	mgrGroup := e.Group(global.RouterPrefixMgr).Use(middleware.Auth(jwt))
 	{
-		mgrGroup.GET("/demo", ctx.DemoCtrl.Detail)
+		mgrGroup.GET("/demo", ctx.DemoHandler.Detail)
 	}
 }

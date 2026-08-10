@@ -7,7 +7,7 @@
 package wire
 
 import (
-	"basic/internal/controller"
+	"basic/internal/handler"
 	"basic/internal/repository/cache"
 	"basic/internal/repository/db"
 	"basic/internal/router"
@@ -49,14 +49,14 @@ func WireApp(env string) (*xserver.Server, error) {
 		DemoCache: demoCache,
 	}
 	demoSvc := svc.NewDemoSvc(demoCtx)
-	demoCtrl := &controller.DemoCtrl{
+	demoHandler := &handler.DemoHandler{
 		DemoSvc: demoSvc,
 	}
-	serverCtrlCtx := &controller.ServerCtrlCtx{
-		DemoCtrl: demoCtrl,
+	serverHandlerCtx := &handler.ServerHandlerCtx{
+		DemoHandler: demoHandler,
 	}
 	v := router.WireServerSet()
-	engine, err := http.New(conf, logger, gormDB, client, serverCtrlCtx, v)
+	engine, err := http.New(conf, logger, gormDB, client, serverHandlerCtx, v)
 	if err != nil {
 		return nil, err
 	}

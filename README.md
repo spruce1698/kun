@@ -47,7 +47,7 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
 ├── config
 │      └─ local.yml
 ├── internal
-│      ├── controller
+│      ├── handler
 │      │      └── serverDI.go
 │      ├── global
 │      │      ├──ctx.go
@@ -93,8 +93,8 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
   - local.yml: 本地环境的配置文件。
 - internal: 应用程序的内部代码。
 
-  - controller: 处理HTTP请求的控制器。
-    - serverDI.go: server的控制器依赖注入文件。
+  - handler: HTTP 处理器层（参数校验、调用 Service）。
+    - serverDI.go: Wire DI 注册所有 处理器 依赖。
   - global: 常量/全局变量代码。
     - ctx.go: ctx中的常量/全局变量。
     - router.go: 路由常量/全局变量。
@@ -110,15 +110,15 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
       - local.go: 本地缓存操作文件。
     - db: 数据库层代码
       - mysql.go: mysql通用接口。
-    - serverDI.go: server的存储依赖注入文件。
+    - serverDI.go: Wire DI 注册所有 Repository 依赖。
   - router: 路由代码。
     - v0: 默认第一个/公共版本。
     - router.go: 通用路由。
-    - serverDI.go: server的路由依赖注入文件。
+    - serverDI.go: Wire DI 注册所有路由定义 依赖。
   - service: 业务服务(逻辑)代码。
     - svc: 业务服务(逻辑)核心目录。
       - context.go: 业务逻辑的context。
-    - serverDI.go: server的服务依赖注入文件。。
+    - serverDI.go: Wire DI 注册 服务层 依赖。
 - pkg: 应用程序的公共包。
 - scripts:  项目脚本。
 
@@ -190,11 +190,11 @@ Advanced Layout 包含了很多kun的用法示例（ db、redis、 jwt、 cron�
 
 ### 创建组件
 
-您可以使用以下命令为项目创建router、controller、service、repository/db和repository/cache等组件：
+您可以使用以下命令为项目创建router、handler、service、repository/db和repository/cache等组件：
 
 ```bash
 kun create rt user
-kun create ctrl user
+kun create hdl user
 kun create svc user
 kun create db "name:pwd@tcp(127.0.0.1:3306)/dbname" "[t1,t2|t1|*]" 
 kun create db "*.sql" "[t1,t2|t1|*]"
@@ -204,10 +204,20 @@ kun create cache cache
 或
 
 ```
-kun create cs user
+kun create hs user
 ```
 
-这些命令将分别创建以`UserCtrl` 和 `UserSvc` 命名的组件，并将它们放置在正确的目录中。
+这些命令将分别创建以`UserHandler` 和 `UserSvc` 命名的组件，并将它们放置在正确的目录中。
+
+> **⚠️ 破坏性变更**：`controller` 层已更名为 `handler`（子命令 `ctrl` → `hdl`，`cs` → `hs`）。
+> 旧项目升级 CLI 后需手动迁移，否则 `kun create hdl` 会因找不到 DI 标记而静默跳过依赖注入：
+>
+> 1. 目录 `internal/controller` → `internal/handler`，包声明 `package controller` → `package handler`；
+> 2. 结构体 `XxxCtrl` → `XxxHandler`，`ServerCtrlCtx` → `ServerHandlerCtx`；
+> 3. `internal/handler/serverDI.go` 中的两行标记注释改为
+>    `// ==== Add HandlerCtx before this line, don't edit this line.====` 与
+>    `// ==== Add Handler before this line, don't edit this line.====`；
+> 4. 更新引用方 import 路径（`router/`、`pkg/xserver/http/`、`cmd/*/wire/`），并重新执行 `kun wire`。
 
 ### 启动项目
 

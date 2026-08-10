@@ -17,7 +17,7 @@
 
 ```
 ┌─────────────────────────────────────────────┐
-│              router / controller            │  ── 路由 & 控制器（处理 HTTP 请求）
+│               router / handler              │  ── 路由 & 处理器（处理 HTTP 请求）
 ├─────────────────────────────────────────────┤
 │                 service / svc               │  ── 业务逻辑层
 ├─────────────────────────────────────────────┤
@@ -27,7 +27,7 @@
 └─────────────────────────────────────────────┘
 ```
 
-- **controller**: 接收 HTTP 请求，参数校验，调用 service，返回响应。
+- **handler**: 接收 HTTP 请求，参数校验，调用 service，返回响应。
 - **service**: 核心业务逻辑编排，事务管理，调用 repository。
 - **repository**: 数据存储，屏蔽 DB / 缓存实现细节。
 - **pkg**: 跨项目的公共组件（日志、配置、加密等）。
@@ -48,9 +48,9 @@
 │   └── sql
 │       └── basic.sql                        数据库初始化脚本
 ├── internal
-│   ├── controller                           HTTP 控制器层
-│   │   ├── demo.go                          Demo 控制器
-│   │   └── serverDI.go                      Server 控制器 DI 配置
+│   ├── handler                              HTTP 处理器层
+│   │   ├── demo.go                          Demo 处理器
+│   │   └── serverDI.go                      Server 处理器 DI 配置
 │   ├── global                               全局常量与枚举
 │   │   ├── ctx.go                           上下文 key 常量
 │   │   └── router.go                        路由前缀常量
@@ -137,11 +137,11 @@
 
 ## 创建组件
 
-您可以使用以下命令为项目创建 controller、service 和 repository 等组件：
+您可以使用以下命令为项目创建 handler、service 和 repository 等组件：
 
 ```bash
-# 创建控制器
-kun create ctrl user
+# 创建处理器
+kun create hdl user
 
 # 创建业务服务
 kun create svc user
@@ -155,11 +155,11 @@ kun create db "*.sql" "[t1,t2|t1|*]"
 # 创建缓存
 kun create cache cache
 
-# 同时创建控制器 + 服务
-kun create cs user
+# 同时创建处理器 + 服务
+kun create hs user
 ```
 
-这些命令将分别创建以 `UserCtrl` 和 `UserSvc` 命名的组件，并将它们放置在正确的目录中。
+这些命令将分别创建以 `UserHandler` 和 `UserSvc` 命名的组件，并将它们放置在正确的目录中。
 
 ## 常用命令
 

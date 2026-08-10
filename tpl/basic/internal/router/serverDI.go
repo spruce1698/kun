@@ -1,7 +1,7 @@
 package router
 
 import (
-	"basic/internal/controller"
+	"basic/internal/handler"
 	"basic/internal/router/v0"
 	"basic/pkg/token"
 
@@ -11,7 +11,7 @@ import (
 
 // 定义路由注册接口
 type (
-	Router func(e *gin.Engine, jwt *token.Jwt, ctx *controller.ServerCtrlCtx)
+	Router func(e *gin.Engine, jwt *token.Jwt, ctx *handler.Ctx)
 )
 
 // 路由层

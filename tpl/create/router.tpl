@@ -2,14 +2,14 @@
 package {{ .PackageName }}
 
 import (
-    "{{ .ProjectName }}/internal/controller"
+    "{{ .ProjectName }}/internal/handler"
     "{{ .ProjectName }}/pkg/token"
 
     "github.com/gin-gonic/gin"
 )
 
 
-func {{ .FileName }}(e *gin.Engine, jwt *token.Jwt, ctx *controller.ServerCtrlCtx) {
+func {{ .FileName }}(e *gin.Engine, jwt *token.Jwt, ctx *handler.HandlerCtx) {
 	// TODO: add routes here and delete this line
 }
 

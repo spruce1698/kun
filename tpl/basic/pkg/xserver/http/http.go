@@ -15,7 +15,7 @@ import (
 	"os"
 	"time"
 
-	"basic/internal/controller"
+	"basic/internal/handler"
 	"basic/internal/middleware"
 	"basic/internal/router"
 	"basic/pkg/token"
@@ -48,7 +48,7 @@ func New(
 	log *xlog.Logger,
 	db *xdb.Client,
 	redis *xredis.Client,
-	ctl *controller.ServerCtrlCtx,
+	hdl *handler.Ctx,
 	rtrs []router.Router,
 ) (xserver.Engine, error) {
 	eng := gin.New()
@@ -99,7 +99,7 @@ func New(
 
 	// 业务路由
 	for _, r := range rtrs {
-		r(eng, jwt, ctl)
+		r(eng, jwt, hdl)
 	}
 
 	return &Server{

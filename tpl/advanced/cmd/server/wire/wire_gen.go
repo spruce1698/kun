@@ -7,9 +7,9 @@
 package wire
 
 import (
-	"advanced/internal/controller"
-	"advanced/internal/controller/demo"
 	"advanced/internal/event"
+	"advanced/internal/handler"
+	"advanced/internal/handler/demo"
 	"advanced/internal/repository/cache"
 	"advanced/internal/repository/db"
 	"advanced/internal/router"
@@ -59,14 +59,14 @@ func WireApp(env string) (*xserver.Server, error) {
 		Jwt:       jwt,
 	}
 	demoSvc := svc.NewDemoSvc(demoCtx)
-	demoCtrl := &demo.DemoCtrl{
+	demoHandler := &demo.DemoHandler{
 		DemoSvc: demoSvc,
 	}
-	serverCtrlCtx := &controller.ServerCtrlCtx{
-		DemoCtrl: demoCtrl,
+	handlerCtx := &handler.Ctx{
+		DemoHandler: demoHandler,
 	}
 	v := router.WireServerSet()
-	engine, err := http.New(conf, logger, gormDB, client, pub, serverCtrlCtx, v)
+	engine, err := http.New(conf, logger, gormDB, client, pub, handlerCtx, v)
 	if err != nil {
 		return nil, err
 	}

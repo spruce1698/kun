@@ -19,7 +19,7 @@
 
 ```
 ┌─────────────────────────────────────────────┐
-│              router / controller            │  ── 路由 & 控制器（处理 HTTP 请求）
+│               router / handler              │  ── 路由 & 处理器（处理 HTTP 请求）
 ├─────────────────────────────────────────────┤
 │                 service / svc               │  ── 业务逻辑层
 ├─────────────────────────────────────────────┤
@@ -29,7 +29,7 @@
 └─────────────────────────────────────────────┘
 ```
 
-- **controller**: 接收 HTTP 请求，参数校验，调用 service，返回响应。
+- **handler**: 接收 HTTP 请求，参数校验，调用 service，返回响应。
 - **service**: 核心业务逻辑编排，事务管理，调用 repository。
 - **repository**: 数据存储，屏蔽 DB / 缓存实现细节。
 - **pkg**: 跨项目的公共组件（日志、配置、加密、消息队列等）。
@@ -61,9 +61,9 @@
 │       └── swagger.sh                 自动生成 Swagger 文档
 ├── swagger/                       Swagger 接口文档                
 ├── internal/                      内部业务逻辑
-│   ├── controller/                HTTP 控制器层（参数校验、调用 Service）
-│   │   ├── demo/demo.go           Demo CRUD 控制器（含缓存、事件发布）
-│   │   └── serverDI.go            Wire DI 容器，注册所有控制器
+│   ├── handler/                   HTTP 处理器层（参数校验、调用 Service）
+│   │   ├── demo/demo.go           Demo CRUD 处理器（含缓存、事件发布）
+│   │   └── serverDI.go            Wire DI 容器，注册所有处理器
 │   ├── event/                     事件发布/订阅抽象层
 │   │   ├── publisher.go           多后端发布器（Kafka 同步 + Asynq 异步/延时/定时）
 │   │   └── subscriber.go          订阅管理器（Kafka 消费组 + Asynq Task Worker）
@@ -162,13 +162,13 @@
 
 ### 创建组件
 
-您可以使用以下命令为项目创建controller、service和repository等组件：
+您可以使用以下命令为项目创建handler、service和repository等组件：
 
 ### 创建组件
 
 ```bash
-# 创建控制器
-kun create ctrl user
+# 创建处理器
+kun create hdl user
 
 # 创建业务服务
 kun create svc user
@@ -182,8 +182,8 @@ kun create db "*.sql" "[t1,t2|t1|*]"
 # 创建缓存
 kun create cache cache
 
-# 同时创建控制器 + 服务
-kun create cs user
+# 同时创建处理器 + 服务
+kun create hs user
 ```
 
 ### 常用命令

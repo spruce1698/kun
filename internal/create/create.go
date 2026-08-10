@@ -18,25 +18,25 @@ import (
 const (
 	BasePath = "internal"
 
-	TypeController = "controller"
-	TypeService    = "service"
-	TypeRouter     = "router"
-	TypeCache      = "cache"
+	TypeHandler = "handler"
+	TypeService = "service"
+	TypeRouter  = "router"
+	TypeCache   = "cache"
 )
 
 var (
 	CmdCreate = &cobra.Command{
 		Use:     "create [type] [name]",
-		Short:   "Create a new ctrl/svc/cs/rt/db/cache",
-		Example: "kun create ctrl user",
+		Short:   "Create a new hdl/svc/hs/rt/db/cache",
+		Example: "kun create hdl user",
 		Args:    cobra.ExactArgs(2),
 		RunE:    func(cmd *cobra.Command, args []string) error { return nil },
 	}
 
-	CmdCreateController = &cobra.Command{
-		Use:     "ctrl",
-		Short:   "Create a new controller",
-		Example: "kun create ctrl user",
+	CmdCreateHandler = &cobra.Command{
+		Use:     "hdl",
+		Short:   "Create a new handler",
+		Example: "kun create hdl user",
 		Args:    cobra.ExactArgs(1),
 		RunE:    runCreate,
 	}
@@ -49,10 +49,10 @@ var (
 		RunE:    runCreate,
 	}
 
-	CmdCreateControllerAndService = &cobra.Command{
-		Use:     "cs",
-		Short:   "Create a new controller & service",
-		Example: "kun create cs user",
+	CmdCreateHandlerAndService = &cobra.Command{
+		Use:     "hs",
+		Short:   "Create a new handler & service",
+		Example: "kun create hs user",
 		Args:    cobra.ExactArgs(1),
 		RunE:    runCreate,
 	}
@@ -85,13 +85,13 @@ var (
 func init() {
 	// flag 绑定到各子命令;业务逻辑通过 cmd.Flags().Get* 读取,避免包级变量在多次调用间泄漏。
 	for _, c := range []*cobra.Command{
-		CmdCreateController, CmdCreateService, CmdCreateControllerAndService,
+		CmdCreateHandler, CmdCreateService, CmdCreateHandlerAndService,
 		CmdCreateRouter, CmdCreateDBRepository, CmdCreateCacheRepository,
 	} {
 		c.Flags().StringP("tpl-path", "t", "", "template path")
 	}
 	for _, c := range []*cobra.Command{
-		CmdCreateController, CmdCreateService, CmdCreateControllerAndService,
+		CmdCreateHandler, CmdCreateService, CmdCreateHandlerAndService,
 		CmdCreateRouter, CmdCreateCacheRepository,
 	} {
 		c.Flags().BoolP("force", "f", false, "force override existing file")
@@ -127,10 +127,10 @@ type genConfig struct {
 
 // 生成配置映射
 var genConfigs = map[string]genConfig{
-	TypeController: {
-		typePath:     TypeController,
-		defaultPkg:   TypeController,
-		structSuffix: "Ctrl",
+	TypeHandler: {
+		typePath:     TypeHandler,
+		defaultPkg:   TypeHandler,
+		structSuffix: "Handler",
 		diBuilder: func(c *Create) map[string]string {
 			packageName := c.PackageName + "."
 			tPrefix := strings.ToUpper(string(c.PackageName[0])) + c.PackageName[1:]
@@ -139,8 +139,8 @@ var genConfigs = map[string]genConfig{
 				tPrefix = ""
 			}
 			return map[string]string{
-				"// ==== Add CtrlCtx before this line, don't edit this line.====": "\t" + tPrefix + c.FileName + "Ctrl *" + packageName + c.FileName + "Ctrl",
-				"// ==== Add Ctrl before this line, don't edit this line.====":    "\twire.Struct(new(" + packageName + c.FileName + "Ctrl), \"*\"),",
+				"// ==== Add Ctx before this line, don't edit this line.====":     "\t" + tPrefix + c.FileName + "Handler *" + packageName + c.FileName + "Handler",
+				"// ==== Add Handler before this line, don't edit this line.====": "\twire.Struct(new(" + packageName + c.FileName + "Handler), \"*\"),",
 			}
 		},
 	},
@@ -194,7 +194,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 
 	c.CmdType = cmd.Use
 	arg := args[0]
-	if c.CmdType == "svc" || c.CmdType == "cs" {
+	if c.CmdType == "svc" || c.CmdType == "hs" {
 		if strings.HasPrefix(strings.ToLower(arg), "svc/") {
 			arg = arg[4:]
 		} else if strings.HasPrefix(strings.ToLower(arg), "svc\\") {
@@ -207,16 +207,16 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	c.FileNameFirstChar = string(c.FileNameTitleLower[0])
 
 	switch c.CmdType {
-	case "ctrl":
-		c.CreateType = TypeController
+	case "hdl":
+		c.CreateType = TypeHandler
 		return c.generateFile()
 
 	case "svc":
 		c.CreateType = TypeService
 		return c.generateFile()
 
-	case "cs":
-		c.CreateType = TypeController
+	case "hs":
+		c.CreateType = TypeHandler
 		if err := c.generateFile(); err != nil {
 			return err
 		}
@@ -272,7 +272,7 @@ func (c *Create) generateFile() error {
 	// 深度 = 自定义子路径（c.FilePath）的路径段数；默认路径时为 0，模板已含固定 ../../../。
 	c.AddUPPath = strings.Repeat("../", strings.Count(filepath.ToSlash(c.FilePath), "/"))
 
-	// 设置包名:取目标目录名(如 controller/service),而非文件名。
+	// 设置包名:取目标目录名(如 handler/service),而非文件名。
 	c.PackageName = filepath.Base(absDir)
 	if c.PackageName == "" {
 		c.PackageName = config.defaultPkg
@@ -314,7 +314,7 @@ func (c *Create) generateFile() error {
 
 	// 更新DI文件
 	// DI 文件位置:cache 的 DI 文件在 repository/(生成目录 repository/cache 的父级),
-	// 其余类型的 DI 文件就在生成目录本身(controller/service-svc/router)。
+	// 其余类型的 DI 文件就在生成目录本身(handler/service-svc/router)。
 	// 统一传"生成目录",由 Wire2DIFile 向上逐级查找 marker DI 文件。
 	diPath := absLinuxPath
 	if c.CreateType != TypeCache {

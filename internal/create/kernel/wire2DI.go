@@ -19,7 +19,7 @@ func Wire2DIFile(filePath string, contentMap map[string]string) error {
 	}
 
 	// 向上逐级查找含任一 marker 的 DI 文件,最多上探 4 级,覆盖
-	// db/cache(生成目录的父级)与 ctrl/svc/router(生成目录本身)两种 DI 文件布局。
+	// db/cache(生成目录的父级)与 hdl/svc/router(生成目录本身)两种 DI 文件布局。
 	diFiles := findDIFiles(dirName, contentMap, 4)
 	if len(diFiles) == 0 {
 		return fmt.Errorf("the DI file does not exist near %s", filePath)

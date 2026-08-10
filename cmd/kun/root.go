@@ -27,9 +27,9 @@ func init() {
 	CmdRoot.AddCommand(upgrade.CmdUpgrade)
 	CmdRoot.AddCommand(create.CmdCreate)
 
-	create.CmdCreate.AddCommand(create.CmdCreateController)
+	create.CmdCreate.AddCommand(create.CmdCreateHandler)
 	create.CmdCreate.AddCommand(create.CmdCreateService)
-	create.CmdCreate.AddCommand(create.CmdCreateControllerAndService)
+	create.CmdCreate.AddCommand(create.CmdCreateHandlerAndService)
 	create.CmdCreate.AddCommand(create.CmdCreateRouter)
 	create.CmdCreate.AddCommand(create.CmdCreateDBRepository)
 	create.CmdCreate.AddCommand(create.CmdCreateCacheRepository)

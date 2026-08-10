@@ -8,9 +8,9 @@ import (
 )
 
 // go run main.go create db "root:123456@tcp(127.0.0.1:3306)/dbname" *
-// go run main.go create ctrl demo
+// go run main.go create hdl demo
 // go run main.go create svc demo
-// go run main.go create cs demo
+// go run main.go create hs demo
 func main() {
 	// 子命令失败时由各命令自行 output.Error 提示,这里仅负责退出码,
 	// 避免重复打印(Error: ... 前缀)和误打印 usage。

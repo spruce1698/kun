@@ -4,7 +4,7 @@
 package wire
 
 import (
-	"basic/internal/controller"
+	"basic/internal/handler"
 	"basic/internal/repository"
 	"basic/internal/repository/db"
 	"basic/internal/router"
@@ -33,10 +33,10 @@ func WireApp(env string) (*xserver.Server, error) {
 
 		xhttp.New,
 
-		repository.WireServerSet,
-		service.WireServerSet,
-		controller.WireServerSet,
-		router.WireServerSet,
+		repository.WireSet,
+		service.WireSet,
+		handler.WireSet,
+		router.WireSet,
 
 		xserver.New,
 	))
