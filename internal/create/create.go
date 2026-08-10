@@ -139,8 +139,8 @@ var genConfigs = map[string]genConfig{
 				tPrefix = ""
 			}
 			return map[string]string{
-				"// ==== Add Ctx before this line, don't edit this line.====":     "\t" + tPrefix + c.FileName + "Handler *" + packageName + c.FileName + "Handler",
-				"// ==== Add Handler before this line, don't edit this line.====": "\twire.Struct(new(" + packageName + c.FileName + "Handler), \"*\"),",
+				"// ==== Add Handler to Ctx before this line, don't edit this line.====":     "\t" + tPrefix + c.FileName + "Handler *" + packageName + c.FileName + "Handler",
+				"// ==== Add Handler to WireSet before this line, don't edit this line.====": "\twire.Struct(new(" + packageName + c.FileName + "Handler), \"*\"),",
 			}
 		},
 	},

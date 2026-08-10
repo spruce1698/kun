@@ -52,11 +52,11 @@ func WireApp(env string) (*xserver.Server, error) {
 	demoHandler := &handler.DemoHandler{
 		DemoSvc: demoSvc,
 	}
-	serverHandlerCtx := &handler.ServerHandlerCtx{
+	handlerCtx := &handler.Ctx{
 		DemoHandler: demoHandler,
 	}
 	v := router.WireServerSet()
-	engine, err := http.New(conf, logger, gormDB, client, serverHandlerCtx, v)
+	engine, err := http.New(conf, logger, gormDB, client, handlerCtx, v)
 	if err != nil {
 		return nil, err
 	}

@@ -33,10 +33,10 @@ func WireApp(env string) (*xserver.Server, error) {
 
 		xhttp.New,
 
-		repository.WireSet,
-		service.WireSet,
-		handler.WireSet,
-		router.WireSet,
+		repository.WireServerSet,
+		service.WireServerSet,
+		handler.WireServerSet,
+		router.WireServerSet,
 
 		xserver.New,
 	))

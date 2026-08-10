@@ -209,15 +209,8 @@ kun create hs user
 
 这些命令将分别创建以`UserHandler` 和 `UserSvc` 命名的组件，并将它们放置在正确的目录中。
 
-> **⚠️ 破坏性变更**：`controller` 层已更名为 `handler`（子命令 `ctrl` → `hdl`，`cs` → `hs`）。
-> 旧项目升级 CLI 后需手动迁移，否则 `kun create hdl` 会因找不到 DI 标记而静默跳过依赖注入：
->
-> 1. 目录 `internal/controller` → `internal/handler`，包声明 `package controller` → `package handler`；
-> 2. 结构体 `XxxCtrl` → `XxxHandler`，`ServerCtrlCtx` → `ServerHandlerCtx`；
-> 3. `internal/handler/serverDI.go` 中的两行标记注释改为
->    `// ==== Add HandlerCtx before this line, don't edit this line.====` 与
->    `// ==== Add Handler before this line, don't edit this line.====`；
-> 4. 更新引用方 import 路径（`router/`、`pkg/xserver/http/`、`cmd/*/wire/`），并重新执行 `kun wire`。
+
+
 
 ### 启动项目
 
