@@ -11,17 +11,18 @@ func intToBase(n int64, alphabet string, base int) string {
 		return string(alphabet[0])
 	}
 	neg := false
+	// 转 uint64 取绝对值:uint64 可容纳 MinInt64 的绝对值,避免 int64 直接 -n 溢出。
+	// (原实现 n=-(n+1);n=-n 是保号运算,负数恒为负,循环一次都不进 -> 负数全部输出 "-")
+	u := uint64(n)
 	if n < 0 {
 		neg = true
-		// 安全取绝对值，避免 math.MinInt64 溢出
-		n = -(n + 1)
-		n = -n
+		u = uint64(-n)
 	}
 
 	var result []byte
-	for n > 0 {
-		result = append(result, alphabet[n%int64(base)])
-		n /= int64(base)
+	for u > 0 {
+		result = append(result, alphabet[u%uint64(base)])
+		u /= uint64(base)
 	}
 
 	// 反转字符串

@@ -269,10 +269,12 @@ func (j *Jwt) Parse(ctx context.Context, tokenStr string, optType ...string) (*v
 
 	// 解析 token,过期时(jwt.ErrTokenExpired)claims仍会被填充,以便刷新流程使用
 	// WithValidMethods 固定签名算法,拒绝 alg=none 及其它算法降级
+	// WithExpirationRequired 强制要求 exp 字段:缺失时返回 ErrTokenRequiredClaimErrors,
+	// 避免无 exp 的 token 让下方 ExpiresAt(nil) 解引用 panic(远程 DoS)。
 	payload := &v5.RegisteredClaims{}
 	claim, err := v5.ParseWithClaims(tokenStr, payload, func(token *v5.Token) (any, error) {
 		return secret, nil
-	}, v5.WithValidMethods([]string{SigningAlgorithm}))
+	}, v5.WithValidMethods([]string{SigningAlgorithm}), v5.WithExpirationRequired())
 	if err != nil && !errors.Is(err, v5.ErrTokenExpired) {
 		return nil, ErrInvalidToken
 	}
@@ -303,11 +305,13 @@ func (j *Jwt) Parse(ctx context.Context, tokenStr string, optType ...string) (*v
 	}
 
 	// 是否还未生效 生效时间大于过期时间
-	if payload.NotBefore.After(cTime) {
+	// NotBefore 可选,缺失时视作"已生效",跳过校验,避免对 nil *NumericDate 解引用 panic
+	if payload.NotBefore != nil && payload.NotBefore.After(cTime) {
 		return nil, ErrInvalidToken
 	}
 	// 是否过期 过期时间小于当前时间,返回claims以便刷新
-	if payload.ExpiresAt.Before(cTime) {
+	// ExpiresAt 由 WithExpirationRequired 保证非 nil;此处再防一次,杜绝 nil 解引用
+	if payload.ExpiresAt != nil && payload.ExpiresAt.Before(cTime) {
 		return payload, ErrExpiredToken
 	}
 

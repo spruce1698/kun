@@ -30,8 +30,7 @@ const (
 
 type (
 	Asynq struct {
-		Redis  asynq.RedisClientOpt
-		Client *asynq.Client
+		Redis asynq.RedisClientOpt
 	}
 	Task = asynq.Task
 )
@@ -45,18 +44,23 @@ func New(conf *xconfig.Conf) *Asynq {
 	}
 }
 
+// newClient 创建一个一次性 asynq.Client,调用方负责 Close。
+// 不再复用 *Asynq 上的共享 Client 字段:原实现每次 publish 都 a.Client = NewClient(...),
+// 并发 publish 会互相覆盖字段、且 defer Close 可能关闭另一协程正在使用的 client(数据竞争)。
+func (a *Asynq) newClient() *asynq.Client {
+	return asynq.NewClient(a.Redis)
+}
+
 // 异步消息推送
 func (a *Asynq) SyncPub(queue, taskName, payload string) (entryID string, err error) {
 	if queue == "" {
 		queue = DefaultQueue
 	}
-	a.Client = asynq.NewClient(a.Redis)
-	defer func(Client *asynq.Client) {
-		_ = Client.Close()
-	}(a.Client)
+	client := a.newClient()
+	defer func() { _ = client.Close() }()
 
 	task := asynq.NewTask(taskName, []byte(payload))
-	info, err := a.Client.Enqueue(task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue))
+	info, err := client.Enqueue(task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue))
 	if err != nil {
 		return "", err
 	}
@@ -68,13 +72,11 @@ func (a *Asynq) DelayPub(queue, taskName, payload string, after time.Duration) (
 	if queue == "" {
 		queue = DefaultQueue
 	}
-	a.Client = asynq.NewClient(a.Redis)
-	defer func(Client *asynq.Client) {
-		_ = Client.Close()
-	}(a.Client)
+	client := a.newClient()
+	defer func() { _ = client.Close() }()
 
 	task := asynq.NewTask(taskName, []byte(payload))
-	info, err := a.Client.Enqueue(task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue), asynq.ProcessIn(after))
+	info, err := client.Enqueue(task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue), asynq.ProcessIn(after))
 	if err != nil {
 		return "", err
 	}
@@ -130,11 +132,21 @@ type Provider struct {
 	Payload  string `json:"payload"`
 }
 
+// newRedisClient 创建一个底层 go-redis 客户端用于直接操作 Hash,调用方必须 Close。
+// asynq.RedisClientOpt.MakeRedisClient() 每次都 NewClient 一个全新连接,
+// 不 Close 会泄漏 fd/协程。原实现三处调用(SetCronPub/DelCronPub/GetConfigs)均未关闭,
+// 而 GetConfigs 被周期任务管理器按 SyncInterval(10s) 反复调用 -> 持续泄漏。
+func newRedisClient(opt asynq.RedisClientOpt) (goRedis.UniversalClient, func()) {
+	c := opt.MakeRedisClient().(goRedis.UniversalClient)
+	return c, func() { _ = c.Close() }
+}
+
 // 动态设置 周期性任务 推送
 // payload 为空时按删除语义处理(HDel);非空时写入(HSet 覆盖)。
 func (a *Asynq) SetCronPub(taskName, payload, cronSpec string) error {
 	ctx := context.Background()
-	redisClient := a.Redis.MakeRedisClient().(goRedis.UniversalClient)
+	redisClient, closeFn := newRedisClient(a.Redis)
+	defer closeFn()
 
 	// payload 为空 => 删除该周期任务
 	if payload == "" {
@@ -161,7 +173,8 @@ func (a *Asynq) SetCronPub(taskName, payload, cronSpec string) error {
 // 动态设置 周期性任务 删除
 func (a *Asynq) DelCronPub(taskName string) error {
 	ctx := context.Background()
-	redisClient := a.Redis.MakeRedisClient().(goRedis.UniversalClient)
+	redisClient, closeFn := newRedisClient(a.Redis)
+	defer closeFn()
 
 	_, err := redisClient.HDel(ctx, RedisKey, taskName).Result()
 	return err
@@ -176,7 +189,8 @@ type cfgProvider struct {
 func (cp *cfgProvider) GetConfigs() ([]*asynq.PeriodicTaskConfig, error) {
 	ctx := context.Background()
 
-	redisClient := cp.redis.MakeRedisClient().(goRedis.UniversalClient)
+	redisClient, closeFn := newRedisClient(cp.redis)
+	defer closeFn()
 	configs := redisClient.HGetAll(ctx, RedisKey).Val()
 
 	var tasks []*asynq.PeriodicTaskConfig
