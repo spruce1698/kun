@@ -77,7 +77,6 @@ func (c *customDemoDb) ListWithTotal(ctx context.Context, args *DemoSearch) ([]*
 		}
 		model = filter().Where(lastCond, args.LastId).Order(order).Limit(limit)
 	case offset > 100000: // 深分页: SELECT * FROM demo INNER JOIN (SELECT id FROM demo WHERE ... ORDER BY id LIMIT ?,?) AS tmp USING(id)
-		// 子查询带过滤条件,JOIN 出的 id 集合已是过滤后的;外层用独立的 Model 不带过滤,避免 WHERE 冗余。
 		subQuery := filter().Order(order).Select("id").Offset(offset).Limit(limit)
 		model = c.WithContext(ctx).Model(c.model).Order(order).Joins("INNER JOIN (?) AS tmp USING(id)", subQuery)
 	default:
@@ -88,8 +87,6 @@ func (c *customDemoDb) ListWithTotal(ctx context.Context, args *DemoSearch) ([]*
 	if err := model.Find(&result).Error; err != nil {
 		return nil, 0, err
 	}
-	// total>0 但本页结果为空(如并发删除/分页越界),返回空列表 + 真实 total,不当作 ErrNotFound,
-	// 让上层据此正确渲染分页(而非误判"无数据")。total==0 在上面已提前返回 ErrNotFound。
 	return result, total, nil
 }
 
@@ -124,7 +121,6 @@ func (c *customDemoDb) ListWithMore(ctx context.Context, args *DemoSearch) ([]*D
 		}
 		model = filter().Where(lastCond, args.LastId).Order(order).Limit(limit)
 	case offset > 100000: // 深分页
-		// 子查询带过滤条件,JOIN 出的 id 集合已是过滤后的;外层用独立的 Model 不带过滤,避免 WHERE 冗余。
 		subQuery := filter().Order(order).Select("id").Offset(offset).Limit(limit)
 		model = c.WithContext(ctx).Model(c.model).Order(order).Joins("INNER JOIN (?) AS tmp USING(id)", subQuery)
 	default:
@@ -199,3 +195,5 @@ func (c *customDemoDb) FindByName(ctx context.Context, name string) (*Demo, erro
 	}
 	return result, nil
 }
+
+// TODO: add your code here and delete this line
