@@ -150,14 +150,14 @@ type logContent struct {
 	Params  any    `json:"params,omitempty"` // 参数信息
 }
 
-// Info 统一的 Info 级别日志记录
+// Info 统一的 Info 级别日志记录。params 支持多个,整体存入 Params 切片,不再只取第一个。
 func Info(ctx context.Context, message string, params ...any) {
 	logger := fromContext(ctx)
 	c := logContent{
 		Message: message,
 	}
 	if len(params) > 0 {
-		c.Params = params[0]
+		c.Params = params
 	}
 	logger.Info("", zap.Any("content", c))
 }
@@ -178,7 +178,7 @@ func Error(ctx context.Context, message string, err error, params ...any) {
 		c.Error = err.Error()
 	}
 	if len(params) > 0 {
-		c.Params = params[0]
+		c.Params = params
 	}
 	logger.Error("", zap.Any("content", c))
 }
@@ -196,7 +196,7 @@ func Warn(ctx context.Context, message string, params ...any) {
 		Message: message,
 	}
 	if len(params) > 0 {
-		c.Params = params[0]
+		c.Params = params
 	}
 	logger.Warn("", zap.Any("content", c))
 }
@@ -214,7 +214,7 @@ func Debug(ctx context.Context, message string, params ...any) {
 		Message: message,
 	}
 	if len(params) > 0 {
-		c.Params = params[0]
+		c.Params = params
 	}
 	logger.Debug("", zap.Any("content", c))
 }

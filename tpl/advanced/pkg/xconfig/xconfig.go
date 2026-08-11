@@ -98,7 +98,8 @@ type (
 		Brokers []string
 	}
 	JaegerConf struct {
-		Endpoint string
+		Endpoint   string
+		SampleRate float64 // 采样率 0.0~1.0,0 表示用默认 10%
 	}
 )
 
@@ -108,6 +109,11 @@ func New(path string) *Conf {
 		confPath = path
 	}
 	v := viper.New()
+	// 启用环境变量必须在 ReadInConfig/Unmarshal 之前,否则首次 Unmarshal 时
+	// 环境变量覆盖(如 SERVER_PORT)不会生效。
+	v.AutomaticEnv()                                   // 自动识别环境变量
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_")) // 将 . 替换为 _   SERVER_PORT=10088 覆盖文件中 server下面port值
+
 	// 设置配置文件信息
 	v.SetConfigFile(confPath) // 设置文件的类型
 
@@ -122,17 +128,13 @@ func New(path string) *Conf {
 	// current 初始指向自身,使 Get() 在热重载前后都能返回最新快照
 	c.current.Store(c)
 
-	// 启用环境变量
-	v.AutomaticEnv()                                   // 自动识别环境变量
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_")) // 将 . 替换为 _   SERVER_PORT=10088 覆盖文件中 server下面port值
-
 	// 热重载:配置文件变更时,Unmarshal 到全新 *Conf,原子替换 current 指针(供 Get())。
 	// 字段本身不更新,运行期读取必须走 Get() 才能拿到新值。
 	v.OnConfigChange(func(event fsnotify.Event) {
 		nc := new(Conf)
 		if e := v.Unmarshal(nc); e != nil {
-			// 不能在 goroutine 中 panic,改为打印错误
-			fmt.Printf("config hot reload unmarshal failed: %s \n", e)
+			// 不能在 goroutine 中 panic,改为打印到 stderr(此时 xlog 可能尚未就绪)
+			fmt.Fprintf(os.Stderr, "config hot reload unmarshal failed: %s \n", e)
 			return
 		}
 		c.current.Store(nc)

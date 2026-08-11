@@ -67,8 +67,18 @@ func TracingWithLogger(log *xlog.Logger, serviceName string) gin.HandlerFunc {
 			// 处理表单数据
 			switch {
 			case strings.Contains(contentType, "multipart/form-data"):
-				if err := c.Request.ParseMultipartForm(32 << 20); err == nil { // 32MB max
-					requestBody = []byte(xlog.FilterForm(c.Request.PostForm))
+				// multipart 表单可能很大(文件上传),不把整个表单(含值)序列化进日志,
+				// 仅记录字段名与内存占用,避免大内存分配与敏感值泄露。32MB 为 ParseMultipartForm 的内存上限。
+				if err := c.Request.ParseMultipartForm(32 << 20); err == nil {
+					var fields []string
+					for name := range c.Request.MultipartForm.Value {
+						fields = append(fields, name)
+					}
+					var fileFields []string
+					for name := range c.Request.MultipartForm.File {
+						fileFields = append(fileFields, name)
+					}
+					requestBody = []byte(fmt.Sprintf("[multipart fields=%v files=%v]", fields, fileFields))
 				}
 			case strings.Contains(contentType, "application/x-www-form-urlencoded"):
 				if err := c.Request.ParseForm(); err == nil {

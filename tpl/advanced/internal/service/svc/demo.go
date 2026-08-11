@@ -129,6 +129,7 @@ func (d *demoSvc) Detail(ctx context.Context, id int64) (*Demo, error) {
 		_ = d.ctx.DemoCache.Set(ctx, id, &cache.Demo{
 			Id:     demoDb.Id,
 			Name:   demoDb.Name,
+			Test1:  demoDb.Test1,
 			Test4:  demoDb.Test4,
 			RoleId: demoDb.RoleId,
 		}, 0)
@@ -361,7 +362,7 @@ func (d *demoSvc) SendMsg(ctx context.Context) error {
 	if err != nil {
 		return xerror.NewError(ctx, xerror.BusinessError, "序列化 Kafka 消息失败", err)
 	}
-	if err = d.ctx.MsgPub.Kafka(global.EventTopicPay, demoMsg0); err != nil {
+	if err = d.ctx.MsgPub.KafkaCtx(ctx, global.EventTopicPay, demoMsg0); err != nil {
 		return err
 	}
 
@@ -377,7 +378,7 @@ func (d *demoSvc) SendMsg(ctx context.Context) error {
 	if err != nil {
 		return xerror.NewError(ctx, xerror.BusinessError, "序列化 Kafka-type 消息失败", err)
 	}
-	if err = d.ctx.MsgPub.KafkaWithType(global.EventTopicPay, global.EventTypePayRecharge, demoMsg1); err != nil {
+	if err = d.ctx.MsgPub.KafkaWithTypeCtx(ctx, global.EventTopicPay, global.EventTypePayRecharge, demoMsg1); err != nil {
 		return err
 	}
 
@@ -393,7 +394,7 @@ func (d *demoSvc) SendMsg(ctx context.Context) error {
 	if err != nil {
 		return xerror.NewError(ctx, xerror.BusinessError, "序列化延迟消息失败", err)
 	}
-	if err = d.ctx.MsgPub.Delay(global.EventTopicPay, string(demoMsg2), 5); err != nil {
+	if err = d.ctx.MsgPub.DelayCtx(ctx, global.EventTopicPay, string(demoMsg2), 5); err != nil {
 		return err
 	}
 
@@ -409,7 +410,7 @@ func (d *demoSvc) SendMsg(ctx context.Context) error {
 	if err != nil {
 		return xerror.NewError(ctx, xerror.BusinessError, "序列化 AQ 异步消息失败", err)
 	}
-	if err = d.ctx.MsgPub.Sync(global.EventTopicPay, string(demoMsg3)); err != nil {
+	if err = d.ctx.MsgPub.SyncCtx(ctx, global.EventTopicPay, string(demoMsg3)); err != nil {
 		return err
 	}
 
@@ -425,7 +426,7 @@ func (d *demoSvc) SendMsg(ctx context.Context) error {
 	if err != nil {
 		return xerror.NewError(ctx, xerror.BusinessError, "序列化 AQ TopicPay1 消息失败", err)
 	}
-	if err = d.ctx.MsgPub.Sync(global.EventTopicPay1, string(demoMsg4)); err != nil {
+	if err = d.ctx.MsgPub.SyncCtx(ctx, global.EventTopicPay1, string(demoMsg4)); err != nil {
 		return err
 	}
 
@@ -462,7 +463,7 @@ func (d *demoSvc) AddMsg(ctx context.Context) error {
 	if err != nil {
 		return xerror.NewError(ctx, xerror.BusinessError, "序列化 Kafka 消息失败", err)
 	}
-	if err = d.ctx.MsgPub.Kafka(global.EventTopicPay, demoMsg0); err != nil {
+	if err = d.ctx.MsgPub.KafkaCtx(ctx, global.EventTopicPay, demoMsg0); err != nil {
 		return err
 	}
 	return nil

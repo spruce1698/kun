@@ -45,3 +45,4 @@ redis:
 
 jaeger:
   endpoint: "127.0.0.1:4317" # Jaeger collector 地址
+  sampleRate: 1.0 # 采样率 0.0~1.0,1.0 全量采样;生产建议 0.1

@@ -7,25 +7,32 @@
 package encrypt
 
 import (
-	"bytes"
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"hash"
 	"io"
-	"math/big"
 )
 
 var (
-	ErrDataToLarge     = errors.New("message too long for RSA public key size")
-	ErrDataLen         = errors.New("data length error")
-	ErrDataBroken      = errors.New("data broken, first byte is not zero")
-	ErrKeyPairDismatch = errors.New("data is not encrypted by the private key")
-	ErrDecryption      = errors.New("decryption error")
-	ErrPublicKey       = errors.New("get public key error")
-	ErrPrivateKey      = errors.New("get private key error")
+	ErrDataToLarge = errors.New("message too long for RSA public key size")
+	ErrDataLen     = errors.New("data length error")
+	ErrPublicKey   = errors.New("get public key error")
+	ErrPrivateKey  = errors.New("get private key error")
+	ErrSignature   = errors.New("rsa signature verification failed")
 )
+
+// rsaHash 签名/验签使用的哈希算法,固定 SHA-256。
+const rsaHash = crypto.SHA256
+
+// newHash 返回 rsaHash 对应的 hash.Hash 实例。
+func newHash() hash.Hash {
+	return sha256.New()
+}
 
 // 设置公钥
 func getPubKey(publicKey []byte) (*rsa.PublicKey, error) {
@@ -39,7 +46,11 @@ func getPubKey(publicKey []byte) (*rsa.PublicKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	return pub.(*rsa.PublicKey), err
+	rsaPub, ok := pub.(*rsa.PublicKey)
+	if !ok {
+		return nil, ErrPublicKey
+	}
+	return rsaPub, nil
 }
 
 // 设置私钥
@@ -48,312 +59,108 @@ func getPriKey(privateKey []byte) (*rsa.PrivateKey, error) {
 	if block == nil {
 		return nil, errors.New("get private key error")
 	}
-	pri, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	if err == nil {
+	if pri, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
 		return pri, nil
 	}
 	pri2, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
 		return nil, err
 	}
-	return pri2.(*rsa.PrivateKey), nil
+	rsaPri, ok := pri2.(*rsa.PrivateKey)
+	if !ok {
+		return nil, ErrPrivateKey
+	}
+	return rsaPri, nil
 }
 
-// 公钥加密或解密byte
-func pubKeyByte(pub *rsa.PublicKey, in []byte, isEncrytp bool) ([]byte, error) {
+// oaepMaxBlockLen 返回 OAEP 填充下单块可加密的最大明文长度。
+// k - 2*hash.Size - 2,见 rsa.EncryptOAEP 文档。
+func oaepMaxBlockLen(pub *rsa.PublicKey) int {
 	k := (pub.N.BitLen() + 7) / 8
-	if isEncrytp {
-		k = k - 11
-	}
-	if len(in) <= k {
-		if isEncrytp {
-			return rsa.EncryptPKCS1v15(rand.Reader, pub, in)
-		} else {
-			return pubKeyDecrypt(pub, in)
-		}
-	} else {
-		iv := make([]byte, k)
-		out := bytes.NewBuffer(iv)
-		if err := pubKeyIO(pub, bytes.NewReader(in), out, isEncrytp); err != nil {
-			return nil, err
-		}
-		return io.ReadAll(out)
-	}
+	return k - 2*newHash().Size() - 2
 }
 
-// 私钥加密或解密byte
-func priKeyByte(pri *rsa.PrivateKey, in []byte, isEncrytp bool) ([]byte, error) {
-	k := (pri.N.BitLen() + 7) / 8
-	if isEncrytp {
-		k = k - 11
-	}
-	if len(in) <= k {
-		if isEncrytp {
-			return priKeyEncrypt(rand.Reader, pri, in)
-		} else {
-			return rsa.DecryptPKCS1v15(rand.Reader, pri, in)
-		}
-	} else {
-		iv := make([]byte, k)
-		out := bytes.NewBuffer(iv)
-		if err := priKeyIO(pri, bytes.NewReader(in), out, isEncrytp); err != nil {
-			return nil, err
-		}
-		return io.ReadAll(out)
-	}
+// keyByteLen 返回密钥字节长度 k(密文块长度固定为 k)。
+func keyByteLen(pub *rsa.PublicKey) int {
+	return (pub.N.BitLen() + 7) / 8
 }
 
-// 公钥加密或解密Reader
-func pubKeyIO(pub *rsa.PublicKey, in io.Reader, out io.Writer, isEncrytp bool) (err error) {
-	k := (pub.N.BitLen() + 7) / 8
-	if isEncrytp {
-		k = k - 11
+// pubKeyEncryptOAEP 用公钥 OAEP 加密,明文超长时分块加密并拼接。
+func pubKeyEncryptOAEP(pub *rsa.PublicKey, in io.Reader, out io.Writer) error {
+	chunk := oaepMaxBlockLen(pub)
+	if chunk <= 0 {
+		return ErrDataToLarge
 	}
-	buf := make([]byte, k)
-	var b []byte
-	size := 0
+	buf := make([]byte, chunk)
 	for {
-		size, err = in.Read(buf)
+		n, err := in.Read(buf)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return err
 		}
-		if size < k {
-			b = buf[:size]
-		} else {
-			b = buf
-		}
-		if isEncrytp {
-			b, err = rsa.EncryptPKCS1v15(rand.Reader, pub, b)
-		} else {
-			b, err = pubKeyDecrypt(pub, b)
-		}
+		block, err := rsa.EncryptOAEP(newHash(), rand.Reader, pub, buf[:n], nil)
 		if err != nil {
 			return err
 		}
-		if _, err = out.Write(b); err != nil {
+		if _, err = out.Write(block); err != nil {
 			return err
 		}
 	}
 }
 
-// 私钥加密或解密Reader
-func priKeyIO(pri *rsa.PrivateKey, r io.Reader, w io.Writer, isEncrytp bool) (err error) {
-	k := (pri.N.BitLen() + 7) / 8
-	if isEncrytp {
-		k = k - 11
-	}
+// priKeyDecryptOAEP 用私钥 OAEP 解密,按 k 字节分块。
+func priKeyDecryptOAEP(pri *rsa.PrivateKey, in io.Reader, out io.Writer) error {
+	k := keyByteLen(&pri.PublicKey)
 	buf := make([]byte, k)
-	var b []byte
-	size := 0
 	for {
-		size, err = r.Read(buf)
+		n, err := io.ReadFull(in, buf)
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return nil
+			}
+			if errors.Is(err, io.ErrUnexpectedEOF) {
+				// 最后一块不足 k,尝试解密剩余字节
+				if n == 0 {
+					return nil
+				}
+				block, derr := rsa.DecryptOAEP(newHash(), rand.Reader, pri, buf[:n], nil)
+				if derr != nil {
+					return derr
+				}
+				_, err = out.Write(block)
+				return err
 			}
 			return err
 		}
-		if size < k {
-			b = buf[:size]
-		} else {
-			b = buf
-		}
-		if isEncrytp {
-			b, err = priKeyEncrypt(rand.Reader, pri, b)
-		} else {
-			b, err = rsa.DecryptPKCS1v15(rand.Reader, pri, b)
-		}
+		block, err := rsa.DecryptOAEP(newHash(), rand.Reader, pri, buf[:n], nil)
 		if err != nil {
 			return err
 		}
-		if _, err = w.Write(b); err != nil {
+		if _, err = out.Write(block); err != nil {
 			return err
 		}
 	}
 }
 
-// 公钥解密
-func pubKeyDecrypt(pub *rsa.PublicKey, data []byte) ([]byte, error) {
-	k := (pub.N.BitLen() + 7) / 8
-	if k != len(data) {
-		return nil, ErrDataLen
-	}
-	m := new(big.Int).SetBytes(data)
-	if m.Cmp(pub.N) > 0 {
-		return nil, ErrDataToLarge
-	}
-	m.Exp(m, big.NewInt(int64(pub.E)), pub.N)
-	d := leftPad(m.Bytes(), k)
-	if d[0] != 0 {
-		return nil, ErrDataBroken
-	}
-	if d[1] != 0 && d[1] != 1 {
-		return nil, ErrKeyPairDismatch
-	}
-	var i = 2
-	for ; i < len(d); i++ {
-		if d[i] == 0 {
-			break
-		}
-	}
-	i++
-	if i == len(d) {
-		return nil, nil
-	}
-	return d[i:], nil
-}
-
-// 私钥加密
-func priKeyEncrypt(rand io.Reader, priv *rsa.PrivateKey, hashed []byte) ([]byte, error) {
-	tLen := len(hashed)
-	k := (priv.N.BitLen() + 7) / 8
-	if k < tLen+11 {
-		return nil, ErrDataLen
-	}
-	em := make([]byte, k)
-	em[1] = 1
-	for i := 2; i < k-tLen-1; i++ {
-		em[i] = 0xff
-	}
-	copy(em[k-tLen:k], hashed)
-	m := new(big.Int).SetBytes(em)
-	c, err := decrypt(rand, priv, m)
-	if err != nil {
+// priKeySign 用私钥对消息做 SHA-256 后 PKCS1v15 签名,返回定长签名(k 字节)。
+func priKeySign(pri *rsa.PrivateKey, message []byte) ([]byte, error) {
+	h := newHash()
+	if _, err := h.Write(message); err != nil {
 		return nil, err
 	}
-	copyWithLeftPad(em, c.Bytes())
-	return em, nil
+	return rsa.SignPKCS1v15(rand.Reader, pri, rsaHash, h.Sum(nil))
 }
 
-// 从crypto/rsa复制
-var bigZero = big.NewInt(0)
-var bigOne = big.NewInt(1)
-
-// 从crypto/rsa复制
-func encrypt(c *big.Int, pub *rsa.PublicKey, m *big.Int) *big.Int {
-	e := big.NewInt(int64(pub.E))
-	c.Exp(m, e, pub.N)
-	return c
-}
-
-// 从crypto/rsa复制
-func decrypt(random io.Reader, priv *rsa.PrivateKey, c *big.Int) (m *big.Int, err error) {
-	if c.Cmp(priv.N) > 0 {
-		err = ErrDecryption
-		return
+// pubKeyVerify 用公钥校验消息与签名是否匹配。
+func pubKeyVerify(pub *rsa.PublicKey, message, signature []byte) error {
+	h := newHash()
+	if _, err := h.Write(message); err != nil {
+		return err
 	}
-	var ir *big.Int
-	if random != nil {
-		var r *big.Int
-
-		for {
-			r, err = rand.Int(random, priv.N)
-			if err != nil {
-				return
-			}
-			if r.Cmp(bigZero) == 0 {
-				r = bigOne
-			}
-			var ok bool
-			ir, ok = modInverse(r, priv.N)
-			if ok {
-				break
-			}
-		}
-		bigE := big.NewInt(int64(priv.E))
-		rpowe := new(big.Int).Exp(r, bigE, priv.N)
-		cCopy := new(big.Int).Set(c)
-		cCopy.Mul(cCopy, rpowe)
-		cCopy.Mod(cCopy, priv.N)
-		c = cCopy
+	if err := rsa.VerifyPKCS1v15(pub, rsaHash, h.Sum(nil), signature); err != nil {
+		return ErrSignature
 	}
-	if priv.Precomputed.Dp == nil {
-		m = new(big.Int).Exp(c, priv.D, priv.N)
-	} else {
-		m = new(big.Int).Exp(c, priv.Precomputed.Dp, priv.Primes[0])
-		m2 := new(big.Int).Exp(c, priv.Precomputed.Dq, priv.Primes[1])
-		m.Sub(m, m2)
-		if m.Sign() < 0 {
-			m.Add(m, priv.Primes[0])
-		}
-		m.Mul(m, priv.Precomputed.Qinv)
-		m.Mod(m, priv.Primes[0])
-		m.Mul(m, priv.Primes[1])
-		m.Add(m, m2)
-
-		for i, values := range priv.Precomputed.CRTValues {
-			prime := priv.Primes[2+i]
-			m2.Exp(c, values.Exp, prime)
-			m2.Sub(m2, m)
-			m2.Mul(m2, values.Coeff)
-			m2.Mod(m2, prime)
-			if m2.Sign() < 0 {
-				m2.Add(m2, prime)
-			}
-			m2.Mul(m2, values.R)
-			m.Add(m, m2)
-		}
-	}
-	if ir != nil {
-		m.Mul(m, ir)
-		m.Mod(m, priv.N)
-	}
-
-	return
-}
-
-// 从crypto/rsa复制
-func copyWithLeftPad(dest, src []byte) {
-	numPaddingBytes := len(dest) - len(src)
-	for i := 0; i < numPaddingBytes; i++ {
-		dest[i] = 0
-	}
-	copy(dest[numPaddingBytes:], src)
-}
-
-// 从crypto/rsa复制
-func nonZeroRandomBytes(s []byte, rand io.Reader) (err error) {
-	_, err = io.ReadFull(rand, s)
-	if err != nil {
-		return
-	}
-	for i := 0; i < len(s); i++ {
-		for s[i] == 0 {
-			_, err = io.ReadFull(rand, s[i:i+1])
-			if err != nil {
-				return
-			}
-			s[i] ^= 0x42
-		}
-	}
-	return
-}
-
-// 从crypto/rsa复制
-func leftPad(input []byte, size int) (out []byte) {
-	n := len(input)
-	if n > size {
-		n = size
-	}
-	out = make([]byte, size)
-	copy(out[len(out)-n:], input)
-	return
-}
-
-// 从crypto/rsa复制
-func modInverse(a, n *big.Int) (ia *big.Int, ok bool) {
-	g := new(big.Int)
-	x := new(big.Int)
-	y := new(big.Int)
-	g.GCD(x, y, a, n)
-	if g.Cmp(bigOne) != 0 {
-		return
-	}
-	if x.Cmp(bigOne) < 0 {
-		x.Add(x, n)
-	}
-	return x, true
+	return nil
 }

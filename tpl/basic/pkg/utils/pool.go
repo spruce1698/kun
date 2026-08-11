@@ -1,15 +1,19 @@
 /**
- * @Author: spruce
+* @Author: spruce
  * @Date: 2024-03-28 15:33
  * @Desc: 协程池
- */
+*/
 
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 )
+
+// ErrPoolClosed 协程池已关闭(Shutdown/Wait 后再 AddTask)。
+var ErrPoolClosed = errors.New("pool is closed")
 
 // 任务结构体
 type Task struct {
@@ -22,6 +26,8 @@ type Pool struct {
 	taskQueue chan Task
 	wg        sync.WaitGroup
 	once      sync.Once
+	closed    bool
+	mu        sync.Mutex // 保护 closed
 }
 
 // 创建协程池
@@ -41,9 +47,17 @@ func NewPool(numWorkers, queueSize int) *Pool {
 }
 
 // AddTask 添加任务到协程池。
-// 队列满时会阻塞,直到有 worker 取走任务或 Shutdown 关闭队列。
-func (p *Pool) AddTask(task Task) {
+// 队列满时会阻塞,直到有 worker 取走任务。
+// 若池已关闭(Shutdown/Wait 后),返回 ErrPoolClosed,不会 panic。
+func (p *Pool) AddTask(task Task) error {
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return ErrPoolClosed
+	}
+	p.mu.Unlock()
 	p.taskQueue <- task
+	return nil
 }
 
 // 工作协程
@@ -67,6 +81,9 @@ func (p *Pool) worker() {
 // 可安全多次调用(用 sync.Once 保证只关闭一次)。
 func (p *Pool) Shutdown() {
 	p.once.Do(func() {
+		p.mu.Lock()
+		p.closed = true
+		p.mu.Unlock()
 		close(p.taskQueue)
 	})
 }

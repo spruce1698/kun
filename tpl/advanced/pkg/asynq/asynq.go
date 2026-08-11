@@ -18,6 +18,9 @@ import (
 	goRedis "github.com/redis/go-redis/v9"
 )
 
+// tracerName asynq 包 span 使用的 tracer 名称。
+const tracerName = "advanced/pkg/asynq"
+
 const (
 	DefaultQueue  = "default"
 	CriticalQueue = "critical"
@@ -53,15 +56,24 @@ func (a *Asynq) newClient() *asynq.Client {
 
 // 异步消息推送
 func (a *Asynq) SyncPub(queue, taskName, payload string) (entryID string, err error) {
+	return a.SyncPubCtx(context.Background(), queue, taskName, payload)
+}
+
+// SyncPubCtx 发布异步任务,并在 ctx 中记录 producer span(便于在 trace 中观察投递动作)。
+func (a *Asynq) SyncPubCtx(ctx context.Context, queue, taskName, payload string) (entryID string, err error) {
 	if queue == "" {
 		queue = DefaultQueue
 	}
 	client := a.newClient()
 	defer func() { _ = client.Close() }()
 
+	ctx, span := startEnqueueSpan(ctx, taskName)
+	defer span.End()
+
 	task := asynq.NewTask(taskName, []byte(payload))
-	info, err := client.Enqueue(task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue))
+	info, err := client.EnqueueContext(ctx, task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue))
 	if err != nil {
+		span.RecordError(err)
 		return "", err
 	}
 	return info.ID, nil
@@ -69,15 +81,24 @@ func (a *Asynq) SyncPub(queue, taskName, payload string) (entryID string, err er
 
 // 延时消息推送
 func (a *Asynq) DelayPub(queue, taskName, payload string, after time.Duration) (entryID string, err error) {
+	return a.DelayPubCtx(context.Background(), queue, taskName, payload, after)
+}
+
+// DelayPubCtx 同 DelayPub,带 ctx 以记录 producer span。
+func (a *Asynq) DelayPubCtx(ctx context.Context, queue, taskName, payload string, after time.Duration) (entryID string, err error) {
 	if queue == "" {
 		queue = DefaultQueue
 	}
 	client := a.newClient()
 	defer func() { _ = client.Close() }()
 
+	ctx, span := startEnqueueSpan(ctx, taskName)
+	defer span.End()
+
 	task := asynq.NewTask(taskName, []byte(payload))
-	info, err := client.Enqueue(task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue), asynq.ProcessIn(after))
+	info, err := client.EnqueueContext(ctx, task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue), asynq.ProcessIn(after))
 	if err != nil {
+		span.RecordError(err)
 		return "", err
 	}
 	return info.ID, nil

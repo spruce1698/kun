@@ -4,6 +4,7 @@ import (
 	"advanced/internal/event"
 	"advanced/internal/global"
 	"advanced/internal/service/svc"
+	// ==== Add Svc import before this line, don't edit this line.====
 
 	"github.com/google/wire"
 )

@@ -3,6 +3,7 @@ package repository
 import (
 	"advanced/internal/repository/cache"
 	"advanced/internal/repository/db"
+	// ==== Add Repo import before this line, don't edit this line.====
 
 	"github.com/google/wire"
 )

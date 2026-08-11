@@ -9,6 +9,7 @@ package event
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 
 	"advanced/internal/global"
@@ -88,11 +89,13 @@ func (s *Sub) Asynq() error {
 	for _, aq := range s.task.AsynqSet {
 		mux.HandleFunc(string(aq.Topic), aq.Handler)
 	}
+	// 包裹 tracing 中间件:为每个任务创建 consumer span,记录耗时/错误。
+	handler := asynq.TracingMiddleware(mux)
 
 	// 用 Start(非阻塞) + Shutdown 主动控制生命周期,
 	// 避免 srv.Run 自带的信号处理与 broker 信号处理冲突。
-	if err := srv.Start(mux); err != nil {
-		fmt.Printf("!!!CronJobErr!!! run err:%+v \n ", err)
+	if err := srv.Start(handler); err != nil {
+		fmt.Fprintf(os.Stderr, "!!!CronJobErr!!! run err:%+v\n", err)
 		srv.Shutdown()
 		return fmt.Errorf("asynq server start err: %w", err)
 	}
@@ -112,12 +115,12 @@ func (s *Sub) Asynq() error {
 func (s *Sub) AsynqCron() error {
 	mgr, err := s.aQueue.PeriodicTaskManager()
 	if err != nil {
-		fmt.Printf("!!!AsynqCronErr!!! new manager err:%+v \n", err)
+		fmt.Fprintf(os.Stderr, "!!!AsynqCronErr!!! new manager err:%+v\n", err)
 		return fmt.Errorf("asynq cron new manager err: %w", err)
 	}
 	s.aMgr = mgr
 	if err := mgr.Start(); err != nil {
-		fmt.Printf("!!!AsynqCronErr!!! start err:%+v \n", err)
+		fmt.Fprintf(os.Stderr, "!!!AsynqCronErr!!! start err:%+v\n", err)
 		return fmt.Errorf("asynq cron start err: %w", err)
 	}
 

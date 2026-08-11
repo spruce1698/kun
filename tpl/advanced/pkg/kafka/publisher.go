@@ -44,7 +44,6 @@ func (p *Publisher) getWriter() *kafkaGo.Writer {
 			Balancer:     &kafkaGo.LeastBytes{},
 			Compression:  kafkaGo.Snappy,        // 启用压缩
 			BatchTimeout: 50 * time.Millisecond, // linger.ms 如果消息的大小一直达不到batch.size设置的值，那么等待多久后任然允许发送消息
-			// BatchSize		batch.size	当多条消息被发送到同一个分区时，生产者会尝试把多条消息变成批量发送。这有助于提高客户端和服务器的性能。值设置的太小，可能会降低吞吐量 参数设置的太大，可能会更浪费内存，并增加消息发送的延迟时间
 			// 配置为消息体积，而非条数，单位为字节
 			Async: true, // 异步
 		}
@@ -61,35 +60,70 @@ func (p *Publisher) Close() error {
 }
 
 func (p *Publisher) Pub(topic string, value []byte) error {
-	// 无类型消息:不设 Key(nil),由 LeastBytes balancer 均匀分配分区,
-	// 避免用 nano 时间戳做 Key 造成同毫秒消息挤在同一分区且无业务含义。
+	return p.PubCtx(context.Background(), topic, value)
+}
+
+// PubCtx 发布消息并把 ctx 中的 trace context 注入消息 header,串联生产者->消费者链路。
+func (p *Publisher) PubCtx(ctx context.Context, topic string, value []byte) error {
+	// 无类型消息:不设 Key(nil),由 LeastBytes balancer 均匀分配分区。
+	ctx, span, headers := startProducerSpan(ctx, topic)
+	defer span.End()
 	msg := kafkaGo.Message{
-		Topic: topic,
-		Value: value,
+		Topic:   topic,
+		Value:   value,
+		Headers: headers,
 	}
-	return p.getWriter().WriteMessages(context.Background(), msg)
+	if err := p.getWriter().WriteMessages(ctx, msg); err != nil {
+		span.RecordError(err)
+		return err
+	}
+	return nil
 }
 
 func (p *Publisher) PubWithKey(topic, key string, value []byte) error {
+	return p.PubWithKeyCtx(context.Background(), topic, key, value)
+}
+
+// PubWithKeyCtx 同 PubCtx,但带业务 Key(决定分区)。
+func (p *Publisher) PubWithKeyCtx(ctx context.Context, topic, key string, value []byte) error {
+	ctx, span, headers := startProducerSpan(ctx, topic)
+	defer span.End()
 	msg := kafkaGo.Message{
-		Topic: topic,
-		Key:   []byte(key),
-		Value: value,
+		Topic:   topic,
+		Key:     []byte(key),
+		Value:   value,
+		Headers: headers,
 	}
-	return p.getWriter().WriteMessages(context.Background(), msg)
+	if err := p.getWriter().WriteMessages(ctx, msg); err != nil {
+		span.RecordError(err)
+		return err
+	}
+	return nil
 }
 
 func (p *Publisher) PubList(msgSet ...Msg) error {
+	return p.PubListCtx(context.Background(), msgSet...)
+}
+
+// PubListCtx 批量发布,所有消息共享同一个 producer span。
+func (p *Publisher) PubListCtx(ctx context.Context, msgSet ...Msg) error {
 	if len(msgSet) == 0 {
 		return errors.New("Msg 不能为空")
 	}
+	ctx, span, headers := startProducerSpan(ctx, "batch")
+	defer span.End()
 	msgList := make([]kafkaGo.Message, len(msgSet))
 	for i, msg := range msgSet {
 		msgList[i] = kafkaGo.Message{
-			Topic: msg.Topic,
-			Key:   []byte(msg.Key),
-			Value: msg.Value,
+			Topic:   msg.Topic,
+			Key:     []byte(msg.Key),
+			Value:   msg.Value,
+			Headers: headers,
 		}
 	}
-	return p.getWriter().WriteMessages(context.Background(), msgList...)
+	if err := p.getWriter().WriteMessages(ctx, msgList...); err != nil {
+		span.RecordError(err)
+		return err
+	}
+	return nil
 }

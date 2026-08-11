@@ -73,7 +73,12 @@ func Recovery(stack bool) gin.HandlerFunc {
 						"url":     ctx.Request.URL.Path,
 					})
 				}
-				ctx.AbortWithStatus(http.StatusInternalServerError)
+				// 返回统一 JSON 错误体,避免客户端收到空 500。
+				// 若 header 已写出(tracing/handler 已写部分响应),WriteHeaderString 会告警但不崩。
+				ctx.AbortWithStatusJSON(http.StatusInternalServerError, map[string]any{
+					"code":    http.StatusInternalServerError,
+					"message": "Internal Server Error",
+				})
 			}
 		}()
 		ctx.Next()

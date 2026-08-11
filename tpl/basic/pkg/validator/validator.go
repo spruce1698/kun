@@ -37,49 +37,48 @@ type (
 	}
 )
 
-// locale zh,en
+// New 初始化校验器与翻译器。
+// 注意:once.Do 保证只执行一次,locale 仅首次调用生效;需要切换 locale 请另加显式重注册接口。
 func New(locale string) {
-	if Trans == nil {
-		once.Do(func() {
-			// 修改gin框架中的Validator引擎属性，实现自定制
-			if validate, ok := binding.Validator.Engine().(*vali10.Validate); ok {
-				uni := ut.New(zh.New(), en.New(), zh.New())
-				// 也可以使用 uni.FindTranslator(...) 传入多个locale进行查找
-				Trans, _ = uni.GetTranslator(locale)
+	once.Do(func() {
+		// 修改gin框架中的Validator引擎属性，实现自定制
+		if validate, ok := binding.Validator.Engine().(*vali10.Validate); ok {
+			uni := ut.New(zh.New(), en.New(), zh.New())
+			// 也可以使用 uni.FindTranslator(...) 传入多个locale进行查找
+			Trans, _ = uni.GetTranslator(locale)
 
-				// 注册一个获取json tag的自定义方法
-				validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
-					json := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
-					if json == "-" {
+			// 注册一个获取json tag的自定义方法
+			validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
+				json := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
+				if json == "-" {
+					return ""
+				} else {
+					form := strings.SplitN(fld.Tag.Get("form"), ",", 2)[0]
+					if form == "-" {
 						return ""
-					} else {
-						form := strings.SplitN(fld.Tag.Get("form"), ",", 2)[0]
-						if form == "-" {
-							return ""
-						} else if form != "" {
-							return form
-						}
-						return json
+					} else if form != "" {
+						return form
 					}
-				})
+					return json
+				}
+			})
 
-				// 注册翻译器
-				switch locale {
-				case "en":
-					_ = enT.RegisterDefaultTranslations(validate, Trans)
-				default:
-					_ = zhT.RegisterDefaultTranslations(validate, Trans)
-				}
-				// 注意！因为要使用到trans实例, 所以这一步注册要放到trans初始化的后面
-				for _, v := range customFuncSet {
-					// 在校验器注册自定义的校验方法
-					_ = validate.RegisterValidation(v.name, v.fun)
-					// 解决自定义的校验方法不翻译问题, 注意上面注册的自定义的校验方法 v.name 要和下面的保持一致
-					_ = validate.RegisterTranslation(v.name, Trans, regTranslator(v.name, v.tips), translate)
-				}
+			// 注册翻译器
+			switch locale {
+			case "en":
+				_ = enT.RegisterDefaultTranslations(validate, Trans)
+			default:
+				_ = zhT.RegisterDefaultTranslations(validate, Trans)
 			}
-		})
-	}
+			// 注意！因为要使用到trans实例, 所以这一步注册要放到trans初始化的后面
+			for _, v := range customFuncSet {
+				// 在校验器注册自定义的校验方法
+				_ = validate.RegisterValidation(v.name, v.fun)
+				// 解决自定义的校验方法不翻译问题, 注意上面注册的自定义的校验方法 v.name 要和下面的保持一致
+				_ = validate.RegisterTranslation(v.name, Trans, regTranslator(v.name, v.tips), translate)
+			}
+		}
+	})
 }
 
 // 翻译错误

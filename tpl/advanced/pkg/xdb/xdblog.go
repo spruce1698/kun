@@ -20,12 +20,14 @@ import (
 )
 
 type xdbLogger struct {
-	logger.Writer
+	// 不嵌入 logger.Writer:所有日志方法都走 xlog,Writer 仅为兼容历史签名保留。
 	logger.Config
 	infoStr, warnStr, errStr, traceStr, traceErrStr, traceWarnStr string
 }
 
-func initLog(writer logger.Writer, config logger.Config) logger.Interface {
+// initLog 构建走 xlog 的 gorm logger。writer 参数保留用于兼容,实际日志输出由各方法走 xlog,
+// 不再写 stdout(避免绕过统一日志收集)。
+func initLog(_ logger.Writer, config logger.Config) logger.Interface {
 	var (
 		infoStr      = "%s [info] "
 		warnStr      = "%s [warn] "
@@ -36,7 +38,6 @@ func initLog(writer logger.Writer, config logger.Config) logger.Interface {
 	)
 
 	return &xdbLogger{
-		Writer:       writer,
 		Config:       config,
 		infoStr:      infoStr,
 		warnStr:      warnStr,
@@ -79,10 +80,11 @@ func (l *xdbLogger) Trace(ctx context.Context, begin time.Time, fc func() (strin
 
 	elapsed := time.Since(begin)
 	duration := float64(elapsed.Nanoseconds()) / 1e6
-	// IgnoreRecordNotFoundError 在 xdb.New 中恒为 true,因此 gorm.ErrRecordNotFound
-	// 不会被当作 Error 记录(避免查询无结果刷错误日志);其余 err 正常按 Error 记录。
+	// ErrRecordNotFound 是否记录由 IgnoreRecordNotFoundError 控制;
+	// 其余 err 在 LogLevel>=Error 时记录。
+	isNotFound := errors.Is(err, logger.ErrRecordNotFound)
 	switch {
-	case err != nil && l.LogLevel >= logger.Error && (!errors.Is(err, logger.ErrRecordNotFound) || !l.IgnoreRecordNotFoundError):
+	case err != nil && l.LogLevel >= logger.Error && !(isNotFound && l.IgnoreRecordNotFoundError):
 		sql, rows := fc()
 		if rows == -1 {
 			xlog.Error(ctx, fmt.Sprintf(l.traceErrStr, utils.FileWithLineNum(), err, duration, "-", sql), err, map[string]any{"duration": duration})

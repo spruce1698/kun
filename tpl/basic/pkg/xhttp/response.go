@@ -50,7 +50,8 @@ func TooRequest(ctx *gin.Context) {
 	ctx.JSON(http.StatusServiceUnavailable, r)
 }
 
-// AuthFail 未知授权
+// AuthFail 未授权。返回 HTTP 401(标准语义) + 业务 code,前端按业务 code 处理。
+// 不返回 201 绕过 axios 拦截器——监控/网关按 HTTP 状态码告警,201 会被误判为成功。
 func AuthFail(ctx *gin.Context, code ...int) {
 	r := &RespData{
 		Data: "",
@@ -60,8 +61,7 @@ func AuthFail(ctx *gin.Context, code ...int) {
 		r.Code = code[0]
 	}
 	r.Message = xerror.CodeMap[r.Code]
-	// 这里我感觉觉是个关键点，我看别人写的，过期了返回401，但是前端的axios的响应拦截器里捕获不到，所以我用201状态码，
-	ctx.JSON(http.StatusCreated, r)
+	ctx.JSON(http.StatusUnauthorized, r)
 }
 
 // WithNotFoundPath 未找到路由
@@ -142,10 +142,10 @@ func List(ctx *gin.Context, message string, page, pageSize, total int64, items a
 		items = []any{}
 	}
 	r := &RespList{
-		Page:     page,
-		PageSize: pageSize,
 		Total:    total,
 		Items:    items,
+		Page:     page,
+		PageSize: pageSize,
 	}
 	r.Code = xerror.Success
 	r.Message = message
@@ -164,9 +164,9 @@ func More(ctx *gin.Context, message string, page, pageSize int64, hasMore bool, 
 		items = []any{}
 	}
 	r := &RespMore{
+		Items:    items,
 		Page:     page,
 		PageSize: pageSize,
-		Items:    items,
 		HasMore:  hasMore,
 	}
 	r.Code = xerror.Success

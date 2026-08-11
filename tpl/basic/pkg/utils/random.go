@@ -17,6 +17,10 @@ const (
 
 // 生成指定长度的字符串
 func GenStr(mode, length int) string {
+	// 防御:length<=0 时 b.Grow(length) 会 panic(length<0),直接返回空串
+	if length <= 0 {
+		return ""
+	}
 	var (
 		pos     int
 		seedStr string

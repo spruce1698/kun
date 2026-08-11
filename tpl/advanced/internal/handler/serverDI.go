@@ -2,6 +2,7 @@ package handler
 
 import (
 	"advanced/internal/handler/demo"
+	// ==== Add Handler import before this line, don't edit this line.====
 
 	"github.com/google/wire"
 )

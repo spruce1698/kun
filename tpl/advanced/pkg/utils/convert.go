@@ -11,15 +11,16 @@ func intToBase(n int64, alphabet string, base int) string {
 		return string(alphabet[0])
 	}
 	neg := false
-	// 转 uint64 取绝对值:uint64 可容纳 MinInt64 的绝对值,避免 int64 直接 -n 溢出。
-	// (原实现 n=-(n+1);n=-n 是保号运算,负数恒为负,循环一次都不进 -> 负数全部输出 "-")
+	// 转 uint64 取绝对值。注意 MinInt64 时 -n 仍为 MinInt64(int64 溢出),
+	// 必须在无符号域做取反(^u+1 == 0-u),才能得到正确的绝对值。
 	u := uint64(n)
 	if n < 0 {
 		neg = true
-		u = uint64(-n)
+		u = ^u + 1
 	}
 
-	var result []byte
+	// 预分配:64bit 整数在最小进制(2)下最多 64 位
+	result := make([]byte, 0, 64)
 	for u > 0 {
 		result = append(result, alphabet[u%uint64(base)])
 		u /= uint64(base)

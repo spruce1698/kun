@@ -314,13 +314,13 @@ func AESEncryptCTR(plainText, encryptKey string, iv ...[]byte) (string, error) {
 		}
 	}
 
-	// 补码
-	padding := PKCS5Padding([]byte(plainText), blockSize)
+	// CTR 为流模式,明文长度=密文长度,不做块填充
+	originStr := []byte(plainText)
 	// 加密
 	blockMode := cipher.NewCTR(block, ivValue)
 	// 定义保存结果变量
-	cipherText := make([]byte, len(padding))
-	blockMode.XORKeyStream(cipherText, padding)
+	cipherText := make([]byte, len(originStr))
+	blockMode.XORKeyStream(cipherText, originStr)
 	return base64.StdEncoding.EncodeToString(append(ivValue, cipherText...)), nil
 }
 
@@ -359,12 +359,8 @@ func AESDecryptCTR(cipherText, encryptKey string, iv ...[]byte) (string, error) 
 	blockModel := cipher.NewCTR(block, ivValue)
 	originStr := make([]byte, len(encrypted))
 	blockModel.XORKeyStream(originStr, encrypted)
-
-	output, err := PKCS5UnPadding(originStr)
-	if err != nil {
-		return "", err
-	}
-	return string(output), nil
+	// CTR 为流模式,无需去填充
+	return string(originStr), nil
 }
 
 // OFB:输出反馈模式
@@ -387,10 +383,11 @@ func AESEncryptOFB(plainText, encryptKey string, iv ...[]byte) (string, error) {
 		}
 	}
 
-	padding := PKCS5Padding([]byte(plainText), blockSize)
+	// OFB 为流模式,明文长度=密文长度,不做块填充
+	originStr := []byte(plainText)
 	blockMode := cipher.NewOFB(block, ivValue)
-	cipherText := make([]byte, len(padding))
-	blockMode.XORKeyStream(cipherText, padding)
+	cipherText := make([]byte, len(originStr))
+	blockMode.XORKeyStream(cipherText, originStr)
 	return base64.StdEncoding.EncodeToString(append(ivValue, cipherText...)), nil
 }
 
@@ -430,11 +427,8 @@ func AESDecryptOFB(cipherText, encryptKey string, iv ...[]byte) (string, error) 
 	originStr := make([]byte, len(encrypted))
 	// 解密
 	blockModel.XORKeyStream(originStr, encrypted)
-	output, err := PKCS5UnPadding(originStr)
-	if err != nil {
-		return "", err
-	}
-	return string(output), nil
+	// OFB 为流模式,无需去填充
+	return string(originStr), nil
 }
 
 // DES
@@ -662,13 +656,13 @@ func DESEncryptCTR(plainText, encryptKey string, iv ...[]byte) (string, error) {
 	}
 	ivValue = ivValue[:blockSize]
 
-	// 补码
-	padding := PKCS5Padding([]byte(plainText), blockSize)
+	// CTR 为流模式,明文长度=密文长度,不做块填充
+	originStr := []byte(plainText)
 	// 加密
 	blockMode := cipher.NewCTR(block, ivValue)
 	// 定义保存结果变量
-	cipherText := make([]byte, len(padding))
-	blockMode.XORKeyStream(cipherText, padding)
+	cipherText := make([]byte, len(originStr))
+	blockMode.XORKeyStream(cipherText, originStr)
 	return base64.StdEncoding.EncodeToString(append(ivValue, cipherText...)), nil
 }
 
@@ -708,11 +702,8 @@ func DESDecryptCTR(cipherText, encryptKey string, iv ...[]byte) (string, error) 
 	blockModel := cipher.NewCTR(block, ivValue)
 	originStr := make([]byte, len(encrypted))
 	blockModel.XORKeyStream(originStr, encrypted)
-	output, err := PKCS5UnPadding(originStr)
-	if err != nil {
-		return "", err
-	}
-	return string(output), nil
+	// CTR 为流模式,无需去填充
+	return string(originStr), nil
 }
 
 // OFB:输出反馈模式
@@ -739,10 +730,11 @@ func DESEncryptOFB(plainText, encryptKey string, iv ...[]byte) (string, error) {
 	}
 	ivValue = ivValue[:blockSize]
 
-	padding := PKCS5Padding([]byte(plainText), blockSize)
+	// OFB 为流模式,明文长度=密文长度,不做块填充
+	originStr := []byte(plainText)
 	blockMode := cipher.NewOFB(block, ivValue)
-	cipherText := make([]byte, len(padding))
-	blockMode.XORKeyStream(cipherText, padding)
+	cipherText := make([]byte, len(originStr))
+	blockMode.XORKeyStream(cipherText, originStr)
 	return base64.StdEncoding.EncodeToString(append(ivValue, cipherText...)), nil
 }
 
@@ -783,11 +775,8 @@ func DESDecryptOFB(cipherText, encryptKey string, iv ...[]byte) (string, error) 
 	originStr := make([]byte, len(encrypted))
 	// 解密
 	blockModel.XORKeyStream(originStr, encrypted)
-	output, err := PKCS5UnPadding(originStr)
-	if err != nil {
-		return "", err
-	}
-	return string(output), nil
+	// OFB 为流模式,无需去填充
+	return string(originStr), nil
 }
 
 // 3DES
@@ -1012,13 +1001,12 @@ func DES3EncryptCTR(plainText, encryptKey string, iv ...[]byte) (string, error) 
 	}
 	ivValue = ivValue[:blockSize]
 
-	// 补码
-	padding := PKCS5Padding(originStr, blockSize)
+	// CTR 为流模式,明文长度=密文长度,不做块填充
 	// 加密
 	blockMode := cipher.NewCTR(block, ivValue)
 	// 定义保存结果变量
-	cipherText := make([]byte, len(padding))
-	blockMode.XORKeyStream(cipherText, padding)
+	cipherText := make([]byte, len(originStr))
+	blockMode.XORKeyStream(cipherText, originStr)
 
 	return base64.StdEncoding.EncodeToString(append(ivValue, cipherText...)), nil
 }
@@ -1060,11 +1048,8 @@ func DES3DecryptCTR(cipherText, encryptKey string, iv ...[]byte) (string, error)
 	originStr := make([]byte, len(encrypted))
 	blockModel.XORKeyStream(originStr, encrypted)
 
-	output, err := PKCS5UnPadding(originStr)
-	if err != nil {
-		return "", err
-	}
-	return string(output), nil
+	// CTR 为流模式,无需去填充
+	return string(originStr), nil
 }
 
 // OFB:输出反馈模式
@@ -1094,10 +1079,10 @@ func DES3EncryptOFB(plainText, encryptKey string, iv ...[]byte) (string, error) 
 	}
 	ivValue = ivValue[:blockSize]
 
-	padding := PKCS5Padding(originStr, blockSize)
+	// OFB 为流模式,明文长度=密文长度,不做块填充
 	blockMode := cipher.NewOFB(block, ivValue)
-	cipherText := make([]byte, len(padding))
-	blockMode.XORKeyStream(cipherText, padding)
+	cipherText := make([]byte, len(originStr))
+	blockMode.XORKeyStream(cipherText, originStr)
 
 	return base64.StdEncoding.EncodeToString(append(ivValue, cipherText...)), nil
 }
@@ -1140,11 +1125,8 @@ func DES3DecryptOFB(cipherText, encryptKey string, iv ...[]byte) (string, error)
 	// 解密
 	blockModel.XORKeyStream(originStr, encrypted)
 
-	output, err := PKCS5UnPadding(originStr)
-	if err != nil {
-		return "", err
-	}
-	return string(output), nil
+	// OFB 为流模式,无需去填充
+	return string(originStr), nil
 }
 
 func PKCS5Padding(src []byte, blockSize int) []byte {

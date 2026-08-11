@@ -341,10 +341,12 @@ func (d *DemoHandler) SubmitCsrf(ctx *gin.Context) {
 // @Produce json
 // @Router /api/demo/export [get]
 func (d *DemoHandler) Export(ctx *gin.Context) {
-	// 1. 清除 WriteDeadline，支持长连接流式传输
+	// 1. 清除当前请求的 WriteDeadline,支持长连接流式传输。
+	// ResponseController.SetWriteDeadline(零值)会覆盖 http.Server.WriteTimeout(120s),
+	// 仅对当前 request 生效(依赖 Go 1.20+)。
 	rc := http.NewResponseController(ctx.Writer)
 	if err := rc.SetWriteDeadline(time.Time{}); err != nil {
-		// 忽略或记录日志
+		xlog.Warn(ctx, "clear write deadline failed", xlog.KVErr(err))
 	}
 
 	// 2. 设置流式响应头
@@ -403,10 +405,12 @@ func (d *DemoHandler) Export(ctx *gin.Context) {
 // @Produce application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
 // @Router /api/demo/excel [get]
 func (d *DemoHandler) Excel(ctx *gin.Context) {
-	// 1. 清除 WriteDeadline，支持长连接流式传输
+	// 1. 清除当前请求的 WriteDeadline,支持长连接流式传输。
+	// ResponseController.SetWriteDeadline(零值)会覆盖 http.Server.WriteTimeout(120s),
+	// 仅对当前 request 生效(依赖 Go 1.20+)。
 	rc := http.NewResponseController(ctx.Writer)
 	if err := rc.SetWriteDeadline(time.Time{}); err != nil {
-		// 忽略或记录日志
+		xlog.Warn(ctx, "clear write deadline failed", xlog.KVErr(err))
 	}
 
 	// 2. 设置 Excel 下载响应头

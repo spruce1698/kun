@@ -4,6 +4,7 @@ import (
 	"advanced/internal/event"
 	"advanced/internal/service/svc"
 	"advanced/pkg/token"
+	// ==== Add Svc import before this line, don't edit this line.====
 
 	"github.com/google/wire"
 )

@@ -82,6 +82,7 @@ func (d *demoSvc) Detail(ctx context.Context, id int64) (*Demo, error) {
 		if cacheErr := d.ctx.DemoCache.Set(ctx, id, &cache.Demo{
 			Id:    demoDb.Id,
 			Name:  demoDb.Name,
+			Test1: demoDb.Test1,
 			Test4: demoDb.Test4,
 		}, 300); cacheErr != nil {
 			xlog.Error(ctx, fmt.Sprintf("set demo cache failed, id=%d", id), cacheErr)

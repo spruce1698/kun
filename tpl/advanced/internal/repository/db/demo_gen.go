@@ -73,7 +73,7 @@ func newDemoDb(c *Conn) *defaultDemoDb {
 
 func (d *defaultDemoDb) Insert(ctx context.Context, data *Demo) (int64, error) {
 	var zero int64
-	data.Id = zero // 自增主键:清零让 DB 分配;非自增主键保留调用方传入值
+	data.Id = zero // 该表主键自增,清零让 DB 分配
 	err := d.WithContext(ctx).Create(data).Error
 	if err != nil {
 		return zero, err
@@ -121,6 +121,10 @@ func (d *defaultDemoDb) FindFields(ctx context.Context, id int64, fields ...stri
 }
 
 func (d *defaultDemoDb) FindByIds(ctx context.Context, ids []int64) ([]*Demo, error) {
+	// 空 ids 直接返回,避免生成 `IN ()` 在 MySQL 上报语法错误
+	if len(ids) == 0 {
+		return nil, nil
+	}
 	var result []*Demo
 	err := d.WithContext(ctx).Where("`id` IN (?)", ids).Find(&result).Error
 	if err != nil {
@@ -153,11 +157,19 @@ func (d *defaultDemoDb) UpdateFields(ctx context.Context, id int64, newData map[
 }
 
 func (d *defaultDemoDb) SoftDelete(ctx context.Context, ids []int64) error {
+	// 空 ids 直接返回,避免生成 `IN ()` 在 MySQL 上报语法错误
+	if len(ids) == 0 {
+		return nil
+	}
 	err := d.WithContext(ctx).Where(" `id`  IN (?)  ", ids).Delete(d.model).Error
 	return err
 }
 
 func (d *defaultDemoDb) Delete(ctx context.Context, ids []int64) error {
+	// 空 ids 直接返回,避免生成 `IN ()` 在 MySQL 上报语法错误
+	if len(ids) == 0 {
+		return nil
+	}
 	err := d.WithContext(ctx).Where(" `id`  IN (?)  ", ids).Unscoped().Delete(d.model).Error
 	return err
 }

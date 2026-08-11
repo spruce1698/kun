@@ -7,6 +7,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -19,6 +20,13 @@ var (
 	sonyOnce    sync.Once
 	sonyFlake   *sonyflake.Sonyflake
 	sonyInitErr error
+)
+
+// 时钟回拨/时间戳溢出错误,调用方可据此降级(等待/用旧时间戳)。
+var (
+	ErrClockBackwards = errors.New("snowflake clock moved backwards beyond threshold")
+	ErrTimestampOverflow = errors.New("snowflake timestamp overflow")
+	ErrSonyflakeNotInit  = errors.New("sonyflake not initialized, call InitSonyFlake first")
 )
 
 const (
@@ -59,17 +67,17 @@ func NewSnowflake(centerID, workerID int64) (*Snowflake, error) {
 	}, nil
 }
 
-func (s *Snowflake) GenID() int64 {
+// GenID 生成唯一 ID。时钟回拨超过 5ms 或时间戳溢出时返回 error,由调用方降级
+// (等待/用旧时间戳),不再 panic 以免在业务协程里崩整个进程。
+func (s *Snowflake) GenID() (int64, error) {
 	s.Lock()
-	defer func() {
-		s.Unlock()
-	}()
+	defer s.Unlock()
 	now := time.Now().UnixNano() / 1e6 // 转毫秒
 	// 时钟回拨保护:当前时间小于上次记录的时间戳时,等待追平,避免生成重复/乱序 id。
-	// 回拨幅度过大(超过 5ms)直接 panic,避免长时间阻塞消费协程。
+	// 回拨幅度过大(超过 5ms)直接返回错误,由调用方决定降级策略。
 	if now < s.timestamp {
 		if s.timestamp-now > 5 {
-			panic(fmt.Sprintf("snowflake clock moved backwards %dms, refusing to generate id", s.timestamp-now))
+			return 0, fmt.Errorf("%w: %dms", ErrClockBackwards, s.timestamp-now)
 		}
 		for now < s.timestamp {
 			now = time.Now().UnixNano() / 1e6
@@ -91,15 +99,19 @@ func (s *Snowflake) GenID() int64 {
 	}
 	t := now - epoch
 	if t > timestampMax {
-		panic(fmt.Sprintf("snowflake timestamp overflow: epoch must be between 0 and %d", timestampMax-1))
+		return 0, fmt.Errorf("%w: epoch must be between 0 and %d", ErrTimestampOverflow, timestampMax-1)
 	}
 	s.timestamp = now
 	r := (t)<<timestampShift | (s.centerId << centerIdShift) | (s.workerId << workerIdShift) | (s.sequence)
-	return r
+	return r, nil
 }
 
-func (s *Snowflake) GenIDString() string {
-	return strconv.FormatInt(s.GenID(), 10)
+func (s *Snowflake) GenIDString() (string, error) {
+	id, err := s.GenID()
+	if err != nil {
+		return "", err
+	}
+	return strconv.FormatInt(id, 10), nil
 }
 
 // 获取数据中心ID和机器ID

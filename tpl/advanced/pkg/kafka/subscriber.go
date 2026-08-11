@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -19,6 +21,10 @@ const (
 	// 超过后视为毒消息,跳过提交(避免无限重投),仅记录日志。
 	maxConsumeRetry = 3
 )
+
+// klog 消费循环的错误日志统一走标准 log 到 stderr,
+// 不直接依赖 xlog——xlog 的 KafkaWriter 会反向依赖本包形成反馈循环。
+var klog = log.New(os.Stderr, "[kafka] ", log.LstdFlags|log.Lmsgprefix)
 
 type (
 	Subscriber struct {
@@ -56,14 +62,18 @@ func (s *Subscriber) Sub(ctx context.Context, topic, group string, handler func(
 			break
 		}
 		if err != nil {
-			fmt.Printf("--sub-: %v\n", err)
+			klog.Printf("sub consume error: %v", err)
 			break
 		}
+		// 从消息 header 提取上游 trace context,启动 consumer span,
+		// 使"生产->消费"跨进程链路在同一 trace 下串联。
+		msgCtx, span := extractSpan(ctx, msg, "consume")
 		// 处理失败时按指数退避重试,超过 maxConsumeRetry 仍失败则跳过该消息(kafka 自动提交会推进 offset),
 		// 避免handler持续报错导致消费卡死。
-		consumeWithRetry(ctx, string(msg.Key), string(msg.Value), func(k, v string) error {
-			return handler(ctx, k, v)
+		consumeWithRetry(msgCtx, string(msg.Key), string(msg.Value), func(k, v string) error {
+			return handler(msgCtx, k, v)
 		})
+		span.End()
 	}
 }
 
@@ -89,24 +99,30 @@ func (s *Subscriber) SubFetch(ctx context.Context, topic, group string, handler 
 			break
 		}
 		if err != nil {
-			fmt.Printf("--SubFetch--: %v \n", err)
+			klog.Printf("subfetch consume error: %v", err)
 			break
 		}
+
+		// 从消息 header 提取上游 trace context,启动 consumer span 包裹处理逻辑。
+		msgCtx, span := extractSpan(ctx, msg, "consume")
 
 		// 处理失败时按指数退避重试,超过 maxConsumeRetry 仍失败则视为毒消息:
 		// 仍提交 offset(跳过该消息),避免未提交导致 kafka 反复重投同一条毒消息形成死循环。
 		key, value := string(msg.Key), string(msg.Value)
-		consumeErr := consumeWithRetry(ctx, key, value, handler)
+		consumeErr := consumeWithRetry(msgCtx, key, value, handler)
 		// ctx 取消(进程退出)时直接退出,不提交 offset,让 kafka 重投未处理完的消息。
 		if consumeErr != nil && ctx.Err() != nil {
+			span.End()
 			break
 		}
 		if consumeErr != nil {
-			fmt.Printf("poison message skipped after %d retries, key=%s err: %v \n", maxConsumeRetry, key, consumeErr)
+			span.RecordError(consumeErr)
+			klog.Printf("poison message skipped after %d retries, key=%s err: %v", maxConsumeRetry, key, consumeErr)
 		}
 		if commitErr := reader.CommitMessages(ctx, msg); commitErr != nil {
-			fmt.Printf("commit failed, error: %v \n", commitErr)
+			klog.Printf("commit failed, error: %v", commitErr)
 		}
+		span.End()
 	}
 }
 
@@ -121,7 +137,7 @@ func consumeWithRetry(ctx context.Context, key, value string, handler func(key, 
 		}
 		if err := handler(key, value); err != nil {
 			lastErr = err
-			fmt.Printf("consume retry %d/%d, key=%s err: %v \n", i+1, maxConsumeRetry, key, err)
+			klog.Printf("consume retry %d/%d, key=%s err: %v", i+1, maxConsumeRetry, key, err)
 			// 退避等待,ctx 取消则提前退出
 			select {
 			case <-ctx.Done():
@@ -148,11 +164,21 @@ func (s *Subscriber) getOrCreateReader(topic, group string, config kafkaGo.Reade
 	return actual.(*kafkaGo.Reader)
 }
 
+// Close 同步关闭所有 reader,确保调用返回时 reader 已关闭、offset 已提交,
+// 避免进程立即退出导致未提交 offset 丢失。
 func (s *Subscriber) Close() {
+	var wg sync.WaitGroup
 	s.box.Range(func(_, value any) bool {
-		go func() {
-			_ = value.(*kafkaGo.Reader).Close()
-		}()
+		reader, ok := value.(*kafkaGo.Reader)
+		if !ok {
+			return true
+		}
+		wg.Add(1)
+		go func(r *kafkaGo.Reader) {
+			defer wg.Done()
+			_ = r.Close()
+		}(reader)
 		return true
 	})
+	wg.Wait()
 }

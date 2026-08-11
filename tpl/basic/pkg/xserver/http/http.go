@@ -51,8 +51,7 @@ func New(
 	hdl *handler.Ctx,
 	rtrs []router.Router,
 ) (xserver.Engine, error) {
-	eng := gin.New()
-
+	// 在创建引擎前统一设置 gin 全局模式与输出,避免 gin.New() 先于 SetMode
 	if conf.Env == xconfig.EnvStaging || conf.Env == xconfig.EnvRelease {
 		gin.SetMode(gin.ReleaseMode)
 		// 禁止gin的默认输出
@@ -60,6 +59,7 @@ func New(
 	} else {
 		gin.SetMode(conf.Env)
 	}
+	eng := gin.New()
 
 	// 性能分析 - 正式环境不要使用！！！
 	if conf.Env == xconfig.EnvDebug {
@@ -70,6 +70,7 @@ func New(
 		ServiceName:    conf.Server.Name,
 		ServiceVersion: conf.Version,
 		Endpoint:       conf.Jaeger.Endpoint,
+		SampleRate:     conf.Jaeger.SampleRate,
 	})
 
 	// 接管gin框架默认的日志和捕获异常
@@ -125,16 +126,20 @@ func (s *Server) Start() error {
 	if s.Conf.Server.WriteTimeout != 0 {
 		writeTimeout = time.Duration(s.Conf.Server.WriteTimeout) * time.Second
 	}
+	// ReadHeaderTimeout 防御 Slowloris 慢速攻击:仅限制读请求头阶段,
+	// 不影响 streaming/大上传的请求体读取。固定 10s。
+	const readHeaderTimeout = 10 * time.Second
 	port := s.Conf.Server.Port
 	if port == 0 {
 		port = utils.AvailablePort()
 	}
 	// 初始化HTTP/JOB服务
 	svr := &http.Server{
-		Addr:         fmt.Sprintf(":%d", port),
-		Handler:      s.Engine,
-		ReadTimeout:  readTimeout,
-		WriteTimeout: writeTimeout,
+		Addr:              fmt.Sprintf(":%d", port),
+		Handler:           s.Engine,
+		ReadTimeout:       readTimeout,
+		ReadHeaderTimeout: readHeaderTimeout,
+		WriteTimeout:      writeTimeout,
 	}
 
 	// 启动成功
@@ -196,12 +201,12 @@ func (s *Server) Stop(signal string) {
 	// TODO 其他关闭
 	s.logger.Warn("Http server stopped")
 
-	// 日志异步
+	// 日志异步(此时 xlog 可能已关闭,错误信息走 stderr)
 	if err := s.logger.Sync(); err != nil {
-		fmt.Printf("Failed to sync logger: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to sync logger: %v\n", err)
 	}
 	// 关闭日志组件底层资源(如日志 Kafka Writer)
 	if err := xlog.Close(); err != nil {
-		fmt.Printf("Failed to close xlog: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to close xlog: %v\n", err)
 	}
 }

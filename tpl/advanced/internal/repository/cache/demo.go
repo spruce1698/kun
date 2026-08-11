@@ -34,11 +34,14 @@ type (
 	}
 
 	//  Demo缓存数据
+	//  注意:字段需与 service.Demo 对齐(密码等敏感字段不入缓存),
+	//  否则缓存命中时 copier.Copy 会导致未缓存字段为零值。
 	Demo struct {
 		Id     int64
-		Name   string // 名称
-		Test4  int32  // 测试4
-		RoleId int64  // 角色id
+		Name   string  // 名称
+		Test1  float64 // 测试1
+		Test4  int32   // 测试4
+		RoleId int64   // 角色id
 	}
 )
 
@@ -61,7 +64,9 @@ func (d *demoCache) Get(ctx context.Context, id int64) (*Demo, error) {
 	// 1. 查询本地缓存
 	if value, ok := d.localCache.Get(key); ok {
 		if demo, ok := value.(*Demo); ok {
-			return demo, nil
+			// 返回副本,避免调用方修改污染缓存内对象
+			cp := *demo
+			return &cp, nil
 		}
 	}
 
@@ -80,7 +85,9 @@ func (d *demoCache) Get(ctx context.Context, id int64) (*Demo, error) {
 	}
 	// 设置本地缓存
 	d.localCache.Set(key, demo, 5*time.Minute)
-	return demo, nil
+	// 返回副本,避免调用方修改污染缓存内对象
+	cp := *demo
+	return &cp, nil
 }
 
 func (d *demoCache) Set(ctx context.Context, id int64, data *Demo, expiration int64) error {
@@ -99,6 +106,8 @@ func (d *demoCache) Set(ctx context.Context, id int64, data *Demo, expiration in
 	if err != nil {
 		return err
 	}
+	// 同步写本地缓存,避免下次请求 local miss → redis hit 多一次往返
+	d.localCache.Set(key, data, ttl)
 	return nil
 }
 

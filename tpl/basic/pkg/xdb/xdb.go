@@ -8,8 +8,6 @@ package xdb
 
 import (
 	"fmt"
-	"log"
-	"os"
 	"time"
 
 	"basic/pkg/xconfig"
@@ -33,8 +31,9 @@ func New(conf *xconfig.Conf) (*Client, error) {
 		logLevel = gormLogger.Info
 	}
 
+	// xdbLogger 所有日志方法走 xlog,不需要 writer,传 nil 即可。
 	newLogger := initLog(
-		log.New(os.Stdout, "\n", log.LstdFlags), // io writer
+		nil,
 		gormLogger.Config{
 			SlowThreshold:             200 * time.Millisecond, // 慢 SQL 阈值
 			IgnoreRecordNotFoundError: true,                   // 忽略 ErrRecordNotFound 记录到日志
@@ -48,7 +47,7 @@ func New(conf *xconfig.Conf) (*Client, error) {
 		DisableDatetimePrecision:  true, // 禁用 datetime 精度，MySQL 5.6 之前的数据库不支持
 		DontSupportRenameIndex:    true, // 重命名索引时采用删除并新建的方式，MySQL 5.7 之前的数据库和 MariaDB 不支持重命名索引
 		DontSupportRenameColumn:   true, // 用 `change` 重命名列，MySQL 8 之前的数据库和 MariaDB 不支持重命名列
-		SkipInitializeWithVersion: true, // 根据当前 MySQL 版本自动配置
+		SkipInitializeWithVersion: true, // 跳过版本自动探测(automatic server version initialization);配置固定,不依赖运行时 MySQL 版本自适应
 	})
 
 	var err error

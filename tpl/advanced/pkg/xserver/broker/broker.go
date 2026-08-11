@@ -54,6 +54,7 @@ type Server struct {
 	curCmd  *exec.Cmd
 	stopCh  chan struct{} // Stop() 关闭,通知 supervisor goroutine 退出
 	cmdExit chan error    // 子进程退出事件(err 由 cmd.Wait 返回)
+	done    chan struct{} // supervisor 在子进程退出(并完成 Wait)后关闭,Stop 据此等待,不依赖 cmdExit 投递时序
 }
 
 func New(conf *xconfig.Conf, log *xlog.Logger, db *xdb.Client, redis *xredis.Client, task *event.Task) (xserver.Engine, error) {
@@ -80,6 +81,7 @@ func (s *Server) Start() error {
 	s.healthSvr = healthServer(s.Conf, s.logger)
 	s.stopCh = make(chan struct{})
 	s.cmdExit = make(chan error, 1)
+	s.done = make(chan struct{})
 
 	// supervisor goroutine:启动并监控子进程。
 	// 子进程异常退出则父进程也退出;收到 stopCh 关闭则正常退出。
@@ -91,6 +93,10 @@ func (s *Server) Start() error {
 // supervisor 启动子进程并等待其退出。
 // 子进程退出事件通过 s.cmdExit 传递给 Stop();Stop() 关闭 s.stopCh 通知本协程结束。
 func (s *Server) supervisor() {
+	// 无论子进程是否启动成功、是否异常退出,都在本协程结束时关闭 done,
+	// 让 Stop() 能可靠地等待到"子进程已退出"这一事件,而不依赖 cmdExit 的投递时序。
+	defer close(s.done)
+
 	childEnv := append(os.Environ(), fmt.Sprintf("%s=%s", ChildKey, ChildVal))
 
 	for {
@@ -119,7 +125,7 @@ func (s *Server) supervisor() {
 		s.curCmd = nil
 		s.mu.Unlock()
 
-		// 通知 Stop()(若正在等待)
+		// 通知 Stop()(若正在等待);cmdExit 容量为 1,投递失败说明已有值,丢弃即可。
 		select {
 		case s.cmdExit <- waitErr:
 		default:
@@ -171,14 +177,19 @@ func (s *Server) Stop(signal string) {
 	if cmd != nil && cmd.Process != nil {
 		_ = cmd.Process.Signal(syscall.SIGTERM)
 
+		// 等待 supervisor 中 cmd.Wait() 返回并关闭 done;
+		// 不依赖 cmdExit 的投递时序(它可能因 cap=1 满了而投递失败)。
 		select {
-		case <-s.cmdExit:
+		case <-s.done:
 			s.logger.Warn("Broker child process exited")
 		case <-time.After(time.Second * 5):
 			s.logger.Warn("Broker child process shutdown timeout, killing")
 			_ = cmd.Process.Kill()
-			<-s.cmdExit
+			<-s.done
 		}
+	} else {
+		// 无子进程(启动失败或已退出),仍等待 supervisor 收尾,避免 close(stopCh) 竞态。
+		<-s.done
 	}
 
 	// 3. 关闭 db
@@ -206,13 +217,13 @@ func (s *Server) Stop(signal string) {
 	// 4. 通知 supervisor 退出(若子进程是异常退出已 return,这里无影响)
 	close(s.stopCh)
 
-	// 日志异步
+	// 日志异步(此时 xlog 可能已关闭,错误信息走 stderr)
 	if err := s.logger.Sync(); err != nil {
-		fmt.Printf("Failed to sync logger: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to sync logger: %v\n", err)
 	}
 	// 关闭日志组件底层资源(如日志 Kafka Writer)
 	if err := xlog.Close(); err != nil {
-		fmt.Printf("Failed to close xlog: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to close xlog: %v\n", err)
 	}
 }
 
@@ -221,8 +232,7 @@ func isChild() bool {
 }
 
 func healthServer(conf *xconfig.Conf, log *xlog.Logger) *http.Server {
-	engine := gin.New()
-
+	// 在创建引擎前设置 gin 全局模式,与 http server 保持一致,避免多实例重复覆盖全局状态。
 	if conf.Env == xconfig.EnvStaging || conf.Env == xconfig.EnvRelease {
 		gin.SetMode(gin.ReleaseMode)
 		// 禁止gin的默认输出
@@ -230,6 +240,7 @@ func healthServer(conf *xconfig.Conf, log *xlog.Logger) *http.Server {
 	} else {
 		gin.SetMode(conf.Env)
 	}
+	engine := gin.New()
 
 	// 性能分析 - 正式环境不要使用！！！
 	if conf.Env == xconfig.EnvDebug {
@@ -260,10 +271,11 @@ func healthServer(conf *xconfig.Conf, log *xlog.Logger) *http.Server {
 
 	// 初始化HTTP服务
 	httpSvr := &http.Server{
-		Addr:         fmt.Sprintf(":%d", port),
-		Handler:      engine,
-		ReadTimeout:  readTimeout,
-		WriteTimeout: writeTimeout,
+		Addr:              fmt.Sprintf(":%d", port),
+		Handler:           engine,
+		ReadTimeout:       readTimeout,
+		ReadHeaderTimeout: 10 * time.Second, // 防御 Slowloris
+		WriteTimeout:      writeTimeout,
 	}
 
 	// 启动成功
@@ -281,6 +293,22 @@ func childProcess(conf *xconfig.Conf, task *event.Task) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// 子进程独立初始化 TracerProvider,使 kafka/asynq 消费者产生的 span 能上报。
+	// 父进程通过 fork exec 启动子进程,全局 TracerProvider 不会继承,必须重新初始化。
+	tp := middleware.InitTracer(middleware.TracingConfig{
+		ServiceName:    conf.Broker.Name,
+		ServiceVersion: conf.Version,
+		Endpoint:       conf.Jaeger.Endpoint,
+		SampleRate:     conf.Jaeger.SampleRate,
+	})
+	if tp != nil {
+		defer func() {
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+			_ = tp.Shutdown(shutdownCtx)
+		}()
+	}
+
 	// 子进程统一监听退出信号:取消 ctx,驱动各消费者(kafka/asynq)优雅退出。
 	go func() {
 		signals := make(chan os.Signal, 1)
@@ -296,8 +324,9 @@ func childProcess(conf *xconfig.Conf, task *event.Task) {
 	sub.Kafka()
 	// asynq subscriber
 	if err := sub.Asynq(); err != nil {
-		// 启动失败:cancel ctx 触发已启动的消费者退出,等待收尾后退出进程
-		fmt.Printf("!!!BrokerErr!!! asynq subscriber start failed: %v\n", err)
+		// 启动失败:cancel ctx 触发已启动的消费者退出,等待收尾后退出进程。
+		// 子进程此时 logger 尚未初始化,错误信息走 stderr。
+		fmt.Fprintf(os.Stderr, "!!!BrokerErr!!! asynq subscriber start failed: %v\n", err)
 		cancel()
 		wg.Wait()
 		sub.Close()
@@ -305,7 +334,7 @@ func childProcess(conf *xconfig.Conf, task *event.Task) {
 	}
 	// asynq CronPush(cron 启动失败不致命,记录后继续运行主消费)
 	if err := sub.AsynqCron(); err != nil {
-		fmt.Printf("!!!BrokerErr!!! asynq cron start failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "!!!BrokerErr!!! asynq cron start failed: %v\n", err)
 	}
 
 	wg.Wait()

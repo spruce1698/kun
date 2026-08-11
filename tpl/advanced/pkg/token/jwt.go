@@ -48,6 +48,9 @@ const (
 
 	// SigningAlgorithm 固定的签名算法,Parse 时仅允许该算法,防止算法降级
 	SigningAlgorithm = "HS384"
+
+	// minSecretLen HS384 签名可接受的最小密钥长度(字节,即 256bit)。
+	minSecretLen = 32
 )
 
 var (
@@ -89,6 +92,11 @@ func NewJwt(conf *xconfig.Conf, redisCli *xredis.Client) (*Jwt, error) {
 	// 密钥必须由配置提供,禁止回退到硬编码默认值,避免无密钥部署被伪造token
 	if conf.Token.Secret == "" || conf.Token.RefreshSecret == "" {
 		return nil, fmt.Errorf("token secret 和 refreshSecret 不能为空,请通过配置(或环境变量 TOKEN_SECRET/TOKEN_REFRESHSECRET)提供")
+	}
+	// HS384 安全要求密钥长度至少 32 字节(256bit),推荐 48 字节(384bit)。
+	// 弱密钥会被暴力破解,启动期直接拒绝部署。
+	if len(conf.Token.Secret) < minSecretLen || len(conf.Token.RefreshSecret) < minSecretLen {
+		return nil, fmt.Errorf("token secret/refreshSecret 长度不足:至少 %d 字节(推荐 48 字节,即 HS384 的 384bit)", minSecretLen)
 	}
 	j := &Jwt{
 		ExpireTime:    2 * time.Hour,
@@ -182,7 +190,9 @@ func (j *Jwt) Refresh(accessToken, refreshToken string) (*JwtToken, error) {
 	} else if err != nil {
 		return nil, err
 	}
-	if encrypt.MD5to16(accessClaims.ID+accessClaims.Subject+accessClaims.Issuer+refreshClaims.IssuedAt.String()) != refreshClaims.ID {
+	// 绑定校验:refresh.ID 在 Gen 时由 access 的 ID/Subject/Issuer/IssuedAt 派生,
+	// 这里必须用 accessClaims.IssuedAt(而非 refreshClaims.IssuedAt),避免依赖两者恰好相等。
+	if encrypt.MD5to16(accessClaims.ID+accessClaims.Subject+accessClaims.Issuer+accessClaims.IssuedAt.String()) != refreshClaims.ID {
 		return nil, ErrInvalidToken
 	}
 

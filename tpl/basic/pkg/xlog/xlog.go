@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"basic/pkg/xconfig"
+
 	"google.golang.org/grpc"
 
 	"go.opentelemetry.io/otel/trace"
@@ -28,6 +29,7 @@ type (
 // kafkaCloser 保存日志 Kafka Writer 的关闭函数,由 New 设置,Close 调用。
 // 仅当启用了日志写 Kafka 时非 nil。
 var kafkaCloser func() error
+
 // New 创建一个新的日志记录器
 func New(conf *xconfig.Conf) *Logger {
 	opSet := make([]Option, 0)
@@ -148,14 +150,14 @@ type logContent struct {
 	Params  any    `json:"params,omitempty"` // 参数信息
 }
 
-// 统一的 Info 级别日志记录
+// Info 统一的 Info 级别日志记录。params 支持多个,整体存入 Params 切片,不再只取第一个。
 func Info(ctx context.Context, message string, params ...any) {
 	logger := fromContext(ctx)
 	c := logContent{
 		Message: message,
 	}
 	if len(params) > 0 {
-		c.Params = params[0]
+		c.Params = params
 	}
 	logger.Info("", zap.Any("content", c))
 }
@@ -166,7 +168,7 @@ func Infof(ctx context.Context, message string, params ...any) {
 	}))
 }
 
-// 统一的 Error 级别日志记录
+// Error 统一的 Error 级别日志记录
 func Error(ctx context.Context, message string, err error, params ...any) {
 	logger := fromContext(ctx)
 	c := logContent{
@@ -176,7 +178,7 @@ func Error(ctx context.Context, message string, err error, params ...any) {
 		c.Error = err.Error()
 	}
 	if len(params) > 0 {
-		c.Params = params[0]
+		c.Params = params
 	}
 	logger.Error("", zap.Any("content", c))
 }
@@ -194,7 +196,7 @@ func Warn(ctx context.Context, message string, params ...any) {
 		Message: message,
 	}
 	if len(params) > 0 {
-		c.Params = params[0]
+		c.Params = params
 	}
 	logger.Warn("", zap.Any("content", c))
 }
@@ -212,7 +214,7 @@ func Debug(ctx context.Context, message string, params ...any) {
 		Message: message,
 	}
 	if len(params) > 0 {
-		c.Params = params[0]
+		c.Params = params
 	}
 	logger.Debug("", zap.Any("content", c))
 }

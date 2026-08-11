@@ -47,7 +47,9 @@ func RateLimiter(maxAttempts int, window, cooldown time.Duration) gin.HandlerFun
 					delete(records, ip)
 				}
 			}
-			// 如果条目数仍然过多，强制清理最旧的一半
+			// 条目数超限时强制删除一半以控制 map 规模。
+			// 注意:Go map 遍历顺序随机,这里删除的是"随机一半"而非"最旧一半",
+			// 仅用于兜底限流,不保证按 firstSeen 淘汰。
 			if len(records) > maxRateLimitEntries {
 				half := len(records) / 2
 				for ip := range records {

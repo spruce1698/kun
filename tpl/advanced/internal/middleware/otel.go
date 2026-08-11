@@ -18,12 +18,23 @@ type TracingConfig struct {
 	ServiceName    string
 	ServiceVersion string
 	Endpoint       string
+	// SampleRate 采样率 0.0~1.0;<=0 时使用默认 0.1(10%)。
+	SampleRate float64
 }
 
 // InitTracer 初始化追踪器
 func InitTracer(cfg TracingConfig) *sdktrace.TracerProvider {
 	if cfg.ServiceName == "" {
 		return nil
+	}
+
+	// 采样率:默认 10%,可通过配置覆盖。
+	ratio := cfg.SampleRate
+	if ratio <= 0 {
+		ratio = 0.1
+	}
+	if ratio > 1 {
+		ratio = 1
 	}
 
 	// 创建资源信息
@@ -58,9 +69,8 @@ func InitTracer(cfg TracingConfig) *sdktrace.TracerProvider {
 	// 创建 TracerProvider
 	tp := sdktrace.NewTracerProvider(
 		append(opts,
-			// 设置采样策略：生产环境使用 10% 比例采样，避免全量采样带来的性能开销
-			//sdktrace.WithSampler(sdktrace.AlwaysSample()), // 全量采样
-			sdktrace.WithSampler(sdktrace.TraceIDRatioBased(0.1)), // 生产环境使用 10% 比例采样
+			// 采样率:从配置读取(默认 0.1=10%);1.0 为全量采样,适合调试。
+			sdktrace.WithSampler(sdktrace.TraceIDRatioBased(ratio)),
 		)...,
 	)
 
