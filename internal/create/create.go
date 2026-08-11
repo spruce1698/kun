@@ -29,8 +29,10 @@ var (
 		Use:     "create [type] [name]",
 		Short:   "Create a new hdl/svc/hs/rt/db/cache",
 		Example: "kun create hdl user",
-		Args:    cobra.ExactArgs(2),
-		RunE:    func(cmd *cobra.Command, args []string) error { return nil },
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return fmt.Errorf("create requires a subcommand: hdl, svc, hs, rt, db, cache")
+		},
 	}
 
 	CmdCreateHandler = &cobra.Command{
@@ -122,6 +124,8 @@ type genConfig struct {
 	typePath     string
 	defaultPkg   string
 	structSuffix string
+	// importMarker 非默认包名时,import 注入所锚定的 marker 注释行(位于 DI 文件 import 块内)。
+	importMarker string
 	diBuilder    func(*Create) map[string]string
 }
 
@@ -131,6 +135,7 @@ var genConfigs = map[string]genConfig{
 		typePath:     TypeHandler,
 		defaultPkg:   TypeHandler,
 		structSuffix: "Handler",
+		importMarker: "// ==== Add Handler import before this line, don't edit this line.====",
 		diBuilder: func(c *Create) map[string]string {
 			packageName := c.PackageName + "."
 			tPrefix := strings.ToUpper(string(c.PackageName[0])) + c.PackageName[1:]
@@ -148,6 +153,7 @@ var genConfigs = map[string]genConfig{
 		typePath:     TypeService + "/svc",
 		defaultPkg:   "svc",
 		structSuffix: "Svc",
+		importMarker: "// ==== Add Svc import before this line, don't edit this line.====",
 		diBuilder: func(c *Create) map[string]string {
 			return map[string]string{
 				"// ==== Add Svc before this line, don't edit this line.====": "\twire.Struct(new(" + c.PackageName + "." + c.FileName + "Ctx), \"*\"),\n    " +
@@ -159,6 +165,7 @@ var genConfigs = map[string]genConfig{
 		typePath:     TypeRouter,
 		defaultPkg:   TypeRouter,
 		structSuffix: "",
+		importMarker: "// ==== Add Rt import  before this line, don't edit this line.====",
 		diBuilder: func(c *Create) map[string]string {
 			packageName := c.PackageName + "."
 			if c.PackageName == c.CreateType {
@@ -173,6 +180,7 @@ var genConfigs = map[string]genConfig{
 		typePath:     "repository/cache",
 		defaultPkg:   "cache",
 		structSuffix: "Cache",
+		importMarker: "// ==== Add Repo import before this line, don't edit this line.====",
 		diBuilder: func(c *Create) map[string]string {
 			return map[string]string{
 				"// ==== Add Repo before this line, don't edit this line.====": "\t" + c.PackageName + ".New" + c.FileName + "Cache,",
@@ -322,9 +330,11 @@ func (c *Create) generateFile() error {
 	}
 
 	contentMap := config.diBuilder(c)
-	if c.PackageName != config.defaultPkg {
-		contentMap["github.com/google/wire"] = "\t\"" + c.ProjectName + "/" + filePath + "\""
-		contentMap["// ==== Add Rt import  before this line, don't edit this line.===="] = "\t\"" + c.ProjectName + "/" + filePath + "\""
+	// 非默认包名(即在子目录下生成)时,需要把新包的 import 注入到对应 DI 文件的 import 块。
+	// 锚定到该类型专属的 import marker 注释行,避免用 "github.com/google/wire" 字面量
+	// 这类非 marker key 误匹配 import 区任意位置。
+	if c.PackageName != config.defaultPkg && config.importMarker != "" {
+		contentMap[config.importMarker] = "\t\"" + c.ProjectName + "/" + filePath + "\""
 	}
 
 	if err = kernel.Wire2DIFile(diPath, contentMap); err != nil {

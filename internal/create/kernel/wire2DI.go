@@ -79,11 +79,12 @@ func wireProcess(filePath, markerLine, appendContent string) error {
 		return err
 	}
 
-	// 检查是否已包含要插入的内容
-	for _, v := range strings.Split(appendContent, "\n") {
-		if bytes.Contains(content, []byte(strings.Trim(strings.Trim(v, " "), "\t"))) {
-			return nil
-		}
+	// 幂等检查:只有当整段 appendContent(去空白后)作为连续片段已存在时才跳过。
+	// 不能按"任意一行命中即跳过"判断,因为多行内容里常有通用行(如 wire.Struct(...)),
+	// 逐行命中会误判"已插入"而漏掉真正该新增的行。
+	trimmed := strings.TrimSpace(appendContent)
+	if trimmed != "" && bytes.Contains(content, []byte(trimmed)) {
+		return nil
 	}
 
 	// 处理文件内容

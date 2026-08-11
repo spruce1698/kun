@@ -100,10 +100,15 @@ func genDBRepo(cmd *cobra.Command, args []string) error {
 
 	gormDb, err := connectDB(DBType(cmdConf.DBType), cmdConf.DSN)
 	if err != nil {
-		return fmt.Errorf("connect db server fail: %w", err)
+		// 连接错误信息可能回显 DSN 片段(含明文密码),脱敏后再返回。
+		return fmt.Errorf("connect db server fail: %w", maskDSN(err))
 	}
 	if gormDb == nil {
 		return fmt.Errorf("gorm db is nil")
+	}
+	// 生成完成后显式关闭底层 *sql.DB,避免 CLI 进程依赖退出才释放连接。
+	if sqlDB, err := gormDb.DB(); err == nil {
+		defer sqlDB.Close()
 	}
 	// 自定义命名策略
 	gormDb.Config.NamingStrategy = schema.NamingStrategy{
@@ -120,7 +125,7 @@ func genDBRepo(cmd *cobra.Command, args []string) error {
 		// Execute tasks for all tables in the database
 		tablesList, err = gormDb.Migrator().GetTables()
 		if err != nil {
-			return fmt.Errorf("GORM migrator get all tables fail: %w", err)
+			return fmt.Errorf("GORM migrator get all tables fail: %w", maskDSN(err))
 		}
 	} else {
 		tablesList = cmdConf.Tables
@@ -131,6 +136,21 @@ func genDBRepo(cmd *cobra.Command, args []string) error {
 
 	g.Execute()
 	return nil
+}
+
+// maskDSN 将错误信息中可能出现的 DSN 密码替换为 ***,避免明文密码进终端/CI 日志。
+func maskDSN(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	// MySQL DSN 形如 user:password@tcp(host)/dbname —— 把第一个 ':' 与 '@tcp'/'@' 之间的内容掩码。
+	if at := strings.Index(msg, "@tcp("); at > 0 {
+		if colon := strings.Index(msg[:at], ":"); colon >= 0 && colon < at {
+			msg = msg[:colon+1] + "***" + msg[at:]
+		}
+	}
+	return fmt.Errorf("%s", msg)
 }
 
 // defaultSQLConfig 构建默认 SQLConfig（DB 和 SQL 文件路径共用）

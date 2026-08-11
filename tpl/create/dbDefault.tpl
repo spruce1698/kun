@@ -123,6 +123,10 @@ func (d *default{{.StructName}}Db) FindFields(ctx context.Context, id {{.Primary
 }
 
 func (d *default{{.StructName}}Db) FindByIds(ctx context.Context, ids []{{.PrimaryKeyType}}) ([]*{{.StructName}}, error) {
+	// 空 ids 直接返回,避免生成 `IN ()` 在 MySQL 上报语法错误
+	if len(ids) == 0 {
+		return nil, nil
+	}
 	var result []*{{.StructName}}
 	err := d.WithContext(ctx).Where("`{{.PrimaryKeyColumn}}` IN (?)", ids).Find(&result).Error
 	if err != nil {
@@ -156,11 +160,19 @@ func (d *default{{.StructName}}Db) UpdateFields(ctx context.Context,id {{.Primar
 
 
 func (d *default{{.StructName}}Db) SoftDelete(ctx context.Context,ids []{{.PrimaryKeyType}}) error {
+	// 空 ids 直接返回,避免生成 `IN ()` 在 MySQL 上报语法错误
+	if len(ids) == 0 {
+		return nil
+	}
 	err :=  d.WithContext(ctx).Where(" `{{.PrimaryKeyColumn}}`  IN (?)  ", ids).Delete(d.model).Error
 	return err
 }
 
 func (d *default{{.StructName}}Db) Delete(ctx context.Context, ids []{{.PrimaryKeyType}}) error {
+	// 空 ids 直接返回,避免生成 `IN ()` 在 MySQL 上报语法错误
+	if len(ids) == 0 {
+		return nil
+	}
 	err := d.WithContext(ctx).Where(" `{{.PrimaryKeyColumn}}`  IN (?)  ", ids).Unscoped().Delete(d.model).Error
 	return err
 }

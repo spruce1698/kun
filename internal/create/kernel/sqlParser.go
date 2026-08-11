@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/spruce1698/kun/pkg/output"
 	"gorm.io/gorm/schema"
@@ -557,7 +558,10 @@ func isZeroDefault(goType, val string) bool {
 
 // ────── encoding ──────
 
-// convertToUTF8 检测并转换 UTF-16/UTF-16LE-BOM 编码到 UTF-8
+// convertToUTF8 检测并转换 UTF-16(含 BOM)编码到 UTF-8。
+// 无 BOM 的 UTF-16 不做猜测转换——前 4 字节的启发式会把纯 ASCII 的 UTF-8
+// (每两字节第二字节恰为 0)误判为 UTF-16 LE,导致乱码。仅依赖 BOM 最稳妥,
+// 请用户提供 UTF-8 或带 BOM 的 UTF-16 文件。
 func convertToUTF8(data []byte) []byte {
 	if len(data) >= 2 {
 		// UTF-16 LE BOM: 0xFF 0xFE
@@ -569,36 +573,29 @@ func convertToUTF8(data []byte) []byte {
 			return decodeUTF16BE(data[2:])
 		}
 	}
-	// 检测无 BOM 的 UTF-16 LE（启发式：前4字节中偶数位为非零ASCII，奇数位为0）
-	if len(data) >= 4 && len(data)%2 == 0 {
-		if data[0] != 0 && data[1] == 0 && data[2] != 0 && data[3] == 0 &&
-			data[0] < 0x80 && data[2] < 0x80 {
-			return decodeUTF16LE(data)
-		}
-	}
 	return data
 }
 
-// decodeUTF16LE 将 UTF-16 LE 字节解码为 UTF-8
+// decodeUTF16LE 将 UTF-16 LE 字节解码为 UTF-8,正确处理代理对(surrogate pair)。
 func decodeUTF16LE(data []byte) []byte {
 	if len(data)%2 != 0 {
 		return data
 	}
-	runes := make([]rune, 0, len(data)/2)
+	u16 := make([]uint16, 0, len(data)/2)
 	for i := 0; i < len(data); i += 2 {
-		runes = append(runes, rune(data[i])|rune(data[i+1])<<8)
+		u16 = append(u16, uint16(data[i])|uint16(data[i+1])<<8)
 	}
-	return []byte(string(runes))
+	return []byte(string(utf16.Decode(u16)))
 }
 
-// decodeUTF16BE 将 UTF-16 BE 字节解码为 UTF-8
+// decodeUTF16BE 将 UTF-16 BE 字节解码为 UTF-8,正确处理代理对(surrogate pair)。
 func decodeUTF16BE(data []byte) []byte {
 	if len(data)%2 != 0 {
 		return data
 	}
-	runes := make([]rune, 0, len(data)/2)
+	u16 := make([]uint16, 0, len(data)/2)
 	for i := 0; i < len(data); i += 2 {
-		runes = append(runes, rune(data[i])<<8|rune(data[i+1]))
+		u16 = append(u16, uint16(data[i])<<8|uint16(data[i+1]))
 	}
-	return []byte(string(runes))
+	return []byte(string(utf16.Decode(u16)))
 }

@@ -27,9 +27,13 @@ func Success(format string, args ...any) {
 }
 
 func Error(format string, args ...any) {
-	color.Red(" [X] "+format, args...)
+	// 错误信息走 stderr,即使 stdout 被重定向到管道也能正确展示与采集。
+	c := color.New(color.FgRed)
+	c.Fprintf(os.Stderr, " [X] "+format+"\n", args...)
 }
 
 func Warn(format string, args ...any) {
-	color.Yellow(" [!] "+format, args...)
+	// 警告同样走 stderr,与 Error 保持一致。
+	c := color.New(color.FgYellow)
+	c.Fprintf(os.Stderr, " [!] "+format+"\n", args...)
 }

@@ -53,7 +53,7 @@ func (c *custom{{.StructName}}Db) ListWithTotal(ctx context.Context, args *{{.St
 		return nil, 0, err
 	}
 	if total == 0 {
-		return nil, 0, ErrNotFound
+		return nil, 0, nil
 	}
 
 	order := c.HandleRank(
@@ -140,7 +140,7 @@ func (c *custom{{.StructName}}Db) ListWithMore(ctx context.Context, args *{{.Str
 
 	ln := len(result)
 	if ln == 0 {
-		return nil, false, ErrNotFound
+		return nil, false, nil
 	}
 	var hasMore bool
 	if ln > want {
