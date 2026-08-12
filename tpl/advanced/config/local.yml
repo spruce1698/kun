@@ -7,8 +7,7 @@ server:
   port: 9998 # http端口
   readTimeout: 60 #单位s
   writeTimeout: 60 #单位s
-  allowOrigins: # CORS 允许的来源白名单,为空则允许所有
-    - "*"
+  allowOrigins: # CORS 允许的来源白名单。为空=不允许跨域;写 "*" =允许所有来源(此时跨域请求不能携带 Cookie)
     - "http://127.0.0.1:9998"
 
 broker:

@@ -18,7 +18,12 @@ import (
 // 预编译正则表达式
 var (
 	reCreateTable = regexp.MustCompile(`(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?` + "`?" + `(\w+)` + "`?" + `\s*\(`)
-	rePrimaryKey  = regexp.MustCompile(`(?i)PRIMARY\s+KEY\s*\(` + "`?" + `(\w+)` + "`?" + `\)`)
+	// rePrimaryKey 捕获括号内的完整列清单,而不是单个列。
+	// 必须如此才能识别复合主键 PRIMARY KEY (`a`,`b`) 与前缀主键 PRIMARY KEY (`name`(10));
+	// 只匹配单列的写法会让这两种主键静默丢失,生成出缺少 Find/Update/Delete 的 repo。
+	rePrimaryKey = regexp.MustCompile(`(?i)PRIMARY\s+KEY\s*\(([^)]*(?:\([^)]*\)[^)]*)*)\)`)
+	// rePKColumn 从列清单里逐个取列名,忽略 (10) 这类前缀长度与 ASC/DESC 修饰。
+	rePKColumn    = regexp.MustCompile("`?(\\w+)`?(?:\\s*\\(\\s*\\d+\\s*\\))?")
 	reUniqueKey   = regexp.MustCompile(`(?i)UNIQUE\s+KEY\s+` + "`" + `(\w+)` + "`" + `\s*\(([^)]+)\)`)
 	reComment     = regexp.MustCompile(`(?i)COMMENT\s+'((?:[^']|''|\\.)*)'`)
 	reDefault     = regexp.MustCompile(`(?i)DEFAULT\s+('[^']*'|[\w.]+|NULL)`)
@@ -51,7 +56,9 @@ func ParseSQLFile(filePath string, conf *SQLConfig) ([]*StructMeta, error) {
 	// 处理 BOM 和 UTF-16 编码（Windows 系统可能将文件保存为 UTF-16 LE）
 	content = convertToUTF8(content)
 
-	sql := string(content)
+	// 剥离 SQL 注释。mysqldump 的输出充满 `--`、`/* ... */` 与 `/*!40101 ... */`,
+	// 不剥离会让注释里的建表语句片段/关键字污染解析结果(解析出错表、错主键)。
+	sql := stripSQLComments(string(content))
 
 	var metas []*StructMeta
 	remaining := sql
@@ -81,6 +88,138 @@ func ParseSQLFile(filePath string, conf *SQLConfig) ([]*StructMeta, error) {
 	}
 
 	return metas, nil
+}
+
+// stripSQLComments 移除 SQL 注释,保留字符串字面量与反引号标识符里的内容。
+//
+// 需要处理三种注释:
+//   - `-- ...` 到行尾
+//   - `# ...` 到行尾(MySQL 扩展)
+//   - `/* ... */` 块注释(含 mysqldump 的 /*!40101 ... */ 条件注释)
+//
+// 关键点:必须跟踪引号状态。列注释里出现 `--`、`#` 或 `/*`(中文注释里很常见)时,
+// 若不判断引号就剥离,会把 COMMENT '...' 截断成不配对的引号,导致后续解析全部错位。
+func stripSQLComments(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+
+	var (
+		inSingle bool // '...'
+		inDouble bool // "..."
+		inTick   bool // `...`
+	)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+
+		if inSingle {
+			b.WriteByte(c)
+			switch c {
+			case '\\':
+				// 反斜杠转义:连带下一个字节一起写出,避免 \' 被误判为结束引号
+				if i+1 < len(s) {
+					i++
+					b.WriteByte(s[i])
+				}
+			case '\'':
+				// '' 是单引号自身的转义写法
+				if i+1 < len(s) && s[i+1] == '\'' {
+					i++
+					b.WriteByte(s[i])
+				} else {
+					inSingle = false
+				}
+			}
+			continue
+		}
+		if inDouble {
+			b.WriteByte(c)
+			switch c {
+			case '\\':
+				if i+1 < len(s) {
+					i++
+					b.WriteByte(s[i])
+				}
+			case '"':
+				if i+1 < len(s) && s[i+1] == '"' {
+					i++
+					b.WriteByte(s[i])
+				} else {
+					inDouble = false
+				}
+			}
+			continue
+		}
+		if inTick {
+			b.WriteByte(c)
+			if c == '`' {
+				inTick = false
+			}
+			continue
+		}
+
+		switch {
+		case c == '\'':
+			inSingle = true
+			b.WriteByte(c)
+		case c == '"':
+			inDouble = true
+			b.WriteByte(c)
+		case c == '`':
+			inTick = true
+			b.WriteByte(c)
+		case c == '#', c == '-' && i+1 < len(s) && s[i+1] == '-':
+			// 行注释:跳到行尾,保留换行以维持行结构
+			for i < len(s) && s[i] != '\n' {
+				i++
+			}
+			if i < len(s) {
+				b.WriteByte('\n')
+			}
+		case c == '/' && i+1 < len(s) && s[i+1] == '*':
+			// 块注释:跳到 */,用一个空格替代,避免把两侧 token 粘连成一个
+			i += 2
+			for i+1 < len(s) && !(s[i] == '*' && s[i+1] == '/') {
+				i++
+			}
+			i++ // 此时 i 指向 '*',跳过它;for 的 i++ 再跳过 '/'
+			b.WriteByte(' ')
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
+// stripQuotedLiterals 把单引号字符串字面量替换为空格,用于安全地扫描约束关键字。
+// 保留字面量以外的所有内容(含反引号标识符),仅消除引号内文本的干扰。
+func stripQuotedLiterals(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	inSingle := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inSingle {
+			switch c {
+			case '\\':
+				i++ // 跳过被转义的字符
+			case '\'':
+				if i+1 < len(s) && s[i+1] == '\'' {
+					i++ // '' 转义,仍在字面量内
+				} else {
+					inSingle = false
+					b.WriteByte(' ')
+				}
+			}
+			continue
+		}
+		if c == '\'' {
+			inSingle = true
+			b.WriteByte(' ')
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
 }
 
 // findMatchingParen 从 start 位置开始找到匹配的右括号，跳过字符串字面量
@@ -133,6 +272,9 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 
 	var fields []*Field
 	primaryKeyType := "int64"
+	// compositePK 记录是否为复合主键。生成的 repo(Find/Update/Delete by id)
+	// 只支持单列主键,复合主键必须显式告警,否则用户拿到的是静默残缺的代码。
+	compositePK := false
 
 	for _, col := range columns {
 		col = strings.TrimSpace(col)
@@ -142,14 +284,18 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 
 		// 跳过约束/索引定义行
 		if isConstraintLine(col) {
-			// 提取 PRIMARY KEY 中的列名来标记主键
-			if pkCol := extractPKColumn(col); pkCol != "" {
-				for _, f := range fields {
-					if strings.EqualFold(f.ColumnName, pkCol) {
-						f.IsPrimaryKey = true
-						primaryKeyType = f.Type
-						if !strings.Contains(f.GORMTag, "primaryKey") {
-							f.GORMTag += ";primaryKey"
+			// 提取 PRIMARY KEY 中的列名来标记主键(可能是复合主键)
+			pkCols := extractPKColumns(col)
+			if len(pkCols) > 0 {
+				compositePK = len(pkCols) > 1
+				for _, pkCol := range pkCols {
+					for _, f := range fields {
+						if strings.EqualFold(f.ColumnName, pkCol) {
+							f.IsPrimaryKey = true
+							primaryKeyType = f.Type
+							if !strings.Contains(f.GORMTag, "primaryKey") {
+								f.GORMTag += ";primaryKey"
+							}
 						}
 					}
 				}
@@ -202,6 +348,15 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 
 	if structName == "" {
 		return nil
+	}
+
+	// 复合主键与"完全没有主键"都会让生成的 repo 残缺(Find/Update/Delete by id 无法工作),
+	// 必须显式告警 —— 静默生成半成品代码远比报错更难排查。
+	if compositePK {
+		output.Warn("table %q 使用复合主键,生成的 repo 仅支持单列主键(Find/Update/Delete by id),请手工调整", tableName)
+	}
+	if !hasPrimaryKey {
+		output.Warn("table %q 未识别到主键,生成的 repo 将缺少 Find/Update/Delete 等按主键操作的方法", tableName)
 	}
 
 	return &StructMeta{
@@ -275,12 +430,24 @@ func isConstraintLine(line string) bool {
 	return false
 }
 
-// extractPKColumn 从 PRIMARY KEY (`col`) 中提取列名
-func extractPKColumn(line string) string {
-	if m := rePrimaryKey.FindStringSubmatch(line); m != nil {
-		return m[1]
+// extractPKColumns 从 PRIMARY KEY (...) 中提取全部列名。
+// 支持单列 (`id`)、复合主键 (`a`,`b`)、前缀主键 (`name`(10)) 以及尾部的 USING BTREE。
+func extractPKColumns(line string) []string {
+	m := rePrimaryKey.FindStringSubmatch(line)
+	if m == nil {
+		return nil
 	}
-	return ""
+	var cols []string
+	for _, raw := range strings.Split(m[1], ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		if cm := rePKColumn.FindStringSubmatch(raw); cm != nil && cm[1] != "" {
+			cols = append(cols, cm[1])
+		}
+	}
+	return cols
 }
 
 // parseUniqueIndexes 从 CREATE TABLE body 中解析 UNIQUE KEY 约束
@@ -436,8 +603,6 @@ func buildField(cd *columnDef, uniqueIdxs []uniqueIndexInfo, conf *SQLConfig) *F
 	defaultVal := ""
 	comment := ""
 
-	constraintsUpper := strings.ToUpper(cd.Constraints)
-
 	// 提取 COMMENT
 	if cre := reComment.FindStringSubmatch(cd.Constraints); cre != nil {
 		comment = unescapeSQLString(cre[1])
@@ -449,6 +614,11 @@ func buildField(cd *columnDef, uniqueIdxs []uniqueIndexInfo, conf *SQLConfig) *F
 			defaultVal = strings.Trim(dre[1], "'")
 		}
 	}
+
+	// 扫描约束关键字前必须先剥掉所有单引号字面量。
+	// 否则 COMMENT '状态 NOT NULL AUTO_INCREMENT' 里的词会被当成真实约束,
+	// 让列被错误标记为主键/自增/非空 —— 中文注释里出现这些词非常常见。
+	constraintsUpper := strings.ToUpper(stripQuotedLiterals(cd.Constraints))
 
 	if strings.Contains(constraintsUpper, "PRIMARY KEY") || strings.Contains(constraintsUpper, "PRIMARY_KEY") {
 		isPK = true

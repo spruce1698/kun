@@ -77,10 +77,12 @@ func New(
 		SampleRate:     conf.Jaeger.SampleRate,
 	})
 
-	// 接管gin框架默认的日志和捕获异常
+	// 接管gin框架默认的日志和捕获异常。
+	// Recovery 必须最先注册(位于中间件链最外层),否则 Tracing 自身 panic 时无人兜住,
+	// 会直接冒泡到 net/http 变成空的 500 且不打业务日志。
 	eng.Use(
+		middleware.Recovery(conf.Env == xconfig.EnvDebug || conf.Env == xconfig.EnvTest), // 测试或开发环境回显堆栈
 		middleware.TracingWithLogger(log, conf.Server.Name),
-		middleware.Recovery(conf.Env == xconfig.EnvDebug || conf.Env == xconfig.EnvTest), // 测试或开发环境
 	)
 
 	// 跨域
@@ -94,8 +96,11 @@ func New(
 	}
 	eng.Use(middleware.WriteAuth(conf, jwt))
 
-	// 限制
-	// eng.Use(middleware.Limit(10))
+	// 全局限流: 每 IP 每分钟最多 600 次,超限封禁 1 分钟。
+	// 登录等敏感接口在各自路由上再叠加更严格的 RateLimiter。
+	// 注意:状态在进程内存,多副本部署时实际阈值 = 该值 × 副本数;
+	// 需要精确全局限流请换成基于 Redis 的令牌桶。
+	eng.Use(middleware.RateLimiter(600, time.Minute, time.Minute))
 
 	// 缺失路由
 	eng.NoRoute(router.NotFoundHandle)

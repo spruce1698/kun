@@ -135,35 +135,35 @@ func NewGenerator(conf SQLConfig) *Generator {
 	}
 }
 
-// Catch table info from db, return a BaseStruct
-func (g *Generator) GenerateRepo(tableName string) {
+// GenerateRepo 从数据库表读取结构信息。
+// 返回 error 而不是只打日志:调用方需要据此决定退出码,否则 CI 无法拦截生成失败。
+func (g *Generator) GenerateRepo(tableName string) error {
 	structName := g.Conf.DbConn.NamingStrategy.SchemaName(tableName)
 
 	meta, err := g.getStructMeta(tableName, structName)
 	if err != nil {
-		output.Error("generate struct from table fail: %s", err)
-		return
+		return fmt.Errorf("generate struct from table <%s> fail: %w", tableName, err)
 	}
 	if meta == nil {
 		output.Success("ignore table <%s>", tableName)
-		return
+		return nil
 	}
 	g.repos[meta.StructName] = meta
 
 	output.Success("got %d columns from table <%s>", len(meta.Fields), meta.TableName)
-	return
+	return nil
 }
 
 // Execute generate code to output path
-func (g *Generator) Execute() {
+func (g *Generator) Execute() error {
 	output.Success("Start generating code.")
 
 	if err := g.generateRepoFile(); err != nil {
-		output.Error("generate repository struct fail: %s", err)
-		return
+		return fmt.Errorf("generate repository struct fail: %w", err)
 	}
 
 	output.Success("Generate code done.")
+	return nil
 }
 
 // AddRepoMeta adds a pre-built StructMeta (e.g. parsed from SQL file) to the generator.

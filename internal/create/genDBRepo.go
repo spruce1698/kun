@@ -7,6 +7,7 @@
 package create
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -130,11 +131,22 @@ func genDBRepo(cmd *cobra.Command, args []string) error {
 	} else {
 		tablesList = cmdConf.Tables
 	}
+	// 汇总各表的失败原因:单表失败不中断其它表的生成,但最终必须以错误返回,
+	// 否则 CLI 打印红色错误却以退出码 0 结束,CI 无法拦截。
+	var genErrs []error
 	for _, tableName := range tablesList {
-		g.GenerateRepo(tableName)
+		if err := g.GenerateRepo(tableName); err != nil {
+			output.Error("%s", maskDSN(err))
+			genErrs = append(genErrs, maskDSN(err))
+		}
 	}
 
-	g.Execute()
+	if err := g.Execute(); err != nil {
+		genErrs = append(genErrs, maskDSN(err))
+	}
+	if len(genErrs) > 0 {
+		return errors.Join(genErrs...)
+	}
 	return nil
 }
 
@@ -210,6 +222,8 @@ func genDBRepoFromSQL(args []string) error {
 		g.AddRepoMeta(meta)
 	}
 
-	g.Execute()
+	if err := g.Execute(); err != nil {
+		return err
+	}
 	return nil
 }

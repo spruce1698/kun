@@ -1,0 +1,66 @@
+env: "release" # 环境  debug:开发 test:测试 staging:预发布 release:生产
+version: "0.0.1"
+
+# 生产配置模板。
+#
+# 重要:本文件不放任何明文密钥。所有敏感项留空,启动时由环境变量注入。
+# xconfig 已开启 AutomaticEnv 且把 "." 映射为 "_",因此:
+#   TOKEN_SECRET=xxx            -> token.secret
+#   TOKEN_REFRESHSECRET=xxx     -> token.refreshSecret
+#   TOKEN_CSRFKEY=xxx           -> token.csrfKey
+#   REDIS_PASSWORD=xxx          -> redis.password
+# mysql.source / redis.source 是数组,用 viper 的下标形式注入,例如:
+#   MYSQL_SOURCE_0="user:pass@tcp(host:3306)/db?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
+#   REDIS_SOURCE_0="redis-host:6379"
+#
+# token.secret / refreshSecret 至少 32 字节,否则启动期会被拒绝(见 pkg/token/jwt.go)。
+
+server:
+  name: "advanced"
+  port: 9998 # http端口
+  readTimeout: 60 #单位s
+  writeTimeout: 60 #单位s
+  allowOrigins: [] # CORS 白名单,生产必须显式枚举来源;为空=不允许跨域
+
+broker:
+  name: "advanced-broker"
+  port: 9999 # broker端口
+  readTimeout: 60 # 单位s
+  writeTimeout: 60 # 单位s
+
+token:
+  secret: "" # 必须由 TOKEN_SECRET 注入(>=32 字节)
+  refreshSecret: "" # 必须由 TOKEN_REFRESHSECRET 注入(>=32 字节)
+  csrfKey: "" # 必须由 TOKEN_CSRFKEY 注入(32 字节)
+  expire: 3600 # 过期时间(秒)
+  refresh: 604800 # 刷新时间(秒)
+  queryKey: "Authorization" # query 参数 key
+  cacheKey: "token:disuse:" # 缓存 key 前缀
+  multiLogin: false # 是否允许多端登录
+
+log:
+  level: "info" # 生产用 info,避免 debug 日志泄漏敏感数据
+  filePath: "" # 容器内建议留空走 stdout,由日志采集器收集
+  stdout: true
+  kafkaTopic: "" # 日志推送到 kafka 的 topic,为空则不推送
+  kafkaBrokers: []
+
+mysql: # 由 MYSQL_SOURCE_0 等环境变量注入,第一条默认是主库
+  logLevel: "error" # 生产用 error,debug 会打印完整 SQL(含参数值)
+  source: []
+  maxIdleConns: 10 # 空闲连接池中连接的最大数量
+  maxOpenConns: 100 # 打开数据库连接的最大数量
+  connMaxLifetime: 3600 # 连接可复用的最大时间(秒)
+
+redis:
+  source: [] # 由 REDIS_SOURCE_0 注入
+  password: "" # 由 REDIS_PASSWORD 注入
+  cluster: false
+  poolSize: 100 # 连接池大小
+
+kafka:
+  brokers: [] # 由 KAFKA_BROKERS_0 注入
+
+jaeger:
+  endpoint: "" # Jaeger collector 地址,为空则不上报
+  sampleRate: 0.1 # 生产建议 0.1,全量采样成本高且会把响应体写入 span

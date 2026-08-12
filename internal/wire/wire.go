@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -80,28 +81,32 @@ var CmdWireAll = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("getwd error: %w", err)
 		}
-		if dir == "" {
-			// find the directory containing the cmd/*
-			wirePath, err := findWire(base)
-
-			if err != nil {
-				return err
-			}
-			switch len(wirePath) {
-			case 0:
-				return fmt.Errorf("the wire.go cannot be found in the current directory")
-			default:
-				// 逐个执行;收集错误但继续处理剩余 wire.go,最终汇总返回首个错误。
-				var firstErr error
-				for _, v := range wirePath {
-					if err := wireRun(v); err != nil && firstErr == nil {
-						firstErr = err
-					}
-				}
-				return firstErr
+		// 指定了目录:以该目录为根查找其下所有 wire.go 并逐个执行。
+		// 此前这里直接 return nil,导致 `kun wire all <dir>` 静默什么都不做且退出码为 0。
+		searchRoot := base
+		if dir != "" {
+			if filepath.IsAbs(dir) {
+				searchRoot = dir
+			} else {
+				searchRoot = filepath.Join(base, dir)
 			}
 		}
-		return nil
+
+		wirePath, err := findWire(searchRoot)
+		if err != nil {
+			return err
+		}
+		if len(wirePath) == 0 {
+			return fmt.Errorf("the wire.go cannot be found in %s", searchRoot)
+		}
+		// 逐个执行;收集错误但继续处理剩余 wire.go,最终汇总返回。
+		var errs []error
+		for _, v := range wirePath {
+			if err := wireRun(v); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		return errors.Join(errs...)
 	},
 }
 

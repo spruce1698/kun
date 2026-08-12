@@ -43,6 +43,12 @@ type (
 	}
 )
 
+const (
+	// defaultExpiration 当调用方未指定(<=0)TTL 时的默认缓存时长。
+	// 避免传 0 时 Redis Set 永不过期,导致脏数据长期残留(需手动 Delete 才能失效)。
+	defaultExpiration = 5 * time.Minute
+)
+
 func NewDemoCache(c *xredis.Client) DemoCache {
 	return &demoCache{
 		common:     c,
@@ -89,12 +95,21 @@ func (d *demoCache) Set(ctx context.Context, id int64, data *Demo, expiration in
 	if valueErr != nil {
 		return valueErr
 	}
-	err := d.common.Set(ctx, key, string(value), time.Duration(expiration)*time.Second).Err()
+	// expiration<=0 时用默认 TTL,避免 Redis key 永不过期导致脏数据残留。
+	// 注意 go-redis 把 0 解释为"无 TTL",而 go-cache 把 0 解释为"用默认过期",
+	// 两层语义不一致,必须在此统一。
+	ttl := time.Duration(expiration) * time.Second
+	if expiration <= 0 {
+		ttl = defaultExpiration
+	}
+	err := d.common.Set(ctx, key, string(value), ttl).Err()
 	if err != nil {
 		return err
 	}
-	// 同步写本地缓存,避免下次请求 local miss → redis hit 多一次往返
-	d.localCache.Set(key, data, time.Duration(expiration)*time.Second)
+	// 同步写本地缓存,避免下次请求 local miss → redis hit 多一次往返。
+	// 存副本:直接存调用方的指针,调用方之后修改该对象会污染缓存内容。
+	cp := *data
+	d.localCache.Set(key, &cp, ttl)
 	return nil
 }
 

@@ -49,7 +49,10 @@ func (r *Conn) WithContext(ctx context.Context) *xdb.Client {
 	v := ctx.Value(ctxDbKey)
 	if v != nil {
 		if tx, ok := v.(*xdb.Client); ok {
-			return tx
+			// 必须再绑一次 ctx:事务里的 *gorm.DB 携带的是 Tx 开启时的 context,
+			// 直接复用会让事务内所有 SQL 不受当前 ctx 的取消/超时约束
+			// (客户端断连或 gin 超时后,UPDATE/DELETE 仍会跑完),trace 也会断链。
+			return tx.WithContext(ctx)
 		}
 	}
 	return r.conn.WithContext(ctx)
@@ -57,8 +60,10 @@ func (r *Conn) WithContext(ctx context.Context) *xdb.Client {
 
 func (r *Conn) Tx(ctx context.Context, fn func(ctx context.Context) error) error {
 	return r.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		ctx = context.WithValue(ctx, ctxDbKey, tx)
-		return fn(ctx)
+		// 用新变量而不是对捕获的 ctx 形参赋值:GORM 在重试/嵌套场景下可能多次调用
+		// 本闭包,复用被改写过的 ctx 会把上一次(已提交或已回滚)的 tx 带进来。
+		txCtx := context.WithValue(ctx, ctxDbKey, tx)
+		return fn(txCtx)
 	})
 }
 

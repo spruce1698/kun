@@ -106,8 +106,10 @@ func (d *demoCache) Set(ctx context.Context, id int64, data *Demo, expiration in
 	if err != nil {
 		return err
 	}
-	// 同步写本地缓存,避免下次请求 local miss → redis hit 多一次往返
-	d.localCache.Set(key, data, ttl)
+	// 同步写本地缓存,避免下次请求 local miss → redis hit 多一次往返。
+	// 存副本:直接存调用方的指针,调用方之后修改该对象会污染缓存内容。
+	cp := *data
+	d.localCache.Set(key, &cp, ttl)
 	return nil
 }
 

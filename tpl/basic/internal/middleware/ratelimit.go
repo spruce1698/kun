@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -70,8 +71,9 @@ func RateLimiter(maxAttempts int, window, cooldown time.Duration) gin.HandlerFun
 		mu.Lock()
 		// 检查是否在封禁中
 		if until, ok := banned[ip]; ok && time.Now().Before(until) {
+			retryAfter := int(time.Until(until).Seconds()) + 1
 			mu.Unlock()
-			ctx.AbortWithStatus(http.StatusTooManyRequests)
+			abortTooManyRequests(ctx, retryAfter)
 			return
 		}
 
@@ -91,11 +93,24 @@ func RateLimiter(maxAttempts int, window, cooldown time.Duration) gin.HandlerFun
 			banned[ip] = now.Add(cooldown)
 			delete(records, ip)
 			mu.Unlock()
-			ctx.AbortWithStatus(http.StatusTooManyRequests)
+			abortTooManyRequests(ctx, int(cooldown.Seconds()))
 			return
 		}
 		mu.Unlock()
 
 		ctx.Next()
 	}
+}
+
+// abortTooManyRequests 返回统一的 JSON 错误体并带上 Retry-After。
+// 不用 AbortWithStatus:那样 body 为空,与项目其它接口的 JSON 约定不一致,前端无法解析。
+func abortTooManyRequests(ctx *gin.Context, retryAfterSec int) {
+	if retryAfterSec < 1 {
+		retryAfterSec = 1
+	}
+	ctx.Header("Retry-After", strconv.Itoa(retryAfterSec))
+	ctx.AbortWithStatusJSON(http.StatusTooManyRequests, map[string]any{
+		"code":    http.StatusTooManyRequests,
+		"message": "请求过于频繁,请稍后重试",
+	})
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +30,13 @@ type responseWriter struct {
 	gin.ResponseWriter
 	body    *bytes.Buffer
 	bodyLen int // 已写入 body 的总字节数
+}
+
+// Unwrap 暴露底层 ResponseWriter,使 http.NewResponseController 能拿到真实连接。
+// 缺少该方法时 rc.SetWriteDeadline/Flush 会返回 "feature not supported",
+// 导致流式接口(导出/SSE/WS)无法清除 WriteTimeout 而被中途切断。
+func (w *responseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }
 
 func (w *responseWriter) Write(b []byte) (int, error) {
@@ -67,9 +75,10 @@ func TracingWithLogger(log *xlog.Logger, serviceName string) gin.HandlerFunc {
 			// 处理表单数据
 			switch {
 			case strings.Contains(contentType, "multipart/form-data"):
-				if err := c.Request.ParseMultipartForm(32 << 20); err == nil { // 32MB max
-					requestBody = []byte(xlog.FilterForm(c.Request.PostForm))
-				}
+				// multipart 表单可能很大(文件上传)。这里绝不调用 ParseMultipartForm:
+				// 它会把整个请求体读进内存(32MB)并把超出部分落盘,仅为记日志付出这个代价,
+				// 高并发上传时可被远程触发内存/磁盘耗尽,且会提前消费 body 导致 handler 无法流式读取。
+				requestBody = []byte(fmt.Sprintf("[multipart/form-data, %d bytes, not parsed]", c.Request.ContentLength))
 			case strings.Contains(contentType, "application/x-www-form-urlencoded"):
 				if err := c.Request.ParseForm(); err == nil {
 					requestBody = []byte(xlog.FilterForm(c.Request.PostForm))

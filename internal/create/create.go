@@ -267,14 +267,25 @@ func (c *Create) generateFile() error {
 		return fmt.Errorf("create %s error: %w", c.CreateType, err)
 	}
 	absDir := filepath.Dir(absPath)
-	absLinuxPath := filepath.ToSlash(absDir) + "/"
 
-	// 校验生成路径确实落在项目的 internal/<typePath> 下,避免误生成到外部目录。
-	// 用 ToSlash 统一后检查路径段,而非依赖脆弱的子串 LastIndex。
-	expectedSeg := "/internal/" + config.typePath
-	if !strings.Contains(absLinuxPath, expectedSeg) {
-		return fmt.Errorf("create %s error: target path %s is not under %s", c.CreateType, absLinuxPath, expectedSeg)
+	// 校验生成路径确实落在项目的 internal/<typePath> 之下,避免 c.FilePath 里的
+	// "../" 把文件写到项目外。
+	// 必须用 filepath.Rel 判断:子串匹配可被绕过 —— 例如
+	// "../../../tmp/internal/handler/x" 同样包含 "/internal/handler/"。
+	expectedRoot, err := filepath.Abs(filepath.Join(BasePath, config.typePath))
+	if err != nil {
+		return fmt.Errorf("create %s error: %w", c.CreateType, err)
 	}
+	rel, err := filepath.Rel(expectedRoot, absDir)
+	if err != nil {
+		return fmt.Errorf("create %s error: %w", c.CreateType, err)
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == ".." || strings.HasPrefix(rel, "../") || filepath.IsAbs(rel) {
+		return fmt.Errorf("create %s error: target path %s escapes %s", c.CreateType, absDir, expectedRoot)
+	}
+
+	absLinuxPath := filepath.ToSlash(absDir) + "/"
 
 	// 计算相对 internal/ 的层级，用于模板中的 ../ 引用（如 mockgen 目标路径）。
 	// 深度 = 自定义子路径（c.FilePath）的路径段数；默认路径时为 0，模板已含固定 ../../../。

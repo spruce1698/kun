@@ -40,6 +40,10 @@ type (
 		OrderType  int64  // 排序类型 0:升序,1:降序
 		Page       int64  // 添加验证规则
 		PageSize   int64  // 添加验证规则
+		// LastId 游标分页的上一页最大/最小 id。必须存在这个字段,否则 handler 里
+		// xhttp.PageArg.LastId 经 copier.Copy 后无处可去被丢弃,
+		// repo 层的游标分页分支(args.LastId > 0)永远进不去,深分页优化形同虚设。
+		LastId int64
 
 		Id   *int64
 		Name string

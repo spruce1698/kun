@@ -213,7 +213,15 @@ func (j *Jwt) Refresh(accessToken, refreshToken string) (*JwtToken, error) {
 		// refresh token 已过期(解析阶段允许过期,到这里才真正判定),直接返回错误,不再尝试抢占
 		return nil, ErrExpiredToken
 	}
-	if claimed, _ := j.DisuseIfAbsent(ctx, refreshToken, refreshRemain); !claimed {
+	// 原子抢占旧 refreshToken:失败说明已被其它请求轮换过 => 视为复用(泄露信号),
+	// 立即吊销该用户的整个 token 家族(access + refresh 都会被按用户黑名单挡掉)。
+	// 注意区分"抢占失败"与"Redis 出错":后者不是复用信号,不能据此吊销整个家族,
+	// 否则 Redis 一抖动就会把正常用户全部登出。
+	claimed, claimErr := j.DisuseIfAbsent(ctx, refreshToken, refreshRemain)
+	if claimErr != nil {
+		return nil, fmt.Errorf("刷新token失败: %w", claimErr)
+	}
+	if !claimed {
 		_ = j.Disuse(ctx, refreshClaims.Subject, refreshRemain)
 		return nil, ErrInvalidToken
 	}
@@ -265,7 +273,12 @@ func (j *Jwt) Parse(ctx context.Context, tokenStr string, optType ...string) (*v
 		return nil, ErrEmptyToken
 	}
 	// tokenStr 在黑名单
-	hasBlacklist, _ := j.Cache.Exists(ctx, j.CacheKey+encrypt.MD5(tokenStr)).Result()
+	// 必须检查 Redis 错误:忽略它会导致"故障开放"——Redis 不可用时所有已吊销
+	// (登出、被封禁、refresh 轮换掉的)token 全部重新生效。宁可拒绝请求也不能放行。
+	hasBlacklist, err := j.Cache.Exists(ctx, j.CacheKey+encrypt.MD5(tokenStr)).Result()
+	if err != nil {
+		return nil, fmt.Errorf("校验token黑名单失败: %w", err)
+	}
 	if hasBlacklist > 0 {
 		return nil, ErrInvalidToken
 	}
@@ -304,7 +317,11 @@ func (j *Jwt) Parse(ctx context.Context, tokenStr string, optType ...string) (*v
 	if payload.Issuer == "" {
 		return nil, ErrInvalidToken
 	}
-	hasBlacklist, _ = j.Cache.Exists(ctx, j.CacheKey+encrypt.MD5(payload.Subject)).Result()
+	// 同上,按用户维度的黑名单查询失败也必须拒绝,不能故障开放。
+	hasBlacklist, err = j.Cache.Exists(ctx, j.CacheKey+encrypt.MD5(payload.Subject)).Result()
+	if err != nil {
+		return nil, fmt.Errorf("校验用户黑名单失败: %w", err)
+	}
 	if hasBlacklist > 0 {
 		return nil, ErrInvalidToken
 	}
