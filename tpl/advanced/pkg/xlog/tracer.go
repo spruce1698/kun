@@ -1,4 +1,8 @@
-package middleware
+/**
+ * @Desc: OpenTelemetry TracerProvider 初始化
+ */
+
+package xlog
 
 import (
 	"context"
@@ -13,6 +17,9 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 )
 
+// TracerProvider 暴露 sdk 类型别名,调用方无需直接 import otel sdk。
+type TracerProvider = sdktrace.TracerProvider
+
 // TracingConfig 追踪配置
 type TracingConfig struct {
 	ServiceName    string
@@ -23,7 +30,7 @@ type TracingConfig struct {
 }
 
 // InitTracer 初始化追踪器
-func InitTracer(cfg TracingConfig) *sdktrace.TracerProvider {
+func InitTracer(cfg TracingConfig) *TracerProvider {
 	if cfg.ServiceName == "" {
 		return nil
 	}

@@ -24,7 +24,7 @@ var (
 
 // 时钟回拨/时间戳溢出错误,调用方可据此降级(等待/用旧时间戳)。
 var (
-	ErrClockBackwards = errors.New("snowflake clock moved backwards beyond threshold")
+	ErrClockBackwards    = errors.New("snowflake clock moved backwards beyond threshold")
 	ErrTimestampOverflow = errors.New("snowflake timestamp overflow")
 	ErrSonyflakeNotInit  = errors.New("sonyflake not initialized, call InitSonyFlake first")
 )

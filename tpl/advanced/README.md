@@ -76,9 +76,7 @@
 │   │   ├── auth.go                JWT 鉴权（强制/可选/写入三种模式）
 │   │   ├── cors.go                跨域资源共享
 │   │   ├── csrf.go                CSRF 防护（gorilla/csrf）
-│   │   ├── otel.go                OpenTelemetry 链路追踪初始化（OTLP gRPC）
-│   │   ├── recovery.go            Panic 恢复（区分 broken pipe 与普通 panic）
-│   │   └── tracing.go             请求日志 + 链路追踪（Body/Header/耗时）
+│   │   └── recovery.go            Panic 恢复（区分 broken pipe 与普通 panic）
 │   ├── repository/                数据访问层
 │   │   ├── cache/                 缓存层
 │   │   │   ├── demo.go            二级缓存（本地 + Redis）实现
@@ -137,10 +135,12 @@
 │   ├── xhttp/                     HTTP 请求/响应封装
 │   │   ├── request.go             请求参数结构（分页/排序）
 │   │   └── response.go            统一响应结构（数据/列表/分页）
-│   ├── xlog/                      日志封装（基于 Zap）
+│   ├── xlog/                      日志与链路追踪（基于 Zap + OpenTelemetry）
 │   │   ├── filter.go              敏感数据过滤（密码/Token 脱敏）
 │   │   ├── http.go                HTTP 请求/响应日志结构
+│   │   ├── middleware.go          Gin 追踪中间件（请求日志 + Span/Body/Header/耗时）
 │   │   ├── options.go             日志选项（级别/轮转/Kafka Hook）
+│   │   ├── tracer.go              OpenTelemetry 链路追踪初始化（OTLP gRPC）
 │   │   └── xlog.go                Zap 初始化（多输出/链路追踪）
 │   ├── xredis/                    Redis 客户端（连接池/集群/链路追踪）
 │   └── xserver/                   服务管理

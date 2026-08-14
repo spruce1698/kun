@@ -29,13 +29,12 @@ import (
 
 	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 type Server struct {
 	Conf   *xconfig.Conf
 	logger *xlog.Logger
-	tp     *sdktrace.TracerProvider
+	tp     *xlog.TracerProvider
 	db     *xdb.Client
 	Redis  *xredis.Client
 
@@ -66,7 +65,7 @@ func New(
 		pprof.Register(eng)
 	}
 	// 初始化 全链路跟踪 tracer
-	tp := middleware.InitTracer(middleware.TracingConfig{
+	tp := xlog.InitTracer(xlog.TracingConfig{
 		ServiceName:    conf.Server.Name,
 		ServiceVersion: conf.Version,
 		Endpoint:       conf.Jaeger.Endpoint,
@@ -78,7 +77,7 @@ func New(
 	// 会直接冒泡到 net/http 变成空的 500 且不打业务日志。
 	eng.Use(
 		middleware.Recovery(conf.Env == xconfig.EnvDebug || conf.Env == xconfig.EnvTest), // 测试或开发环境回显堆栈
-		middleware.TracingWithLogger(log, conf.Server.Name),
+		xlog.TracingWithLogger(log, conf.Server.Name),
 	)
 
 	// 跨域

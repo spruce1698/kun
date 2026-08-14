@@ -57,9 +57,7 @@
 │   ├── middleware                           HTTP 中间件
 │   │   ├── auth.go                          授权验证中间件
 │   │   ├── cors.go                          跨域中间件
-│   │   ├── otel.go                          OpenTelemetry 链路追踪
-│   │   ├── recovery.go                      异常恢复（panic 处理）
-│   │   └── tracing.go                       请求日志追踪
+│   │   └── recovery.go                      异常恢复（panic 处理）
 │   ├── repository                           数据访问层
 │   │   ├── cache                            缓存层
 │   │   │   ├── demo.go                      Demo 缓存实现
@@ -113,10 +111,12 @@
 │   ├── xhttp                                HTTP 请求/响应封装
 │   │   ├── request.go                       请求参数封装
 │   │   └── response.go                      统一响应输出
-│   ├── xlog                                 日志封装（Zap）
+│   ├── xlog                                 日志与链路追踪（Zap + OpenTelemetry）
 │   │   ├── filter.go                        敏感字段过滤
 │   │   ├── http.go                          HTTP 请求信息结构
+│   │   ├── middleware.go                    Gin 追踪中间件（请求日志 + Span）
 │   │   ├── options.go                       自定义日志选项
+│   │   ├── tracer.go                        OpenTelemetry 链路追踪初始化
 │   │   └── xlog.go                          日志核心封装
 │   ├── xredis                               Redis 客户端封装
 │   │   └── xredis.go                        Redis 操作 & 链路追踪

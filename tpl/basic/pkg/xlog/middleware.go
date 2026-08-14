@@ -1,4 +1,8 @@
-package middleware
+/**
+ * @Desc: Gin 链路追踪中间件:开 span、注入 trace 到 logger、记录请求/响应
+ */
+
+package xlog
 
 import (
 	"bytes"
@@ -8,8 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"advanced/pkg/xlog"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
@@ -53,7 +55,7 @@ func (w *responseWriter) Write(b []byte) (int, error) {
 }
 
 // TracingWithLogger 创建一个带日志的追踪中间件
-func TracingWithLogger(log *xlog.Logger, serviceName string) gin.HandlerFunc {
+func TracingWithLogger(log *Logger, serviceName string) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -81,7 +83,7 @@ func TracingWithLogger(log *xlog.Logger, serviceName string) gin.HandlerFunc {
 				requestBody = []byte(fmt.Sprintf("[multipart/form-data, %d bytes, not parsed]", c.Request.ContentLength))
 			case strings.Contains(contentType, "application/x-www-form-urlencoded"):
 				if err := c.Request.ParseForm(); err == nil {
-					requestBody = []byte(xlog.FilterForm(c.Request.PostForm))
+					requestBody = []byte(FilterForm(c.Request.PostForm))
 				}
 			case c.Request.Body != nil:
 				contentLen := c.Request.ContentLength
@@ -126,26 +128,26 @@ func TracingWithLogger(log *xlog.Logger, serviceName string) gin.HandlerFunc {
 		c.Writer = w
 
 		// 设置带追踪的 logger
-		loggerWithTrace := xlog.WithTraceID(ctx, log)
-		ctx = xlog.WithLogger(ctx, loggerWithTrace)
+		loggerWithTrace := WithTraceID(ctx, log)
+		ctx = WithLogger(ctx, loggerWithTrace)
 		c.Request = c.Request.WithContext(ctx)
 
 		// 记录请求信息
-		requestInfo := xlog.HTTPRequestInfo{
+		requestInfo := HTTPRequestInfo{
 			Host:       c.Request.Host,
 			Method:     method,
 			Path:       path,
 			Query:      c.Request.URL.RawQuery,
-			Headers:    xlog.FilterHeaders(c.Request.Header),
-			Body:       xlog.FilterContent(contentType, requestBody),
+			Headers:    FilterHeaders(c.Request.Header),
+			Body:       FilterContent(contentType, requestBody),
 			IP:         c.ClientIP(),
 			UserAgent:  c.Request.UserAgent(),
-			ClientIP:   xlog.GetClientIP(c.Request),
+			ClientIP:   GetClientIP(c.Request),
 			RemoteAddr: c.Request.RemoteAddr,
 			Referer:    c.Request.Referer(),
 		}
 
-		loggerWithTrace.Info("", xlog.KVAny("content", requestInfo))
+		loggerWithTrace.Info("", KVAny("content", requestInfo))
 
 		c.Next()
 
@@ -153,21 +155,21 @@ func TracingWithLogger(log *xlog.Logger, serviceName string) gin.HandlerFunc {
 		duration := time.Since(start)
 
 		// 记录响应状态和耗时
-		responseInfo := xlog.HTTPResponseInfo{
+		responseInfo := HTTPResponseInfo{
 			Method:   method,
 			Path:     path,
 			HttpCode: c.Writer.Status(),
-			Headers:  xlog.FilterHeaders(w.Header()),
-			Body:     xlog.FilterContent(w.Header().Get("Content-Type"), w.body.Bytes()),
+			Headers:  FilterHeaders(w.Header()),
+			Body:     FilterContent(w.Header().Get("Content-Type"), w.body.Bytes()),
 			Duration: float64(duration.Microseconds()) / 1000.0, // 转换为毫秒
 		}
 		// 根据状态码选择日志级别
 		if c.Writer.Status() >= 500 {
-			loggerWithTrace.Error("", xlog.KVAny("content", responseInfo))
+			loggerWithTrace.Error("", KVAny("content", responseInfo))
 		} else if c.Writer.Status() >= 400 {
-			loggerWithTrace.Warn("", xlog.KVAny("content", responseInfo))
+			loggerWithTrace.Warn("", KVAny("content", responseInfo))
 		} else {
-			loggerWithTrace.Info("", xlog.KVAny("content", responseInfo))
+			loggerWithTrace.Info("", KVAny("content", responseInfo))
 		}
 
 		// 记录追踪信息

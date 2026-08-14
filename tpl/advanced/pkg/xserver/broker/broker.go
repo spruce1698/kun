@@ -249,7 +249,7 @@ func healthServer(conf *xconfig.Conf, log *xlog.Logger) *http.Server {
 
 	// 接管gin框架默认的日志和捕获异常
 	engine.Use(
-		middleware.TracingWithLogger(log, conf.Broker.Name),
+		xlog.TracingWithLogger(log, conf.Broker.Name),
 		middleware.Recovery(conf.Env == xconfig.EnvDebug || conf.Env == xconfig.EnvTest), // 测试或开发环境
 	)
 
@@ -295,7 +295,7 @@ func childProcess(conf *xconfig.Conf, task *event.Task) {
 
 	// 子进程独立初始化 TracerProvider,使 kafka/asynq 消费者产生的 span 能上报。
 	// 父进程通过 fork exec 启动子进程,全局 TracerProvider 不会继承,必须重新初始化。
-	tp := middleware.InitTracer(middleware.TracingConfig{
+	tp := xlog.InitTracer(xlog.TracingConfig{
 		ServiceName:    conf.Broker.Name,
 		ServiceVersion: conf.Version,
 		Endpoint:       conf.Jaeger.Endpoint,

@@ -33,6 +33,7 @@ type (
 
 // 编译期确保 defaultError 满足 Error 接口
 var _ Error = (*defaultError)(nil)
+
 // errCodeReplacer 预编译错误码替换规则，避免每次调用都重建 Replacer
 var errCodeReplacer = strings.NewReplacer(
 	"O", "0",
