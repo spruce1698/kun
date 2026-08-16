@@ -7,11 +7,13 @@
 package wire
 
 import (
+	"basic/internal/app"
 	"basic/internal/handler"
 	"basic/internal/repository/cache"
 	"basic/internal/repository/db"
 	"basic/internal/router"
 	"basic/internal/service/svc"
+	"basic/pkg/token"
 	"basic/pkg/xconfig"
 	"basic/pkg/xdb"
 	"basic/pkg/xlog"
@@ -25,21 +27,25 @@ import (
 // 依赖注入构造 Web 应用声明函数
 func WireApp(env string) (*xserver.Server, error) {
 	conf := xconfig.New(env)
-	logger := xlog.New(conf)
-	gormDB, err := xdb.New(conf)
+	v := xlog.New(conf)
+	v2, err := xdb.New(conf)
 	if err != nil {
 		return nil, err
 	}
-	client, err := xredis.New(conf, logger)
+	client, err := xredis.New(conf, v)
 	if err != nil {
 		return nil, err
 	}
-	conn := db.NewConn(gormDB)
+	jwt, err := token.NewJwt(conf, client)
+	if err != nil {
+		return nil, err
+	}
+	conn := db.NewConn(v2)
 	ctx := &svc.Ctx{
 		Conf:     conf,
 		Conn:     conn,
 		RedisCli: client,
-		Logger:   logger,
+		Logger:   v,
 	}
 	demoDb := db.NewDemoDb(conn)
 	demoCache := cache.NewDemoCache(client)
@@ -55,11 +61,17 @@ func WireApp(env string) (*xserver.Server, error) {
 	handlerCtx := &handler.Ctx{
 		DemoHandler: demoHandler,
 	}
-	v := router.WireServerSet()
-	engine, err := http.New(conf, logger, gormDB, client, handlerCtx, v)
+	v3 := router.WireServerSet()
+	assembly, err := app.NewHttp(conf, v, v2, client, jwt, handlerCtx, v3)
 	if err != nil {
 		return nil, err
 	}
-	server := xserver.New(engine)
+	engine := assembly.Engine
+	closer := assembly.Closer
+	xserverEngine, err := http.New(conf, v, engine, closer)
+	if err != nil {
+		return nil, err
+	}
+	server := xserver.New(xserverEngine)
 	return server, nil
 }

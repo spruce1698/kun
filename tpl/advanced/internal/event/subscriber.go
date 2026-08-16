@@ -12,9 +12,9 @@ import (
 	"os"
 	"sync"
 
-	"advanced/internal/global"
 	"advanced/pkg/asynq"
 	"advanced/pkg/kafka"
+	"advanced/pkg/xbroker"
 	"advanced/pkg/xconfig"
 
 	githubAsynq "github.com/hibiken/asynq"
@@ -26,28 +26,15 @@ type (
 		conf   *xconfig.Conf
 		ctx    context.Context
 		aQueue *asynq.Asynq
-		task   *Task
+		task   *xbroker.Task
 		// asynq server / cron manager,关闭时需要 Shutdown
 		aSrv *githubAsynq.Server
 		aMgr *githubAsynq.PeriodicTaskManager
 		kSub *kafka.Subscriber
 	}
-	Task struct {
-		KafkaSet []*Kafka
-		AsynqSet []*Asynq
-	}
-	Kafka struct {
-		Topic   global.EventTopic
-		Group   global.EventGroup
-		Handler func(key, value string) error
-	}
-	Asynq struct {
-		Topic   global.EventTopic
-		Handler func(context.Context, *asynq.Task) error
-	}
 )
 
-func NewSub(wg *sync.WaitGroup, conf *xconfig.Conf, task *Task, ctx context.Context) *Sub {
+func NewSub(wg *sync.WaitGroup, conf *xconfig.Conf, task *xbroker.Task, ctx context.Context) *Sub {
 	return &Sub{
 		wg:     wg,
 		conf:   conf,
@@ -68,9 +55,9 @@ func (s *Sub) Kafka() {
 
 	s.wg.Add(len(s.task.KafkaSet))
 	for _, kq := range s.task.KafkaSet {
-		go func(v *Kafka) {
+		go func(v *xbroker.Kafka) {
 			defer s.wg.Done()
-			s.kSub.SubFetch(s.ctx, string(v.Topic), string(v.Group), v.Handler)
+			s.kSub.SubFetch(s.ctx, v.Topic, v.Group, v.Handler)
 		}(kq)
 	}
 }
@@ -87,7 +74,7 @@ func (s *Sub) Asynq() error {
 	mux := asynq.NewServeMux()
 	// 添加任务
 	for _, aq := range s.task.AsynqSet {
-		mux.HandleFunc(string(aq.Topic), aq.Handler)
+		mux.HandleFunc(aq.Topic, aq.Handler)
 	}
 	// 包裹 tracing 中间件:为每个任务创建 consumer span,记录耗时/错误。
 	handler := asynq.TracingMiddleware(mux)

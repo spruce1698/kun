@@ -160,14 +160,15 @@ func InitSonyFlake(machineID uint16) {
 	}
 }
 
-// SonySnowFlake 生成一个唯一 ID(需先调用 InitSonyFlake 初始化)
-func SonySnowFlake() uint64 {
+// SonySnowFlake 生成一个唯一 ID(需先调用 InitSonyFlake 初始化)。
+// 未初始化或 NextID 失败时返回 error,由调用方降级,不再 panic 以免崩业务协程。
+func SonySnowFlake() (uint64, error) {
 	if sonyFlake == nil {
-		panic("sonyflake not initialized, call InitSonyFlake first")
+		return 0, ErrSonyflakeNotInit
 	}
 	id, err := sonyFlake.NextID()
 	if err != nil {
-		panic(err)
+		return 0, err
 	}
-	return id
+	return id, nil
 }

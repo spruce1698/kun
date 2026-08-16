@@ -1,36 +1,36 @@
 package service
 
 import (
-	"advanced/internal/event"
 	"advanced/internal/global"
 	"advanced/internal/service/svc"
+	"advanced/pkg/xbroker"
 	// ==== Add Svc import before this line, don't edit this line.====
 
 	"github.com/google/wire"
 )
 
 // 订阅服务
-func TaskSet(svc svc.BrokerSvc) *event.Task {
-	return &event.Task{
-		KafkaSet: []*event.Kafka{
+func TaskSet(svc svc.BrokerSvc) *xbroker.Task {
+	return &xbroker.Task{
+		KafkaSet: []*xbroker.Kafka{
 			{
-				Topic:   global.EventTopicPay,
-				Group:   global.EventGroupPay,
+				Topic:   string(global.EventTopicPay),
+				Group:   string(global.EventGroupPay),
 				Handler: svc.SubPayRecharge,
 			},
 			{
-				Topic:   global.EventTopicPay,
-				Group:   global.EventGroupPay1,
+				Topic:   string(global.EventTopicPay),
+				Group:   string(global.EventGroupPay1),
 				Handler: svc.KQPayDemo,
 			},
 		},
-		AsynqSet: []*event.Asynq{
+		AsynqSet: []*xbroker.Asynq{
 			{
-				Topic:   global.EventTopicPay,
+				Topic:   string(global.EventTopicPay),
 				Handler: svc.SubAqPay,
 			},
 			{
-				Topic:   global.EventTopicPay1,
+				Topic:   string(global.EventTopicPay1),
 				Handler: svc.SubAqPay1,
 			},
 		},

@@ -2,6 +2,9 @@
  * @Author: spruce
  * @Date: 2024-03-28 14:59
  * @Desc: http Engine
+ *
+ * 仅负责 HTTP 生命周期(listen / graceful shutdown / 资源回收),
+ * 不再组装中间件与路由--组装由 internal/app 完成,依赖方向 internal -> pkg。
  */
 
 package http
@@ -10,118 +13,53 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
-	"basic/internal/handler"
-	"basic/internal/middleware"
-	"basic/internal/router"
-	"basic/pkg/token"
 	"basic/pkg/utils"
-	"basic/pkg/validator"
 	"basic/pkg/xconfig"
-	"basic/pkg/xdb"
 	"basic/pkg/xlog"
-	"basic/pkg/xredis"
 	"basic/pkg/xserver"
 
-	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
 )
 
 type Server struct {
 	Conf   *xconfig.Conf
 	logger *xlog.Logger
-	tp     *xlog.TracerProvider
-	db     *xdb.Client
-	Redis  *xredis.Client
 
-	Engine *gin.Engine
+	engine *gin.Engine
+	closer *xserver.Closer
+
 	server *http.Server
+
+	// stopOnce 守卫 Stop:监听失败与 AwaitSignal 信号都可能触发 Stop,
+	// 用 Once 保证整套关闭(db/redis/tracer/xlog)只执行一次,避免二次关闭。
+	stopOnce sync.Once
 }
 
+// New 创建 http 服务。engine 为已装配好中间件/路由的 gin 引擎,
+// closer 聚合进程退出时需回收的资源(由 internal/app 注册)。
 func New(
 	conf *xconfig.Conf,
 	log *xlog.Logger,
-	db *xdb.Client,
-	redis *xredis.Client,
-	hdl *handler.Ctx,
-	rtrs []router.Router,
+	engine *gin.Engine,
+	closer *xserver.Closer,
 ) (xserver.Engine, error) {
-	// 在创建引擎前统一设置 gin 全局模式与输出,避免 gin.New() 先于 SetMode
-	if conf.Env == xconfig.EnvStaging || conf.Env == xconfig.EnvRelease {
-		gin.SetMode(gin.ReleaseMode)
-		// 禁止gin的默认输出
-		gin.DefaultWriter = io.Discard
-	} else {
-		gin.SetMode(conf.Env)
+	if closer == nil {
+		closer = xserver.NewCloser()
 	}
-	eng := gin.New()
-
-	// 性能分析 - 正式环境不要使用！！！
-	if conf.Env == xconfig.EnvDebug {
-		pprof.Register(eng)
-	}
-	// 初始化 全链路跟踪 tracer
-	tp := xlog.InitTracer(xlog.TracingConfig{
-		ServiceName:    conf.Server.Name,
-		ServiceVersion: conf.Version,
-		Endpoint:       conf.Jaeger.Endpoint,
-		SampleRate:     conf.Jaeger.SampleRate,
-	})
-
-	// 接管gin框架默认的日志和捕获异常。
-	// Recovery 必须最先注册(位于中间件链最外层),否则 Tracing 自身 panic 时无人兜住,
-	// 会直接冒泡到 net/http 变成空的 500 且不打业务日志。
-	eng.Use(
-		middleware.Recovery(conf.Env == xconfig.EnvDebug || conf.Env == xconfig.EnvTest), // 测试或开发环境回显堆栈
-		xlog.TracingWithLogger(log, conf.Server.Name),
-	)
-
-	// 跨域
-	eng.Use(middleware.CORS(conf.Server.AllowOrigins))
-
-	// 全局: 有 token 就解析写入 context,没有也放行(不强制)
-	// 配合各业务组的 Auth() 中间件实现"默认公开,显式加锁"
-	jwt, err := token.NewJwt(conf, redis)
-	if err != nil {
-		return nil, fmt.Errorf("jwt 初始化失败: %w", err)
-	}
-	eng.Use(middleware.WriteAuth(conf, jwt))
-
-	// 全局限流: 每 IP 每分钟最多 600 次,超限封禁 1 分钟。
-	// 注意:状态在进程内存,多副本部署时实际阈值 = 该值 × 副本数;
-	// 需要精确全局限流请换成基于 Redis 的令牌桶。
-	eng.Use(middleware.RateLimiter(600, time.Minute, time.Minute))
-
-	// 缺失路由
-	eng.NoRoute(router.NotFoundHandle)
-
-	// 探针路由
-	router.Ping(eng)
-
-	// 业务路由
-	for _, r := range rtrs {
-		r(eng, jwt, hdl)
-	}
-
 	return &Server{
 		Conf:   conf,
 		logger: log,
-		tp:     tp,
-
-		db:     db,
-		Redis:  redis,
-		Engine: eng,
+		engine: engine,
+		closer: closer,
 	}, nil
 }
 
 func (s *Server) Start() error {
-	// 验证器翻译
-	validator.New("zh")
-
 	readTimeout, writeTimeout := 120*time.Second, 120*time.Second
 	// 默认 2min
 	if s.Conf.Server.ReadTimeout != 0 {
@@ -140,19 +78,21 @@ func (s *Server) Start() error {
 	// 初始化HTTP/JOB服务
 	svr := &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
-		Handler:           s.Engine,
+		Handler:           s.engine,
 		ReadTimeout:       readTimeout,
 		ReadHeaderTimeout: readHeaderTimeout,
 		WriteTimeout:      writeTimeout,
 	}
 
 	// 启动成功
-	s.logger.Warn(fmt.Sprintf("Http server 启动 (Host: 0.0.0.0:%d  Pid:%d)", port, os.Getpid()))
+	s.logger.Warn(fmt.Sprintf("Http server 启动 (Host: 0.0.0.0:%d Pid:%d)", port, os.Getpid()))
 
 	go func() {
 		if err := svr.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			s.logger.Error(fmt.Sprintf("%s ", err))
+			// 监听失败:走统一的 Stop(仅会执行一次),回收资源后退出进程。
 			s.Stop("")
+			os.Exit(1)
 		}
 	}()
 
@@ -161,9 +101,13 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Stop(signal string) {
+	s.stopOnce.Do(func() {
+		s.stop(signal)
+	})
+}
 
+func (s *Server) stop(signal string) {
 	s.logger.Warn("Receive a signal", xlog.KVStr("signal", signal))
-
 	s.logger.Warn("Http server stopping ...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
@@ -177,40 +121,18 @@ func (s *Server) Stop(signal string) {
 		}
 		s.logger.Warn("Close http server")
 	}
-	// 关闭 db
-	if s.db != nil {
-		sqlDB, _ := s.db.DB()
-		if sqlDB != nil {
-			if err := sqlDB.Close(); err != nil {
-				s.logger.Warn(fmt.Sprintf("db shutdown err:%v", err))
-			}
-		}
-		s.logger.Warn("Close Db")
-	}
 
-	// 关闭 redis
-	if s.Redis != nil {
-		if err := s.Redis.Close(); err != nil {
-			s.logger.Warn(fmt.Sprintf("redis shutdown err:%v", err))
-		}
-		s.logger.Warn("Close redis")
-	}
-	// 关闭tracer
-	if s.tp != nil {
-		if err := s.tp.Shutdown(ctx); err != nil {
-			s.logger.Error("Failed to shutdown tracer provider", xlog.KVErr(err))
+	// 关闭其余资源(db/redis/tracer/xlog):统一交给 Closer 按 LIFO 顺序关闭。
+	if s.closer != nil {
+		for _, err := range s.closer.Close() {
+			s.logger.Warn(fmt.Sprintf("close resource err:%v", err))
 		}
 	}
 
-	// TODO 其他关闭
 	s.logger.Warn("Http server stopped")
 
 	// 日志异步(此时 xlog 可能已关闭,错误信息走 stderr)
 	if err := s.logger.Sync(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to sync logger: %v\n", err)
-	}
-	// 关闭日志组件底层资源(如日志 Kafka Writer)
-	if err := xlog.Close(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to close xlog: %v\n", err)
 	}
 }

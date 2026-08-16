@@ -126,6 +126,9 @@ func New(path string) *Conf {
 			fmt.Fprintf(os.Stderr, "config hot reload unmarshal failed: %s \n", e)
 			return
 		}
+		// current 自指:与初始快照一致,使任意 Get() 返回的快照再次调用 Get() 也能拿到自身,
+		// 避免对热重载后的快照再 Get() 时拿到零值 nil。
+		nc.current.Store(nc)
 		c.current.Store(nc)
 	})
 	go v.WatchConfig()

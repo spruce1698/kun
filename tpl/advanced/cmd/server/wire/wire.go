@@ -4,6 +4,7 @@
 package wire
 
 import (
+	"advanced/internal/app"
 	"advanced/internal/handler"
 	"advanced/internal/repository"
 	"advanced/internal/repository/db"
@@ -29,6 +30,11 @@ func WireApp(env string) (*xserver.Server, error) {
 		xredis.New,
 
 		db.NewConn,
+
+		// app 装配 gin 引擎 + 资源 closer;jwt 仍由 service 层的 token.NewJwt 单例注入,
+		// app.NewHttp 与 service 共用同一实例。
+		app.NewHttp,
+		wire.FieldsOf(new(*app.Assembly), "Engine", "Closer"),
 
 		xhttp.New,
 

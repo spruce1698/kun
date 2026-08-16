@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"basic/pkg/xconfig"
 
@@ -26,9 +27,14 @@ type (
 	}
 )
 
-// kafkaCloser 保存日志 Kafka Writer 的关闭函数,由 New 设置,Close 调用。
-// 仅当启用了日志写 Kafka 时非 nil。
-var kafkaCloser func() error
+// kafkaClosers 保存所有日志 Kafka Writer 的关闭函数,由 New 追加,Close 统一关闭。
+// 用切片而非单个变量:多实例场景下单变量会被后者覆盖导致前者的 Writer 永不关闭
+// (缓冲日志丢失/连接泄漏)。受 closersMu 保护,Close 并发安全且只执行一次。
+var (
+	kafkaClosers  []func() error
+	closersMu     sync.Mutex
+	closersClosed bool
+)
 
 // New 创建一个新的日志记录器
 func New(conf *xconfig.Conf) *Logger {
@@ -99,9 +105,12 @@ func New(conf *xconfig.Conf) *Logger {
 		kafkaEncoderConfig := encoderConfig
 		kafkaEncoder := zapcore.NewJSONEncoder(kafkaEncoderConfig) // json格式
 		cores = append(cores, zapcore.NewCore(kafkaEncoder, zapcore.AddSync(opt.kafkaHook), opt.level))
-		// 保存关闭句柄,供进程退出时 Close 调用,避免 Async Writer 缓冲日志丢失
+		// 保存关闭句柄,供进程退出时 Close 调用,避免 Async Writer 缓冲日志丢失。
+		// 多实例各自追加,Close 时统一关闭,不再互相覆盖。
 		if kw, ok := opt.kafkaHook.(*KafkaWriter); ok {
-			kafkaCloser = kw.Close
+			closersMu.Lock()
+			kafkaClosers = append(kafkaClosers, kw.Close)
+			closersMu.Unlock()
 		}
 	}
 
@@ -120,11 +129,25 @@ func New(conf *xconfig.Conf) *Logger {
 }
 
 // Close 关闭日志组件持有的底层资源(如日志 Kafka Writer),应在进程退出前调用。
+// 关闭所有由 New 注册的 Kafka Writer,仅执行一次。
 func Close() error {
-	if kafkaCloser != nil {
-		return kafkaCloser()
+	closersMu.Lock()
+	if closersClosed {
+		closersMu.Unlock()
+		return nil
 	}
-	return nil
+	closersClosed = true
+	closers := kafkaClosers
+	kafkaClosers = nil
+	closersMu.Unlock()
+
+	var firstErr error
+	for _, c := range closers {
+		if err := c(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 func KVStr(key string, val string) zap.Field {
