@@ -21,6 +21,7 @@ import (
 	"advanced/internal/middleware"
 	"advanced/internal/router"
 	"advanced/pkg/token"
+	"advanced/pkg/validator"
 	"advanced/pkg/xconfig"
 	"advanced/pkg/xdb"
 	"advanced/pkg/xlog"
@@ -52,6 +53,9 @@ func NewHttp(
 	hdl *handler.Ctx,
 	rtrs []router.Router,
 ) (*Assembly, error) {
+	// 初始化校验器与中文翻译器 (注册 afterNow/beforeNow/mobile 等自定义校验规则)
+	validator.New("zh")
+
 	// 在创建引擎前统一设置 gin 全局模式与输出,避免 gin.New() 先于 SetMode,
 	// 也避免多 server 实例(http + broker health)对全局 DefaultWriter 的重复覆盖。
 	xserver.InitGinMode(conf.Env)

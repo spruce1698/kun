@@ -23,7 +23,6 @@ func Demo(e *gin.Engine, jwt *token.Jwt, ctx *handler.Ctx) {
 
 		apiGroup.GET("/demo/:id", ctx.DemoHandler.Detail)
 		apiGroup.GET("/demo/list", ctx.DemoHandler.List)
-
 		apiGroup.POST("/demo/create", ctx.DemoHandler.Create)
 		apiGroup.POST("/demo/update", ctx.DemoHandler.Update)
 		apiGroup.POST("/demo/delete", ctx.DemoHandler.Delete)
