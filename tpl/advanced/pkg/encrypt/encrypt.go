@@ -66,11 +66,10 @@ import (
 36: “RSA-MD5”
 */
 
-// 对字符串进行MD5加密
+// 对字符串进行MD5加密(直接基于 md5.Sum 计算,避免堆分配)
 func MD5(str string) string {
-	hash := md5.New()
-	hash.Write([]byte(str))
-	return hex.EncodeToString(hash.Sum(nil))
+	h := md5.Sum([]byte(str))
+	return hex.EncodeToString(h[:])
 }
 
 // 16位md5

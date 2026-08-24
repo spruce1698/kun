@@ -72,13 +72,6 @@ func CORS(allowOrigins ...[]string) gin.HandlerFunc {
 			return
 		}
 
-		// 允许的header类型
-		ctx.Header("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With,X-Request-Id,Client-Type,App-Version,Token")
-		// 跨域允许的请求方式
-		ctx.Header("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, PATCH, DELETE")
-		// 跨域允许的请求时间(秒)
-		ctx.Header("Access-Control-Max-Age", "86400")
-
 		if allowAny {
 			// 通配模式:不能与 Allow-Credentials 同时下发。
 			ctx.Header("Access-Control-Allow-Origin", "*")
@@ -89,6 +82,10 @@ func CORS(allowOrigins ...[]string) gin.HandlerFunc {
 		}
 
 		if ctx.Request.Method == http.MethodOptions {
+			// Preflight 预检请求才需下发以下 Header 列表与允许的方法/有效期
+			ctx.Header("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With,X-Request-Id,Client-Type,App-Version,Token")
+			ctx.Header("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, PATCH, DELETE")
+			ctx.Header("Access-Control-Max-Age", "86400")
 			ctx.AbortWithStatus(http.StatusNoContent)
 			return
 		}

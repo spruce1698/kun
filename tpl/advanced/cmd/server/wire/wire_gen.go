@@ -29,26 +29,25 @@ import (
 // 依赖注入构造 Web 应用声明函数
 func WireApp(env string) (*xserver.Server, error) {
 	conf := xconfig.New(env)
-	v := xlog.New(conf)
-	v2, err := xdb.New(conf)
+	logger := xlog.New(conf)
+	gormDB, err := xdb.New(conf)
 	if err != nil {
 		return nil, err
 	}
-	client, err := xredis.New(conf, v)
+	client, err := xredis.New(conf)
 	if err != nil {
 		return nil, err
 	}
-	pub := event.NewPub(conf, v)
+	pub := event.NewPub(conf, logger)
 	jwt, err := token.NewJwt(conf, client)
 	if err != nil {
 		return nil, err
 	}
-	conn := db.NewConn(v2)
+	conn := db.NewConn(gormDB)
 	ctx := &svc.Ctx{
 		Conf:     conf,
 		Conn:     conn,
 		RedisCli: client,
-		Logger:   v,
 	}
 	demoDb := db.NewDemoDb(conn)
 	demoCache := cache.NewDemoCache(client)
@@ -66,14 +65,14 @@ func WireApp(env string) (*xserver.Server, error) {
 	handlerCtx := &handler.Ctx{
 		DemoHandler: demoHandler,
 	}
-	v3 := router.WireServerSet()
-	assembly, err := app.NewHttp(conf, v, v2, client, pub, jwt, handlerCtx, v3)
+	v := router.WireServerSet()
+	assembly, err := app.NewHttp(conf, logger, gormDB, client, pub, jwt, handlerCtx, v)
 	if err != nil {
 		return nil, err
 	}
 	engine := assembly.Engine
 	closer := assembly.Closer
-	xserverEngine, err := http.New(conf, v, engine, closer)
+	xserverEngine, err := http.New(conf, logger, engine, closer)
 	if err != nil {
 		return nil, err
 	}

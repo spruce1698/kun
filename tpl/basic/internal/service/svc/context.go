@@ -9,7 +9,6 @@ package svc
 import (
 	"basic/internal/repository/db"
 	"basic/pkg/xconfig"
-	"basic/pkg/xlog"
 	"basic/pkg/xredis"
 )
 
@@ -18,6 +17,5 @@ type (
 		Conf     *xconfig.Conf
 		Conn     *db.Conn
 		RedisCli *xredis.Client
-		Logger   *xlog.Logger
 	}
 )

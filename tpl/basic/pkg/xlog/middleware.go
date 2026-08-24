@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap/zapcore"
 )
 
 var bufferPool = sync.Pool{
@@ -108,8 +109,8 @@ func TracingWithLogger(log *Logger, serviceName string) gin.HandlerFunc {
 						data := buf.Bytes()
 						requestBody = make([]byte, len(data))
 						copy(requestBody, data)
-						// 重建 body 供 handler 使用
-						c.Request.Body = io.NopCloser(bytes.NewReader(data))
+						// 重建 body 供 handler 使用(必须使用 cloned requestBody, 避免 buf 被 pool 重置后产生并发竞争)
+						c.Request.Body = io.NopCloser(bytes.NewReader(requestBody))
 					}
 					bufferPool.Put(buf)
 				}
@@ -132,58 +133,68 @@ func TracingWithLogger(log *Logger, serviceName string) gin.HandlerFunc {
 		ctx = WithLogger(ctx, loggerWithTrace)
 		c.Request = c.Request.WithContext(ctx)
 
-		// 记录请求信息
-		requestInfo := HTTPRequestInfo{
-			Host:       c.Request.Host,
-			Method:     method,
-			Path:       path,
-			Query:      c.Request.URL.RawQuery,
-			Headers:    FilterHeaders(c.Request.Header),
-			Body:       FilterContent(contentType, requestBody),
-			IP:         c.ClientIP(),
-			UserAgent:  c.Request.UserAgent(),
-			ClientIP:   GetClientIP(c.Request),
-			RemoteAddr: c.Request.RemoteAddr,
-			Referer:    c.Request.Referer(),
+		// 仅在日志级别允许时记录请求信息(生产环境为 Warn 级别时短路,0 内存开销)
+		if log.Core().Enabled(zapcore.InfoLevel) {
+			requestInfo := HTTPRequestInfo{
+				Host:       c.Request.Host,
+				Method:     method,
+				Path:       path,
+				Query:      c.Request.URL.RawQuery,
+				Headers:    FilterHeaders(c.Request.Header),
+				Body:       FilterContent(contentType, requestBody),
+				IP:         c.ClientIP(),
+				UserAgent:  c.Request.UserAgent(),
+				ClientIP:   GetClientIP(c.Request),
+				RemoteAddr: c.Request.RemoteAddr,
+				Referer:    c.Request.Referer(),
+			}
+			loggerWithTrace.Info("", KVAny("content", requestInfo))
 		}
-
-		loggerWithTrace.Info("", KVAny("content", requestInfo))
 
 		c.Next()
 
-		// 记录响应信息
+		// 记录响应信息与耗时
 		duration := time.Since(start)
+		status := c.Writer.Status()
+		shouldLogResponse := (status >= 500 && log.Core().Enabled(zapcore.ErrorLevel)) ||
+			(status >= 400 && status < 500 && log.Core().Enabled(zapcore.WarnLevel)) ||
+			(status < 400 && log.Core().Enabled(zapcore.InfoLevel))
 
-		// 记录响应状态和耗时
-		responseInfo := HTTPResponseInfo{
-			Method:   method,
-			Path:     path,
-			HttpCode: c.Writer.Status(),
-			Headers:  FilterHeaders(w.Header()),
-			Body:     FilterContent(w.Header().Get("Content-Type"), w.body.Bytes()),
-			Duration: float64(duration.Microseconds()) / 1000.0, // 转换为毫秒
-		}
-		// 根据状态码选择日志级别
-		if c.Writer.Status() >= 500 {
-			loggerWithTrace.Error("", KVAny("content", responseInfo))
-		} else if c.Writer.Status() >= 400 {
-			loggerWithTrace.Warn("", KVAny("content", responseInfo))
-		} else {
-			loggerWithTrace.Info("", KVAny("content", responseInfo))
+		var responseBody string
+		if shouldLogResponse {
+			responseInfo := HTTPResponseInfo{
+				Method:   method,
+				Path:     path,
+				HttpCode: status,
+				Headers:  FilterHeaders(w.Header()),
+				Body:     FilterContent(w.Header().Get("Content-Type"), w.body.Bytes()),
+				Duration: float64(duration.Microseconds()) / 1000.0, // 转换为毫秒
+			}
+			responseBody = responseInfo.Body
+			if status >= 500 {
+				loggerWithTrace.Error("", KVAny("content", responseInfo))
+			} else if status >= 400 {
+				loggerWithTrace.Warn("", KVAny("content", responseInfo))
+			} else {
+				loggerWithTrace.Info("", KVAny("content", responseInfo))
+			}
 		}
 
 		// 记录追踪信息
 		// 设置 span 属性（response body 截断避免泄露敏感数据）
-		spanBody := responseInfo.Body
+		spanBody := responseBody
+		if len(spanBody) == 0 && w.body != nil && w.body.Len() > 0 {
+			spanBody = FilterContent(w.Header().Get("Content-Type"), w.body.Bytes())
+		}
 		if len(spanBody) > 512 {
 			spanBody = spanBody[:512] + "...(truncated)"
 		}
 		span.SetAttributes(
 			attribute.String("http.method", method),
 			attribute.String("http.path", path),
-			attribute.String("http.user_agent", requestInfo.UserAgent),
-			attribute.String("http.client_ip", requestInfo.ClientIP),
-			attribute.Int("http.status_code", responseInfo.HttpCode),
+			attribute.String("http.user_agent", c.Request.UserAgent()),
+			attribute.String("http.client_ip", GetClientIP(c.Request)),
+			attribute.Int("http.status_code", status),
 			attribute.String("http.response_body", spanBody),
 			attribute.Float64("duration", float64(duration.Microseconds())/1000.0),
 		)

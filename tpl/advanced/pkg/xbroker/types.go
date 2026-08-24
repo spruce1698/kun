@@ -27,7 +27,7 @@ type Task struct {
 type Kafka struct {
 	Topic   string
 	Group   string
-	Handler func(key, value string) error
+	Handler func(ctx context.Context, key, value string) error
 }
 
 // Asynq asynq 订阅项。

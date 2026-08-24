@@ -15,6 +15,7 @@ import (
 	"advanced/internal/global"
 	"advanced/pkg/asynq"
 	"advanced/pkg/utils"
+	"advanced/pkg/xlog"
 )
 
 //go:generate mockgen -source=./broker.go -destination=../../../test/mocks/service/broker.go  -package mock_service
@@ -23,8 +24,8 @@ var _ BrokerSvc = (*brokerSvc)(nil)
 
 type (
 	BrokerSvc interface {
-		SubPayRecharge(key, value string) error
-		KQPayDemo(key, value string) error
+		SubPayRecharge(ctx context.Context, key, value string) error
+		KQPayDemo(ctx context.Context, key, value string) error
 		SubAqPay(ctx context.Context, task *asynq.Task) error
 		SubAqPay1(ctx context.Context, task *asynq.Task) error
 	}
@@ -43,36 +44,36 @@ func NewBrokerSvc(ctx *BrokerCtx) BrokerSvc {
 }
 
 // SubPayRecharge 支付事件订阅
-func (b *brokerSvc) SubPayRecharge(key, value string) error {
+func (b *brokerSvc) SubPayRecharge(ctx context.Context, key, value string) error {
 	switch global.EventType(key) {
 	case global.EventTypePayRecharge: // 充值
 		msg := &global.PayRecharge{}
 		if err := json.Unmarshal([]byte(value), msg); err != nil {
-			b.ctx.Logger.Error("SubPayRecharge 反序列化失败: " + err.Error() + " value: " + value)
+			xlog.Error(ctx, "SubPayRecharge 反序列化失败", err, value)
 			return err
 		}
 
-		b.ctx.Logger.Info(fmt.Sprintf("SubPayRecharge-type:消费时间:%s:%s", utils.TimeStr(time.Now()), value))
+		xlog.Info(ctx, fmt.Sprintf("SubPayRecharge-type:消费时间:%s:%s", utils.TimeStr(time.Now()), value))
 
 		// TODO: do something 逻辑处理start...
 
 		return nil
 	default:
-		b.ctx.Logger.Error("未知的支付事件类型:" + key + value)
+		xlog.Error(ctx, "未知的支付事件类型:"+key+value, nil)
 	}
 	return nil
 }
 
 // KQPayDemo 支付事件订阅,无类型
-func (b *brokerSvc) KQPayDemo(key, value string) error {
+func (b *brokerSvc) KQPayDemo(ctx context.Context, key, value string) error {
 	msg := &global.PayRecharge{}
 	if err := json.Unmarshal([]byte(value), msg); err != nil {
-		b.ctx.Logger.Error("KQPayDemo 反序列化失败: " + err.Error() + " value: " + value)
+		xlog.Error(ctx, "KQPayDemo 反序列化失败", err, value)
 		return err
 	}
 
-	b.ctx.Logger.Info(fmt.Sprintf("KQPayDemo:not key 消费时间:%s:%s", utils.TimeStr(time.Now()), value))
-	b.ctx.Logger.Info(b.ctx.Conf.Get().Env + " 测试:" + key + value)
+	xlog.Info(ctx, fmt.Sprintf("KQPayDemo:not key 消费时间:%s:%s", utils.TimeStr(time.Now()), value))
+	xlog.Info(ctx, b.ctx.Conf.Get().Env+" 测试:"+key+value)
 
 	// TODO: do something 逻辑处理start...
 
@@ -81,7 +82,7 @@ func (b *brokerSvc) KQPayDemo(key, value string) error {
 
 // SubAqPay aq订阅
 func (b *brokerSvc) SubAqPay(ctx context.Context, task *asynq.Task) error {
-	b.ctx.Logger.Info(fmt.Sprintf("SubAqPay:消费时间:%s: %s %s", utils.TimeStr(time.Now()), task.Type(), task.Payload()))
+	xlog.Info(ctx, fmt.Sprintf("SubAqPay:消费时间:%s: %s %s", utils.TimeStr(time.Now()), task.Type(), task.Payload()))
 
 	// TODO: do something 逻辑处理start...
 
@@ -89,7 +90,7 @@ func (b *brokerSvc) SubAqPay(ctx context.Context, task *asynq.Task) error {
 }
 
 func (b *brokerSvc) SubAqPay1(ctx context.Context, task *asynq.Task) error {
-	b.ctx.Logger.Info(fmt.Sprintf("SubAqPay1:消费时间:%s: %s %s", utils.TimeStr(time.Now()), task.Type(), task.Payload()))
+	xlog.Info(ctx, fmt.Sprintf("SubAqPay1:消费时间:%s: %s %s", utils.TimeStr(time.Now()), task.Type(), task.Payload()))
 
 	// TODO: do something 逻辑处理start...
 	return nil

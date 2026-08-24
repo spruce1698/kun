@@ -267,8 +267,8 @@ func (j *Jwt) Parse(ctx context.Context, tokenStr string, optType ...string) (*v
 	}
 	cTime := time.Now()
 	tokenStr = strings.TrimSpace(tokenStr)
-	if len(tokenStr) >= 7 && strings.EqualFold(tokenStr[:7], "bearer ") {
-		tokenStr = strings.TrimSpace(tokenStr[7:])
+	if len(tokenStr) >= 7 && strings.EqualFold(tokenStr[:6], "bearer") {
+		tokenStr = strings.TrimSpace(tokenStr[6:])
 	}
 	if tokenStr == "" {
 		return nil, ErrEmptyToken

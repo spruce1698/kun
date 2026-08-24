@@ -23,30 +23,29 @@ import (
 
 func WireApp(env string) (*xserver.Server, error) {
 	conf := xconfig.New(env)
-	v := xlog.New(conf)
-	v2, err := xdb.New(conf)
+	logger := xlog.New(conf)
+	gormDB, err := xdb.New(conf)
 	if err != nil {
 		return nil, err
 	}
-	client, err := xredis.New(conf, v)
+	client, err := xredis.New(conf)
 	if err != nil {
 		return nil, err
 	}
-	engine := app.NewBrokerHealth(conf, v)
-	conn := db.NewConn(v2)
+	engine := app.NewBrokerHealth(conf, logger)
+	conn := db.NewConn(gormDB)
 	ctx := &svc.Ctx{
 		Conf:     conf,
 		Conn:     conn,
 		RedisCli: client,
-		Logger:   v,
 	}
 	brokerCtx := &svc.BrokerCtx{
 		Ctx: ctx,
 	}
 	brokerSvc := svc.NewBrokerSvc(brokerCtx)
 	task := service.TaskSet(brokerSvc)
-	v3 := app.NewBrokerChildRun(conf, task)
-	xserverEngine, err := broker.New(conf, v, v2, client, engine, v3)
+	v := app.NewBrokerChildRun(conf, task)
+	xserverEngine, err := broker.New(conf, logger, gormDB, client, engine, v)
 	if err != nil {
 		return nil, err
 	}

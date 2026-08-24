@@ -17,7 +17,7 @@ const (
 )
 
 var (
-	// 需要过滤的敏感字段
+	// 需要过滤的敏感字段精确集合
 	sensitiveFields = map[string]struct{}{
 		// 认证凭证
 		"password":      {},
@@ -36,10 +36,10 @@ var (
 		"session":       {},
 		"cookie":        {},
 		// 加密密钥
-		"key":         {},
 		"cert":        {},
 		"private":     {},
 		"private_key": {},
+		"secret_key":  {},
 		"signing_key": {},
 		// 支付信息
 		"credit_card":  {},
@@ -49,9 +49,25 @@ var (
 		"pin":          {},
 		"bank_account": {},
 		// 个人隐私
-		"id_card":  {},
-		"idnumber": {},
-		"ssn":      {},
+		"id_card":   {},
+		"idnumber":  {},
+		"id_number": {},
+		"ssn":       {},
+	}
+
+	// 敏感模糊匹配特征词(仅在精确匹配不中时执行)
+	sensitiveFuzzyKeywords = []string{
+		"password", "passwd", "pwd", "token", "secret", "auth", "credential",
+		"credit_card", "card_number", "cvv", "cvc", "pin", "ssn", "id_card", "idnumber",
+		"private_key", "secret_key", "signing_key", "api_key", "apikey",
+	}
+
+	// 字节级预检特征词(用于 Fast-Path 零分配预检)
+	sensitiveByteKeywords = [][]byte{
+		[]byte("pass"), []byte("pwd"), []byte("token"), []byte("secret"),
+		[]byte("auth"), []byte("cookie"), []byte("session"),
+		[]byte("card"), []byte("cvv"), []byte("cvc"), []byte("pin"),
+		[]byte("ssn"), []byte("cert"), []byte("priv"), []byte("api_key"), []byte("apikey"),
 	}
 
 	// 支持的内容类型
@@ -73,11 +89,41 @@ type ContentFilter interface {
 	Filter(content []byte) (string, error)
 }
 
+// mayContainSensitiveBytes 快速检测字节流是否可能含有敏感字段(Fast Path)
+func mayContainSensitiveBytes(b []byte) bool {
+	lower := bytes.ToLower(b)
+	for _, kw := range sensitiveByteKeywords {
+		if bytes.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func mayContainSensitiveString(s string) bool {
+	lower := strings.ToLower(s)
+	for _, kw := range sensitiveByteKeywords {
+		if strings.Contains(lower, string(kw)) {
+			return true
+		}
+	}
+	return false
+}
+
 // JSONFilter JSON过滤器
 type JSONFilter struct{}
 
 func (f JSONFilter) Filter(content []byte) (string, error) {
-	var data interface{}
+	if len(content) == 0 {
+		return "", nil
+	}
+
+	// Fast Path: 绝大多数无敏感信息的请求/响应无需进行反序列化与反射重建,直接零拷贝返回
+	if !mayContainSensitiveBytes(content) {
+		return string(content), nil
+	}
+
+	var data any
 	if err := json.Unmarshal(content, &data); err != nil {
 		return "", err
 	}
@@ -93,6 +139,13 @@ func (f JSONFilter) Filter(content []byte) (string, error) {
 type XMLFilter struct{}
 
 func (f XMLFilter) Filter(content []byte) (string, error) {
+	if len(content) == 0 {
+		return "", nil
+	}
+	if !mayContainSensitiveBytes(content) {
+		return string(content), nil
+	}
+
 	dec := xml.NewDecoder(bytes.NewReader(content))
 	var buf strings.Builder
 	var elemStack []string
@@ -170,12 +223,11 @@ func filterFormValues(values url.Values) string {
 		return ""
 	}
 
-	result := make(url.Values)
+	result := make(url.Values, len(values))
 	for key, vals := range values {
 		if isSensitive(key) {
 			result[key] = []string{maskValue}
 		} else {
-			// 检查值是否包含敏感信息
 			filteredVals := make([]string, len(vals))
 			for i, val := range vals {
 				filteredVals[i] = filterString(val)
@@ -199,10 +251,20 @@ func FilterContent(contentType string, content []byte) string {
 		return ""
 	}
 
-	contentType = strings.ToLower(strings.Split(contentType, ";")[0])
-	filter, ok := supportedContentTypes[contentType]
+	// 快速截取并匹配 Content-Type (避免 strings.Split 分配)
+	ct := contentType
+	if idx := strings.IndexByte(ct, ';'); idx != -1 {
+		ct = ct[:idx]
+	}
+	ct = strings.TrimSpace(strings.ToLower(ct))
+
+	filter, ok := supportedContentTypes[ct]
 	if !ok {
-		return "[unsupported content type]"
+		if strings.Contains(ct, "json") {
+			filter = JSONFilter{}
+		} else {
+			return "[unsupported content type]"
+		}
 	}
 
 	filtered, err := filter.Filter(content)
@@ -225,17 +287,23 @@ func FilterHeaders(headers map[string][]string) map[string]string {
 			continue
 		}
 
-		if isSensitive(key) {
+		lowerKey := strings.ToLower(key)
+		switch lowerKey {
+		case "authorization", "cookie", "set-cookie", "x-api-key", "proxy-authorization":
 			filtered[key] = maskValue
-		} else {
-			filtered[key] = values[0]
+		default:
+			if isSensitive(lowerKey) {
+				filtered[key] = maskValue
+			} else {
+				filtered[key] = values[0]
+			}
 		}
 	}
 	return filtered
 }
 
 // FilterStruct 过滤结构体
-func FilterStruct(v interface{}) interface{} {
+func FilterStruct(v any) any {
 	val := reflect.ValueOf(v)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
@@ -280,13 +348,13 @@ func FilterStruct(v interface{}) interface{} {
 }
 
 // 辅助函数
-func filterValue(v interface{}) interface{} {
+func filterValue(v any) any {
 	switch val := v.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		return filterMap(val)
-	case []interface{}:
+	case []any:
 		return filterArray(val)
-	case map[interface{}]interface{}:
+	case map[any]any:
 		return filterInterfaceMap(val)
 	case string:
 		return filterString(val)
@@ -295,12 +363,12 @@ func filterValue(v interface{}) interface{} {
 	}
 }
 
-func filterMap(data map[string]interface{}) map[string]interface{} {
+func filterMap(data map[string]any) map[string]any {
 	if data == nil {
 		return nil
 	}
 
-	result := make(map[string]interface{}, len(data))
+	result := make(map[string]any, len(data))
 	for key, value := range data {
 		if isSensitive(key) {
 			result[key] = maskValue
@@ -311,24 +379,24 @@ func filterMap(data map[string]interface{}) map[string]interface{} {
 	return result
 }
 
-func filterArray(arr []interface{}) []interface{} {
+func filterArray(arr []any) []any {
 	if arr == nil {
 		return nil
 	}
 
-	result := make([]interface{}, len(arr))
+	result := make([]any, len(arr))
 	for i, value := range arr {
 		result[i] = filterValue(value)
 	}
 	return result
 }
 
-func filterInterfaceMap(data map[interface{}]interface{}) map[interface{}]interface{} {
+func filterInterfaceMap(data map[any]any) map[any]any {
 	if data == nil {
 		return nil
 	}
 
-	result := make(map[interface{}]interface{}, len(data))
+	result := make(map[any]any, len(data))
 	for key, value := range data {
 		keyStr := fmt.Sprint(key)
 		if isSensitive(keyStr) {
@@ -341,13 +409,22 @@ func filterInterfaceMap(data map[interface{}]interface{}) map[interface{}]interf
 }
 
 func filterString(s string) string {
+	if !mayContainSensitiveString(s) {
+		return s
+	}
 	return sensitiveRegex.ReplaceAllString(s, "${1}="+maskValue)
 }
 
 func isSensitive(field string) bool {
+	if len(field) == 0 {
+		return false
+	}
 	field = strings.ToLower(field)
-	for sensitive := range sensitiveFields {
-		if strings.Contains(field, sensitive) {
+	if _, ok := sensitiveFields[field]; ok {
+		return true
+	}
+	for _, kw := range sensitiveFuzzyKeywords {
+		if strings.Contains(field, kw) {
 			return true
 		}
 	}

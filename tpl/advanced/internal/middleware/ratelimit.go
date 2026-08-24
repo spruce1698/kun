@@ -47,79 +47,102 @@ end
 `
 )
 
-// RateLimiter 基于 IP 的单机内存滑动窗口限流中间件
+// RateLimiter 基于 IP 的单机内存滑动窗口限流中间件(分段锁降低并发冲突,值类型降低堆分配)
 // maxAttempts: 窗口内最大允许次数; window: 时间窗口; cooldown: 超限后封禁时长
 func RateLimiter(maxAttempts int, window, cooldown time.Duration) gin.HandlerFunc {
-	var (
+	const numShards = 16
+	type shard struct {
 		mu      sync.Mutex
-		records = make(map[string]*loginRecord)
-		banned  = make(map[string]time.Time) // IP -> 解封时间
-	)
+		records map[string]loginRecord
+		banned  map[string]time.Time // IP -> 解封时间
+	}
 
-	// 清理协程:绑定本实例的 records/banned,随进程退出或实例不再被引用而结束。
+	shards := make([]shard, numShards)
+	for i := 0; i < numShards; i++ {
+		shards[i] = shard{
+			records: make(map[string]loginRecord),
+			banned:  make(map[string]time.Time),
+		}
+	}
+
+	getShard := func(key string) *shard {
+		var h uint32 = 2166136261
+		for i := 0; i < len(key); i++ {
+			h *= 16777619
+			h ^= uint32(key[i])
+		}
+		return &shards[h%numShards]
+	}
+
+	// 定期清理协程
 	go func() {
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
-			mu.Lock()
 			now := time.Now()
-			for ip, t := range banned {
-				if now.After(t) {
-					delete(banned, ip)
-				}
-			}
-			for ip, r := range records {
-				if now.Sub(r.firstSeen) > window {
-					delete(records, ip)
-				}
-			}
-			if len(records) > maxRateLimitEntries {
-				half := len(records) / 2
-				for ip := range records {
-					delete(records, ip)
-					half--
-					if half <= 0 {
-						break
+			for i := 0; i < numShards; i++ {
+				s := &shards[i]
+				s.mu.Lock()
+				for ip, t := range s.banned {
+					if now.After(t) {
+						delete(s.banned, ip)
 					}
 				}
+				for ip, r := range s.records {
+					if now.Sub(r.firstSeen) > window {
+						delete(s.records, ip)
+					}
+				}
+				if len(s.records) > maxRateLimitEntries/numShards {
+					half := len(s.records) / 2
+					for ip := range s.records {
+						delete(s.records, ip)
+						half--
+						if half <= 0 {
+							break
+						}
+					}
+				}
+				s.mu.Unlock()
 			}
-			mu.Unlock()
 		}
 	}()
 
 	return func(ctx *gin.Context) {
 		ip := ctx.ClientIP()
+		s := getShard(ip)
 
-		mu.Lock()
+		s.mu.Lock()
 		// 检查是否在封禁中
-		if until, ok := banned[ip]; ok {
+		if until, ok := s.banned[ip]; ok {
 			if time.Now().Before(until) {
 				retryAfter := int(time.Until(until).Seconds()) + 1
-				mu.Unlock()
+				s.mu.Unlock()
 				abortTooManyRequests(ctx, retryAfter)
 				return
 			}
-			delete(banned, ip)
+			delete(s.banned, ip)
 		}
 
-		r, ok := records[ip]
+		r, ok := s.records[ip]
 		now := time.Now()
 		if !ok || now.Sub(r.firstSeen) > window {
-			records[ip] = &loginRecord{count: 1, firstSeen: now}
-			mu.Unlock()
+			s.records[ip] = loginRecord{count: 1, firstSeen: now}
+			s.mu.Unlock()
 			ctx.Next()
 			return
 		}
 
 		r.count++
 		if r.count > maxAttempts {
-			banned[ip] = now.Add(cooldown)
-			delete(records, ip)
-			mu.Unlock()
+			s.banned[ip] = now.Add(cooldown)
+			delete(s.records, ip)
+			s.mu.Unlock()
 			abortTooManyRequests(ctx, int(cooldown.Seconds()))
 			return
 		}
-		mu.Unlock()
+		s.records[ip] = r
+		s.mu.Unlock()
 
 		ctx.Next()
 	}

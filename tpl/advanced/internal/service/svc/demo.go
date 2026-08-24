@@ -116,8 +116,7 @@ func (d *demoSvc) Detail(ctx context.Context, id int64) (*Demo, error) {
 	if id <= 0 {
 		return nil, xerror.NewError(ctx, xerror.InvalidArgument, "Get Demo Detail invalid id", nil)
 	}
-
-	xlog.Info(ctx, "Demo Detail", "测试手工日志")
+	xlog.Info(ctx, "Demo Detail")
 
 	result := &Demo{}
 	demo, cacheErr := d.ctx.DemoCache.Get(ctx, id)

@@ -118,7 +118,7 @@ func New(conf *xconfig.Conf) *Logger {
 		zapcore.NewTee(cores...),
 		zap.AddCaller(),                   // 显示打日志点的文件名和行数
 		zap.AddStacktrace(zap.ErrorLevel), // 为错误添加堆栈跟踪
-		zap.AddCallerSkip(0),              // 避免zap始终将包装器(wrapper)代码报告为调用方。
+		zap.AddCallerSkip(1),              // 跳过 xlog 封装层(1层),准确显示业务层调用点文件名与行号
 	)
 
 	zap.ReplaceGlobals(logger) // 替换zap包中全局的logger实例，后续在其他包中只需使用zap.L()调用即可

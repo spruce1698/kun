@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"advanced/pkg/encrypt"
@@ -271,11 +272,16 @@ func (j *Jwt) Parse(ctx context.Context, tokenStr string, optType ...string) (*v
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	cTime := time.Now()
-	tokenStr = reBearer.ReplaceAllString(tokenStr, "")
+	if len(tokenStr) >= 7 && (strings.HasPrefix(tokenStr, "Bearer ") || strings.HasPrefix(tokenStr, "bearer ")) {
+		tokenStr = tokenStr[7:]
+	} else if reBearer.MatchString(tokenStr) {
+		tokenStr = reBearer.ReplaceAllString(tokenStr, "")
+	}
+	tokenStr = strings.TrimSpace(tokenStr)
 	if tokenStr == "" {
 		return nil, ErrEmptyToken
 	}
+	cTime := time.Now()
 	// tokenStr 在黑名单
 	// 必须检查 Redis 错误:忽略它会导致"故障开放"——Redis 不可用时所有已吊销
 	// (登出、被封禁、refresh 轮换掉的)token 全部重新生效。宁可拒绝请求也不能放行。

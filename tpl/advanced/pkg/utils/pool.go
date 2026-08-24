@@ -67,14 +67,18 @@ func (p *Pool) AddTask(task Task) error {
 func (p *Pool) worker() {
 	defer p.wg.Done()
 	for task := range p.taskQueue {
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					fmt.Printf("Worker task %d panic: %v\n", task.ID, r)
-				}
-			}()
-			task.Job()
-		}()
+		p.runTask(task)
+	}
+}
+
+func (p *Pool) runTask(task Task) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("Worker task %d panic: %v\n", task.ID, r)
+		}
+	}()
+	if task.Job != nil {
+		task.Job()
 	}
 }
 

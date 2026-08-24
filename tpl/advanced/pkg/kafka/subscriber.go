@@ -75,16 +75,14 @@ func (s *Subscriber) Sub(ctx context.Context, topic, group string, handler func(
 		msgCtx, span := extractSpan(ctx, msg, "consume")
 		// 处理失败时按指数退避重试,超过 maxConsumeRetry 仍失败则跳过该消息(kafka 自动提交会推进 offset),
 		// 避免handler持续报错导致消费卡死。
-		consumeWithRetry(msgCtx, string(msg.Key), string(msg.Value), func(k, v string) error {
-			return handler(msgCtx, k, v)
-		})
+		_ = consumeWithRetry(msgCtx, string(msg.Key), string(msg.Value), handler)
 		span.End()
 	}
 }
 
 // SubFetch 订阅者 程序提交(速度快), ctx 取消时退出消费循环。
 // 同一 topic:group 仅创建一个 reader 并缓存,Close 时统一关闭。
-func (s *Subscriber) SubFetch(ctx context.Context, topic, group string, handler func(key, value string) error) {
+func (s *Subscriber) SubFetch(ctx context.Context, topic, group string, handler func(ctx context.Context, key, value string) error) {
 	reader := s.getOrCreateReader(topic, group, kafkaGo.ReaderConfig{
 		StartOffset: kafkaGo.FirstOffset,
 		Brokers:     s.brokers,
@@ -138,14 +136,14 @@ func (s *Subscriber) SubFetch(ctx context.Context, topic, group string, handler 
 
 // consumeWithRetry 对单条消息按指数退避重试,ctx 取消时立即返回。
 // 超过 maxConsumeRetry 仍失败则返回最后一次错误,由调用方决定是否跳过(提交 offset)。
-func consumeWithRetry(ctx context.Context, key, value string, handler func(key, value string) error) error {
+func consumeWithRetry(ctx context.Context, key, value string, handler func(ctx context.Context, key, value string) error) error {
 	var lastErr error
 	backoff := 100 * time.Millisecond
 	for i := 0; i < maxConsumeRetry; i++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := handler(key, value); err != nil {
+		if err := handler(ctx, key, value); err != nil {
 			lastErr = err
 			klog.Printf("consume retry %d/%d, key=%s err: %v", i+1, maxConsumeRetry, key, err)
 			// 退避等待,ctx 取消则提前退出
@@ -159,39 +157,31 @@ func consumeWithRetry(ctx context.Context, key, value string, handler func(key, 
 		}
 		return nil
 	}
-	return lastErr
+	return fmt.Errorf("exceeded max retries (%d), last error: %w", maxConsumeRetry, lastErr)
 }
 
-// getOrCreateReader 按 topic:group 复用 reader。
-// 同一 topic:group 仅创建一次并缓存到 box,Close 时统一关闭,避免每次订阅都泄漏一个 reader。
-func (s *Subscriber) getOrCreateReader(topic, group string, config kafkaGo.ReaderConfig) *kafkaGo.Reader {
+func (s *Subscriber) getOrCreateReader(topic, group string, conf kafkaGo.ReaderConfig) *kafkaGo.Reader {
 	key := fmt.Sprintf(topicGroupKey, topic, group)
-	if v, ok := s.box.Load(key); ok {
-		return v.(*kafkaGo.Reader)
+	if reader, ok := s.box.Load(key); ok {
+		return reader.(*kafkaGo.Reader)
 	}
-	reader := kafkaGo.NewReader(config)
-	actual, loaded := s.box.LoadOrStore(key, reader)
-	if loaded {
-		_ = reader.Close()
-	}
+
+	reader := kafkaGo.NewReader(conf)
+	actual, _ := s.box.LoadOrStore(key, reader)
 	return actual.(*kafkaGo.Reader)
 }
 
-// Close 同步关闭所有 reader,确保调用返回时 reader 已关闭、offset 已提交,
-// 避免进程立即退出导致未提交 offset 丢失。
-func (s *Subscriber) Close() {
-	var wg sync.WaitGroup
-	s.box.Range(func(_, value any) bool {
-		reader, ok := value.(*kafkaGo.Reader)
-		if !ok {
-			return true
+// Close 关闭所有由本 Subscriber 创建的 Reader,释放与 Broker 的连接。
+func (s *Subscriber) Close() error {
+	var firstErr error
+	s.box.Range(func(key, value any) bool {
+		if reader, ok := value.(*kafkaGo.Reader); ok {
+			if err := reader.Close(); err != nil && firstErr == nil {
+				firstErr = err
+			}
 		}
-		wg.Add(1)
-		go func(r *kafkaGo.Reader) {
-			defer wg.Done()
-			_ = r.Close()
-		}(reader)
+		s.box.Delete(key)
 		return true
 	})
-	wg.Wait()
+	return firstErr
 }
