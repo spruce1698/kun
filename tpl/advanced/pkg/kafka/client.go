@@ -9,6 +9,7 @@ package kafka
 import (
 	"advanced/pkg/xconfig"
 	"errors"
+	"fmt"
 
 	kafkaGo "github.com/segmentio/kafka-go"
 )
@@ -25,12 +26,25 @@ func NewClient(conf *xconfig.Conf) *Client {
 	}
 }
 
-// TopicList 全部topic
-func (c *Client) TopicList() ([]string, error) {
+// dialBroker 尝试连接 brokers 列表中的可用节点进行运维操作
+func (c *Client) dialBroker() (*kafkaGo.Conn, error) {
 	if len(c.brokers) == 0 {
 		return nil, errors.New("kafka brokers not configured")
 	}
-	conn, err := kafkaGo.Dial("tcp", c.brokers[0])
+	var lastErr error
+	for _, b := range c.brokers {
+		conn, err := kafkaGo.Dial("tcp", b)
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+	}
+	return nil, fmt.Errorf("failed to dial any kafka broker in %v: %w", c.brokers, lastErr)
+}
+
+// TopicList 全部topic
+func (c *Client) TopicList() ([]string, error) {
+	conn, err := c.dialBroker()
 	if err != nil {
 		return nil, err
 	}
@@ -56,10 +70,7 @@ func (c *Client) TopicList() ([]string, error) {
 
 // CreateTopic 创建topic
 func (c *Client) CreateTopic(topic string, partition int) error {
-	if len(c.brokers) == 0 {
-		return errors.New("kafka brokers not configured")
-	}
-	conn, err := kafkaGo.Dial("tcp", c.brokers[0])
+	conn, err := c.dialBroker()
 	if err != nil {
 		return err
 	}
@@ -80,10 +91,7 @@ func (c *Client) CreateTopic(topic string, partition int) error {
 
 // DelTopic 删除 topic
 func (c *Client) DelTopic(topic string) error {
-	if len(c.brokers) == 0 {
-		return errors.New("kafka brokers not configured")
-	}
-	conn, err := kafkaGo.Dial("tcp", c.brokers[0])
+	conn, err := c.dialBroker()
 	if err != nil {
 		return err
 	}

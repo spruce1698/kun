@@ -72,14 +72,14 @@ func (c *customDemoDb) ListWithTotal(ctx context.Context, args *DemoSearch) ([]*
 
 	var model *gorm.DB
 	switch {
-	case args.LastId > 0 && args.Page > 1: // 游标分页
+	case args.LastId > 0: // 游标分页
 		// 游标按主键 id 比较,因此排序也必须按 id,否则(如按 name 排序而按 id 取游标)
 		// 翻页结果会重复或漏行。需要按其它列做游标分页时,应改为 (orderCol, id) 复合游标。
 		cursorOrder := TableDemo + ".id DESC"
-		lastCond := "`id` < ?"
+		lastCond := TableDemo + ".`id` < ?"
 		if args.OrderType == 1 {
 			cursorOrder = TableDemo + ".id ASC"
-			lastCond = "`id` > ?"
+			lastCond = TableDemo + ".`id` > ?"
 		}
 		model = filter().Where(lastCond, args.LastId).Order(cursorOrder).Limit(limit)
 	case offset > 100000: // 深分页: SELECT * FROM demo INNER JOIN (SELECT id FROM demo WHERE ... ORDER BY id LIMIT ?,?) AS tmp USING(id)
@@ -120,12 +120,12 @@ func (c *customDemoDb) ListWithMore(ctx context.Context, args *DemoSearch) ([]*D
 
 	var model *gorm.DB
 	switch {
-	case args.LastId > 0 && args.Page > 1: // 游标分页
+	case args.LastId > 0: // 游标分页
 		cursorOrder := TableDemo + ".id DESC"
-		lastCond := "`id` < ?"
+		lastCond := TableDemo + ".`id` < ?"
 		if args.OrderType == 1 {
 			cursorOrder = TableDemo + ".id ASC"
-			lastCond = "`id` > ?"
+			lastCond = TableDemo + ".`id` > ?"
 		}
 		model = filter().Where(lastCond, args.LastId).Order(cursorOrder).Limit(limit)
 	case offset > 100000: // 深分页

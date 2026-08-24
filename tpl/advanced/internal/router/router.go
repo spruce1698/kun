@@ -16,6 +16,7 @@ import (
 
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // NotFoundHandle 缺省路由
@@ -28,6 +29,11 @@ func Ping(e *gin.Engine) {
 	e.GET("/ping", func(ctx *gin.Context) {
 		ctx.String(http.StatusOK, "pong")
 	})
+}
+
+// Metrics 暴露 Prometheus 抓取端点
+func Metrics(e *gin.Engine) {
+	e.GET("/metrics", gin.WrapH(promhttp.Handler()))
 }
 
 // SwaggerRouter 路由

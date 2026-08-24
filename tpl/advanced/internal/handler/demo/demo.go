@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"advanced/internal/global"
@@ -84,6 +86,12 @@ func (d *DemoHandler) List(ctx *gin.Context) {
 
 	args := &svc.DemoListArgs{}
 	_ = copier.Copy(args, req)
+
+	// id= (空字符串) 时 gin 会把 *int64 绑定成指向 0 的非空指针,
+	// 导致 WHERE id = 0 查不到数据。这里把 0 规整为 nil,表示不按 id 过滤。
+	if args.Id != nil && *args.Id == 0 {
+		args.Id = nil
+	}
 
 	result, total, err := d.DemoSvc.FindList(ctx.Request.Context(), args)
 	if err != nil {
@@ -519,19 +527,24 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		// 拒绝无 Origin 请求(浏览器同源策略保证浏览器必定携带 Origin),
-		// 非浏览器客户端应通过 ticket 鉴权接入,不走 CheckOrigin
 		origin := r.Header.Get("Origin")
+		// 非浏览器客户端(如原生 App/测试工具)通常不带 Origin,已通过 ticket 鉴权,直接放行
 		if origin == "" {
+			return true
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
 			return false
 		}
-		// 带了 Origin 的(浏览器)请求,校验同源,防 CSRF。
-		return origin == fmt.Sprintf("%s://%s", func() string {
-			if r.TLS != nil {
-				return "https"
-			}
-			return "http"
-		}(), r.Host)
+		// 校验同源 host
+		if strings.EqualFold(u.Host, r.Host) {
+			return true
+		}
+		// 本地开发环境放行 localhost/127.0.0.1
+		if strings.HasPrefix(u.Host, "localhost:") || strings.HasPrefix(u.Host, "127.0.0.1:") || u.Host == "localhost" || u.Host == "127.0.0.1" {
+			return true
+		}
+		return false
 	},
 }
 

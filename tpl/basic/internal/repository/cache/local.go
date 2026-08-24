@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"sync/atomic"
 	"time"
 
 	goCache "github.com/patrickmn/go-cache"
@@ -16,6 +17,7 @@ const defaultMaxEntries = 10000
 type LocalCache struct {
 	cache      *goCache.Cache
 	maxEntries int
+	evicting   atomic.Bool
 }
 
 // NewLocalCache 创建本地缓存,使用默认容量上限。
@@ -38,7 +40,10 @@ func NewLocalCacheWithLimit(defaultExpiration, cleanupInterval time.Duration, ma
 func (l *LocalCache) Set(key string, value any, expiration time.Duration) {
 	// 已存在的 key 是覆盖写,不会增加条目数,无需淘汰。
 	if _, exists := l.cache.Get(key); !exists && l.cache.ItemCount() >= l.maxEntries {
-		l.evict()
+		if l.evicting.CompareAndSwap(false, true) {
+			l.evict()
+			l.evicting.Store(false)
+		}
 	}
 	l.cache.Set(key, value, expiration)
 }

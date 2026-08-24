@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 )
 
 // ErrPoolClosed 协程池已关闭(Shutdown/Wait 后再 AddTask)。
@@ -24,10 +25,10 @@ type Task struct {
 // 协程池结构体
 type Pool struct {
 	taskQueue chan Task
+	done      chan struct{}
 	wg        sync.WaitGroup
 	once      sync.Once
-	closed    bool
-	mu        sync.Mutex // 保护 closed
+	closed    atomic.Bool
 }
 
 // 创建协程池
@@ -36,6 +37,7 @@ type Pool struct {
 func NewPool(numWorkers, queueSize int) *Pool {
 	p := &Pool{
 		taskQueue: make(chan Task, queueSize),
+		done:      make(chan struct{}),
 	}
 
 	p.wg.Add(numWorkers)
@@ -47,16 +49,18 @@ func NewPool(numWorkers, queueSize int) *Pool {
 }
 
 // AddTask 添加任务到协程池。
-// 队列满时会阻塞,直到有 worker 取走任务。
-// 若池已关闭(Shutdown/Wait 后),返回 ErrPoolClosed,不会 panic。
+// 队列满时会阻塞,直到有 worker 取走任务或协程池关闭。
+// 若池已关闭(Shutdown/Wait 后),返回 ErrPoolClosed,不会 panic,绝不产生死锁。
 func (p *Pool) AddTask(task Task) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.closed {
+	if p.closed.Load() {
 		return ErrPoolClosed
 	}
-	p.taskQueue <- task
-	return nil
+	select {
+	case <-p.done:
+		return ErrPoolClosed
+	case p.taskQueue <- task:
+		return nil
+	}
 }
 
 // 工作协程
@@ -78,10 +82,9 @@ func (p *Pool) worker() {
 // 可安全多次调用(用 sync.Once 保证只关闭一次)。
 func (p *Pool) Shutdown() {
 	p.once.Do(func() {
-		p.mu.Lock()
-		p.closed = true
+		p.closed.Store(true)
+		close(p.done)
 		close(p.taskQueue)
-		p.mu.Unlock()
 	})
 }
 

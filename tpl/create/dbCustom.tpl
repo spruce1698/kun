@@ -68,14 +68,14 @@ func (c *custom{{.StructName}}Db) ListWithTotal(ctx context.Context, args *{{.St
 	var model *gorm.DB
 	{{if .HasPrimaryKey -}}
 	switch {
-	case args.LastId > 0 && args.Page > 1: // 游标分页
+	case args.LastId > 0: // 游标分页
 		// 游标按主键 {{.PrimaryKeyColumn}} 比较,因此排序也必须按 {{.PrimaryKeyColumn}},否则(如按其它列排序而按主键取游标)
 		// 翻页结果会重复或漏行。需要按其它列做游标分页时,应改为 (orderCol, {{.PrimaryKeyColumn}}) 复合游标。
 		cursorOrder := Table{{.StructName}} + ".{{.PrimaryKeyColumn}} DESC"
-		lastCond := "`{{.PrimaryKeyColumn}}` < ?"
+		lastCond := Table{{.StructName}} + ".`{{.PrimaryKeyColumn}}` < ?"
 		if args.OrderType == 1 {
 			cursorOrder = Table{{.StructName}} + ".{{.PrimaryKeyColumn}} ASC"
-			lastCond = "`{{.PrimaryKeyColumn}}` > ?"
+			lastCond = Table{{.StructName}} + ".`{{.PrimaryKeyColumn}}` > ?"
 		}
 		model = filter().Where(lastCond, args.LastId).Order(cursorOrder).Limit(limit)
 	case offset > 100000: // 深分页: SELECT * FROM {{.TableName}} INNER JOIN (SELECT id FROM {{.TableName}} WHERE ... ORDER BY id LIMIT ?,?) AS tmp USING({{.PrimaryKeyColumn}})
@@ -121,14 +121,14 @@ func (c *custom{{.StructName}}Db) ListWithMore(ctx context.Context, args *{{.Str
 	var model *gorm.DB
 	{{if .HasPrimaryKey -}}
 	switch {
-	case args.LastId > 0 && args.Page > 1: // 游标分页
+	case args.LastId > 0: // 游标分页
 		// 游标按主键 {{.PrimaryKeyColumn}} 比较,因此排序也必须按 {{.PrimaryKeyColumn}},否则(如按其它列排序而按主键取游标)
 		// 翻页结果会重复或漏行。需要按其它列做游标分页时,应改为 (orderCol, {{.PrimaryKeyColumn}}) 复合游标。
 		cursorOrder := Table{{.StructName}} + ".{{.PrimaryKeyColumn}} DESC"
-		lastCond := "`{{.PrimaryKeyColumn}}` < ?"
+		lastCond := Table{{.StructName}} + ".`{{.PrimaryKeyColumn}}` < ?"
 		if args.OrderType == 1 {
 			cursorOrder = Table{{.StructName}} + ".{{.PrimaryKeyColumn}} ASC"
-			lastCond = "`{{.PrimaryKeyColumn}}` > ?"
+			lastCond = Table{{.StructName}} + ".`{{.PrimaryKeyColumn}}` > ?"
 		}
 		model = filter().Where(lastCond, args.LastId).Order(cursorOrder).Limit(limit)
 	case offset > 100000: // 深分页

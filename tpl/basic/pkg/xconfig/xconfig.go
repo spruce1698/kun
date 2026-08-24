@@ -83,6 +83,7 @@ type (
 	RedisConf struct {
 		Source   []string
 		Password string
+		DB       int // Redis 数据库索引(单机模式有效)
 		Cluster  bool
 		PoolSize int // 连接池大小
 	}

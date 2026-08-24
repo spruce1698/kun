@@ -1,12 +1,16 @@
 package middleware
 
 import (
+	"math"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
 
+	"advanced/pkg/xredis"
+
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 // loginRecord 登录尝试记录
@@ -18,12 +22,33 @@ type loginRecord struct {
 const (
 	// maxRateLimitEntries 限制 map 最大条目数，防止内存泄漏
 	maxRateLimitEntries = 10000
+
+	// redisRateLimitLuaScript 使用 Redis ZSet 实现的分布式原子滑动窗口限流脚本
+	// KEYS[1]: 限流 key
+	// ARGV[1]: 当前时间戳(毫秒)
+	// ARGV[2]: 时间窗口(毫秒)
+	// ARGV[3]: 窗口内最大请求数
+	redisRateLimitLuaScript = `
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+local clearBefore = now - window
+
+redis.call('ZREMRANGEBYSCORE', key, 0, clearBefore)
+local current = redis.call('ZCARD', key)
+if current < limit then
+    redis.call('ZADD', key, now, now)
+    redis.call('PEXPIRE', key, math.ceil(window))
+    return 1
+else
+    return 0
+end
+`
 )
 
-// RateLimiter 基于 IP 的简单滑动窗口限流中间件
+// RateLimiter 基于 IP 的单机内存滑动窗口限流中间件
 // maxAttempts: 窗口内最大允许次数; window: 时间窗口; cooldown: 超限后封禁时长
-// 每次调用都会启动一个绑定到本实例闭包变量的清理协程,随实例的 records/banned 一起回收,
-// 避免使用包级 sync.Once 导致只清理首个实例的 map、其余实例内存泄漏。
 func RateLimiter(maxAttempts int, window, cooldown time.Duration) gin.HandlerFunc {
 	var (
 		mu      sync.Mutex
@@ -48,9 +73,6 @@ func RateLimiter(maxAttempts int, window, cooldown time.Duration) gin.HandlerFun
 					delete(records, ip)
 				}
 			}
-			// 条目数超限时强制删除一半以控制 map 规模。
-			// 注意:Go map 遍历顺序随机,这里删除的是"随机一半"而非"最旧一半",
-			// 仅用于兜底限流,不保证按 firstSeen 淘汰。
 			if len(records) > maxRateLimitEntries {
 				half := len(records) / 2
 				for ip := range records {
@@ -70,17 +92,19 @@ func RateLimiter(maxAttempts int, window, cooldown time.Duration) gin.HandlerFun
 
 		mu.Lock()
 		// 检查是否在封禁中
-		if until, ok := banned[ip]; ok && time.Now().Before(until) {
-			retryAfter := int(time.Until(until).Seconds()) + 1
-			mu.Unlock()
-			abortTooManyRequests(ctx, retryAfter)
-			return
+		if until, ok := banned[ip]; ok {
+			if time.Now().Before(until) {
+				retryAfter := int(time.Until(until).Seconds()) + 1
+				mu.Unlock()
+				abortTooManyRequests(ctx, retryAfter)
+				return
+			}
+			delete(banned, ip)
 		}
 
 		r, ok := records[ip]
 		now := time.Now()
 		if !ok || now.Sub(r.firstSeen) > window {
-			// 新窗口
 			records[ip] = &loginRecord{count: 1, firstSeen: now}
 			mu.Unlock()
 			ctx.Next()
@@ -89,7 +113,6 @@ func RateLimiter(maxAttempts int, window, cooldown time.Duration) gin.HandlerFun
 
 		r.count++
 		if r.count > maxAttempts {
-			// 超限，封禁
 			banned[ip] = now.Add(cooldown)
 			delete(records, ip)
 			mu.Unlock()
@@ -102,8 +125,68 @@ func RateLimiter(maxAttempts int, window, cooldown time.Duration) gin.HandlerFun
 	}
 }
 
+// RedisRateLimiter 基于 Redis ZSet 的分布式原子滑动窗口限流中间件。
+// 适用于多副本集群环境下的敏感接口(如验证码发送、登录鉴权、高频下单)。
+// - rdb: redis 客户端指针
+// - keyPrefix: 缓存键前缀,如 "ratelimit:login:"
+// - maxRequests: 滑动窗口内最大允许请求次数
+// - window: 滑动窗口大小(如 1*time.Minute)
+// - keyFn: 可选的自定义 key 生成函数,默认按客户端真实 IP 限流
+func RedisRateLimiter(
+	rdb *xredis.Client,
+	keyPrefix string,
+	maxRequests int64,
+	window time.Duration,
+	keyFn ...func(ctx *gin.Context) string,
+) gin.HandlerFunc {
+	script := redis.NewScript(redisRateLimitLuaScript)
+	windowMs := window.Milliseconds()
+	if windowMs <= 0 {
+		windowMs = 1000
+	}
+
+	return func(ctx *gin.Context) {
+		if rdb == nil {
+			// Redis 未注入时优雅降级放行
+			ctx.Next()
+			return
+		}
+
+		var identifier string
+		if len(keyFn) > 0 && keyFn[0] != nil {
+			identifier = keyFn[0](ctx)
+		} else {
+			identifier = ctx.ClientIP()
+		}
+
+		if identifier == "" {
+			identifier = "unknown"
+		}
+
+		fullKey := keyPrefix + identifier
+		nowMs := time.Now().UnixNano() / int64(time.Millisecond)
+
+		res, err := script.Run(ctx.Request.Context(), rdb, []string{fullKey}, nowMs, windowMs, maxRequests).Result()
+		if err != nil {
+			// Redis 异常时放行以保障可用性
+			ctx.Next()
+			return
+		}
+
+		if allowed, ok := res.(int64); ok && allowed == 1 {
+			ctx.Next()
+			return
+		}
+
+		retryAfter := int(math.Ceil(window.Seconds()))
+		if retryAfter < 1 {
+			retryAfter = 1
+		}
+		abortTooManyRequests(ctx, retryAfter)
+	}
+}
+
 // abortTooManyRequests 返回统一的 JSON 错误体并带上 Retry-After。
-// 不用 AbortWithStatus:那样 body 为空,与项目其它接口的 JSON 约定不一致,前端无法解析。
 func abortTooManyRequests(ctx *gin.Context, retryAfterSec int) {
 	if retryAfterSec < 1 {
 		retryAfterSec = 1

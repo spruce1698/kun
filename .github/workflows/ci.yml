@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, "feat/**" ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test-and-build:
+    name: Test & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Vet kun CLI
+        run: go vet ./...
+
+      - name: Test kun CLI & Pack Templates
+        run: go test -v ./...
+
+      - name: Build kun CLI
+        run: go build -v -o ./bin/kun .
+
+      - name: Test Basic Template
+        working-directory: ./tpl/basic
+        run: |
+          go test -v ./...
+          go build -o /dev/null ./cmd/server
+
+      - name: Test Advanced Template
+        working-directory: ./tpl/advanced
+        run: |
+          go test -v ./...
+          go build -o /dev/null ./cmd/server
+          go build -o /dev/null ./cmd/broker

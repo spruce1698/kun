@@ -18,6 +18,10 @@ vet:
 test:
 	go test ./...
 
+# 打包模板 zip 文件
+pack-tpl:
+	go test -run TestPackAndExtractTemplates ./internal/new/...
+
 # 格式化(仅脚手架自身代码,不含 tpl/ 生成目标模板)
 fmt:
 	gofmt -w main.go cmd/ internal/ config/ pkg/ tpl/embed.go

@@ -85,12 +85,15 @@ func NewHttp(
 	// 跨域
 	eng.Use(middleware.CORS(conf.Server.AllowOrigins))
 
+	// Prometheus 吞吐与耗时指标监控
+	eng.Use(middleware.Metrics(conf.Server.Name))
+
 	// 全局: 有 token 就解析写入 context,没有也放行(不强制)
 	// 配合各业务组的 Auth() 中间件实现"默认公开,显式加锁"
 	eng.Use(middleware.WriteAuth(conf, jwt))
 
 	// 全局限流: 每 IP 每分钟最多 600 次,超限封禁 1 分钟。
-	// 登录等敏感接口在各自路由上再叠加更严格的 RateLimiter。
+	// 登录等敏感接口在各自路由上再叠加更严格的 RateLimiter / RedisRateLimiter。
 	// 注意:状态在进程内存,多副本部署时实际阈值 = 该值 × 副本数;
 	// 需要精确全局限流请换成基于 Redis 的令牌桶。
 	eng.Use(middleware.RateLimiter(600, time.Minute, time.Minute))
@@ -100,6 +103,8 @@ func NewHttp(
 
 	// 探针路由
 	router.Ping(eng)
+	// Prometheus 监控指标端点
+	router.Metrics(eng)
 	// Swagger 路由 仅非生产环境启用
 	if conf.Env != xconfig.EnvRelease {
 		router.SwaggerRouter(eng)

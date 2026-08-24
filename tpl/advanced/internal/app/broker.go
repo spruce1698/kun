@@ -48,10 +48,11 @@ func NewBrokerHealth(conf *xconfig.Conf, log *xlog.Logger) *gin.Engine {
 		pprof.Register(engine)
 	}
 
-	// 接管gin框架默认的日志和捕获异常
+	// 接管gin框架默认的日志和捕获异常。
+	// Recovery 必须最先注册(位于中间件链最外层),否则 Tracing 自身 panic 时无人兜住。
 	engine.Use(
-		xlog.TracingWithLogger(log, conf.Broker.Name),
 		middleware.Recovery(conf.Env == xconfig.EnvDebug || conf.Env == xconfig.EnvTest), // 测试或开发环境
+		xlog.TracingWithLogger(log, conf.Broker.Name),
 	)
 
 	// 探针路由

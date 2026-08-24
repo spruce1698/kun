@@ -33,7 +33,7 @@ const (
 
 type (
 	Asynq struct {
-		Redis  asynq.RedisClientOpt
+		Redis  asynq.RedisConnOpt
 		client *asynq.Client
 	}
 	Task = asynq.Task
@@ -43,10 +43,18 @@ func New(conf *xconfig.Conf) *Asynq {
 	if len(conf.Redis.Source) == 0 {
 		panic("redis 配置错误")
 	}
-	opt := asynq.RedisClientOpt{
-		Addr:     conf.Redis.Source[0],
-		Password: conf.Redis.Password,
-		DB:       conf.Redis.DB,
+	var opt asynq.RedisConnOpt
+	if conf.Redis.Cluster {
+		opt = asynq.RedisClusterClientOpt{
+			Addrs:    conf.Redis.Source,
+			Password: conf.Redis.Password,
+		}
+	} else {
+		opt = asynq.RedisClientOpt{
+			Addr:     conf.Redis.Source[0],
+			Password: conf.Redis.Password,
+			DB:       conf.Redis.DB,
+		}
 	}
 	return &Asynq{
 		Redis:  opt,
@@ -158,10 +166,10 @@ type Provider struct {
 }
 
 // newRedisClient 创建一个底层 go-redis 客户端用于直接操作 Hash,调用方必须 Close。
-// asynq.RedisClientOpt.MakeRedisClient() 每次都 NewClient 一个全新连接,
+// asynq.RedisConnOpt.MakeRedisClient() 每次都 NewClient 一个全新连接,
 // 不 Close 会泄漏 fd/协程。原实现三处调用(SetCronPub/DelCronPub/GetConfigs)均未关闭,
 // 而 GetConfigs 被周期任务管理器按 SyncInterval(10s) 反复调用 -> 持续泄漏。
-func newRedisClient(opt asynq.RedisClientOpt) (goRedis.UniversalClient, func()) {
+func newRedisClient(opt asynq.RedisConnOpt) (goRedis.UniversalClient, func()) {
 	c := opt.MakeRedisClient().(goRedis.UniversalClient)
 	return c, func() { _ = c.Close() }
 }
@@ -207,7 +215,7 @@ func (a *Asynq) DelCronPub(taskName string) error {
 
 // 动态定时任务配置源
 type cfgProvider struct {
-	redis asynq.RedisClientOpt
+	redis asynq.RedisConnOpt
 }
 
 // 解析 redis set的配置并返回 PeriodicTaskConfig 列表
