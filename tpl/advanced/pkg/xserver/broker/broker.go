@@ -96,8 +96,9 @@ func New(conf *xconfig.Conf, log *xlog.Logger, db *xdb.Client, redis *xredis.Cli
 func (s *Server) Start() error {
 
 	// 是否是子进程
-	if isChild() {
+	if IsChild() {
 		s.childRun()
+		os.Exit(0)
 		return nil
 	}
 
@@ -242,15 +243,17 @@ func (s *Server) Stop(signal string) {
 
 		// 等待 supervisor 中 cmd.Wait() 返回并关闭 done;
 		// 不依赖 cmdExit 的投递时序(它可能因 cap=1 满了而投递失败)。
-		select {
-		case <-s.done:
-			s.logger.Warn("Broker child process exited")
-		case <-time.After(time.Second * 5):
-			s.logger.Warn("Broker child process shutdown timeout, killing")
-			_ = cmd.Process.Kill()
-			<-s.done
+		if s.done != nil {
+			select {
+			case <-s.done:
+				s.logger.Warn("Broker child process exited")
+			case <-time.After(time.Second * 5):
+				s.logger.Warn("Broker child process shutdown timeout, killing")
+				_ = cmd.Process.Kill()
+				<-s.done
+			}
 		}
-	} else {
+	} else if s.done != nil {
 		// 无子进程(启动失败或已退出),仍等待 supervisor 收尾,避免 close(stopCh) 竞态。
 		<-s.done
 	}
@@ -267,9 +270,12 @@ func (s *Server) Stop(signal string) {
 	}
 
 	// 4. 通知 supervisor 退出(若子进程是异常退出已 return,这里无影响)
-	close(s.stopCh)
+	if s.stopCh != nil {
+		close(s.stopCh)
+	}
 }
 
-func isChild() bool {
+// IsChild 判断当前是否为 broker 子进程
+func IsChild() bool {
 	return os.Getenv(ChildKey) == ChildVal
 }

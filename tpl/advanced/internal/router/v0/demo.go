@@ -20,6 +20,7 @@ func Demo(e *gin.Engine, jwt *token.Jwt, ctx *handler.Ctx) {
 	// api Demo路由
 	apiGroup := e.Group(global.RouterPrefixApi)
 	{
+
 		apiGroup.GET("/demo/:id", ctx.DemoHandler.Detail)
 		apiGroup.GET("/demo/list", ctx.DemoHandler.List)
 
@@ -28,8 +29,12 @@ func Demo(e *gin.Engine, jwt *token.Jwt, ctx *handler.Ctx) {
 		apiGroup.POST("/demo/delete", ctx.DemoHandler.Delete)
 		apiGroup.POST("/demo/softdelete", ctx.DemoHandler.SoftDelete)
 
+		apiGroup.GET("/demo/validate", ctx.DemoHandler.Validate)
+
 		apiGroup.GET("/demo/export", ctx.DemoHandler.Export)
+
 		apiGroup.GET("/demo/excel", ctx.DemoHandler.Excel)
+
 		apiGroup.GET("/demo/sse", ctx.DemoHandler.SSE)
 
 		apiGroup.POST("/demo/sendMsg", ctx.DemoHandler.SendMsg)

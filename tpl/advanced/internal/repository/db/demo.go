@@ -121,11 +121,13 @@ func (c *customDemoDb) ListWithMore(ctx context.Context, args *DemoSearch) ([]*D
 	var model *gorm.DB
 	switch {
 	case args.LastId > 0 && args.Page > 1: // 游标分页
+		cursorOrder := TableDemo + ".id DESC"
 		lastCond := "`id` < ?"
 		if args.OrderType == 1 {
+			cursorOrder = TableDemo + ".id ASC"
 			lastCond = "`id` > ?"
 		}
-		model = filter().Where(lastCond, args.LastId).Order(order).Limit(limit)
+		model = filter().Where(lastCond, args.LastId).Order(cursorOrder).Limit(limit)
 	case offset > 100000: // 深分页
 		subQuery := filter().Order(order).Select("id").Offset(offset).Limit(limit)
 		model = c.WithContext(ctx).Model(c.model).Order(order).Joins("INNER JOIN (?) AS tmp USING(id)", subQuery)

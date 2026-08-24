@@ -98,6 +98,10 @@ func NewJwt(conf *xconfig.Conf, redisCli *xredis.Client) (*Jwt, error) {
 	if len(conf.Token.Secret) < minSecretLen || len(conf.Token.RefreshSecret) < minSecretLen {
 		return nil, fmt.Errorf("token secret/refreshSecret 长度不足:至少 %d 字节(推荐 48 字节,即 HS384 的 384bit)", minSecretLen)
 	}
+	// gorilla/csrf 严格要求 CSRFKey 为 32 字节
+	if conf.Token.CSRFKey != "" && len(conf.Token.CSRFKey) != 32 {
+		return nil, fmt.Errorf("token csrfKey 长度必须为 32 字节(当前为 %d 字节),请检查配置", len(conf.Token.CSRFKey))
+	}
 	j := &Jwt{
 		ExpireTime:    2 * time.Hour,
 		RefreshTime:   24 * 7 * time.Hour,

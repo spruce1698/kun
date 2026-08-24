@@ -51,11 +51,10 @@ func NewPool(numWorkers, queueSize int) *Pool {
 // 若池已关闭(Shutdown/Wait 后),返回 ErrPoolClosed,不会 panic。
 func (p *Pool) AddTask(task Task) error {
 	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p.closed {
-		p.mu.Unlock()
 		return ErrPoolClosed
 	}
-	p.mu.Unlock()
 	p.taskQueue <- task
 	return nil
 }
@@ -64,7 +63,6 @@ func (p *Pool) AddTask(task Task) error {
 func (p *Pool) worker() {
 	defer p.wg.Done()
 	for task := range p.taskQueue {
-		fmt.Printf("Worker started task %d\n", task.ID)
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -73,7 +71,6 @@ func (p *Pool) worker() {
 			}()
 			task.Job()
 		}()
-		fmt.Printf("Worker finished task %d\n", task.ID)
 	}
 }
 
@@ -83,8 +80,8 @@ func (p *Pool) Shutdown() {
 	p.once.Do(func() {
 		p.mu.Lock()
 		p.closed = true
-		p.mu.Unlock()
 		close(p.taskQueue)
+		p.mu.Unlock()
 	})
 }
 

@@ -25,7 +25,11 @@ func AvailablePort() int64 {
 }
 
 func IPv42Int64(ip string) int64 {
-	b := net.ParseIP(ip).To4()
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return 0
+	}
+	b := parsed.To4()
 	if b == nil {
 		return 0
 	}

@@ -54,8 +54,8 @@ func (d *DemoHandler) Detail(ctx *gin.Context) {
 		return
 	}
 	type minMaxStruct struct {
-		Min string `form:"min" binding:"required,minNow"`
-		Max string `form:"max" binding:"required,maxNow"` // 自定义校验
+		Min string `form:"min" binding:"required,afterNow"`
+		Max string `form:"max" binding:"required,beforeNow"` // 自定义校验
 	}
 	var minMax minMaxStruct
 	if err := ctx.ShouldBind(&minMax); err != nil {
@@ -212,6 +212,30 @@ func (d *DemoHandler) SoftDelete(ctx *gin.Context) {
 		return
 	}
 	xhttp.Data(ctx, "SoftDelete Demo 成功", nil)
+}
+
+// @Summary Validate
+// @Description 示例：验证日期范围（min >= 今天，max <= 今天）
+// @Tags api
+// @Accept json
+// @Produce json
+// @Param min formData string true "最小日期(格式: YYYY-MM-DD)"
+// @Param max formData string true "最大日期(格式: YYYY-MM-DD)"
+// @Success 200 {string} string "{"code":0,"message":"demo-Demo成功","data":{"id":100,"name":"我是demo名称"}}"
+// @Failure 500 {string} string "{"code":50000,"message":"demo查询失败","data":""}"
+// @Router /demo/validate [get]
+func (d *DemoHandler) Validate(ctx *gin.Context) {
+	type minMaxStruct struct {
+		Min string `form:"min" json:"min" binding:"required,afterNow"`  // 必须 >= 今天 (格式: YYYY-MM-DD)
+		Max string `form:"max" json:"max" binding:"required,beforeNow"` // 必须 <= 今天 (格式: YYYY-MM-DD)
+	}
+	var minMax minMaxStruct
+	if err := ctx.ShouldBind(&minMax); err != nil {
+		// 当校验失败时，BusCode 会调用 validator.Message(err) 自动翻译为中文错误提示
+		xhttp.BusCode(ctx, xerror.ParamError, err)
+		return
+	}
+	xhttp.Data(ctx, "参数校验通过", minMax)
 }
 
 // @Summary Login

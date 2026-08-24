@@ -63,20 +63,25 @@ func NewSnowflake(centerID, workerID int64) (*Snowflake, error) {
 func (s *Snowflake) GenID() (int64, error) {
 	s.Lock()
 	defer s.Unlock()
-	now := time.Now().UnixNano() / 1e6 // 转毫秒
+	now := time.Now().UnixMilli()
+	if now < epoch {
+		return 0, fmt.Errorf("system clock is before epoch %d", epoch)
+	}
 	if now < s.timestamp {
 		if s.timestamp-now > 5 {
 			return 0, fmt.Errorf("%w: %dms", ErrClockBackwards, s.timestamp-now)
 		}
 		for now < s.timestamp {
-			now = time.Now().UnixNano() / 1e6
+			time.Sleep(time.Duration(s.timestamp-now) * time.Millisecond)
+			now = time.Now().UnixMilli()
 		}
 	}
 	if s.timestamp == now {
 		s.sequence = (s.sequence + 1) & sequenceMask
 		if s.sequence == 0 {
 			for now <= s.timestamp {
-				now = time.Now().UnixNano() / 1e6
+				time.Sleep(100 * time.Microsecond)
+				now = time.Now().UnixMilli()
 			}
 		}
 	} else {

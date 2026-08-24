@@ -25,9 +25,12 @@ var (
 		"pwd":           {},
 		"token":         {},
 		"secret":        {},
+		"secret_key":    {},
 		"authorization": {},
 		"api_key":       {},
 		"apikey":        {},
+		"appkey":        {},
+		"app_key":       {},
 		"access_token":  {},
 		"refresh_token": {},
 		"bearer":        {},
@@ -36,9 +39,6 @@ var (
 		"session":       {},
 		"cookie":        {},
 		// 加密密钥
-		"key":         {},
-		"cert":        {},
-		"private":     {},
 		"private_key": {},
 		"signing_key": {},
 		// 支付信息
@@ -46,7 +46,7 @@ var (
 		"card_number":  {},
 		"cvv":          {},
 		"cvc":          {},
-		"pin":          {},
+		"pin_code":     {},
 		"bank_account": {},
 		// 个人隐私
 		"id_card":  {},
@@ -64,7 +64,7 @@ var (
 	}
 
 	// 敏感字段正则表达式
-	sensitiveRegex = regexp.MustCompile(fmt.Sprintf(`(?i)(%s)["\']?\s*[:=]\s*["\']?([^"\'}\s&]+)`,
+	sensitiveRegex = regexp.MustCompile(fmt.Sprintf(`(?i)\b(%s)\b["\']?\s*[:=]\s*["\']?([^"\'}\s&]+)`,
 		strings.Join(mapKeysToSlice(sensitiveFields), "|")))
 )
 
@@ -346,8 +346,16 @@ func filterString(s string) string {
 
 func isSensitive(field string) bool {
 	field = strings.ToLower(field)
+	if _, ok := sensitiveFields[field]; ok {
+		return true
+	}
 	for sensitive := range sensitiveFields {
-		if strings.Contains(field, sensitive) {
+		if strings.HasPrefix(field, sensitive+"_") ||
+			strings.HasSuffix(field, "_"+sensitive) ||
+			strings.Contains(field, "_"+sensitive+"_") ||
+			strings.HasPrefix(field, sensitive+"-") ||
+			strings.HasSuffix(field, "-"+sensitive) ||
+			strings.Contains(field, "-"+sensitive+"-") {
 			return true
 		}
 	}

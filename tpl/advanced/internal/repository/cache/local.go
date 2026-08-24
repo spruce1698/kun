@@ -43,23 +43,12 @@ func (l *LocalCache) Set(key string, value any, expiration time.Duration) {
 	l.cache.Set(key, value, expiration)
 }
 
-// evict 先清理已过期条目;若仍超限,再删除一批(go-cache 无 LRU 元数据,
-// map 遍历顺序随机,因此这里是随机淘汰而非最近最少使用)。
-// 本地缓存只是 Redis 的前置副本,淘汰错了最多多一次 Redis 往返,不影响正确性。
+// evict 先清理已过期条目;若仍超限,则清空本地缓存重置。
+// 本地缓存只是 Redis 的前置 L1 副本,清理后由后续请求重新载入,避免 Items() 全量克隆 Map。
 func (l *LocalCache) evict() {
 	l.cache.DeleteExpired()
-	over := l.cache.ItemCount() - l.maxEntries
-	if over < 0 {
-		return
-	}
-	// 多删 1/8 容量作为缓冲,避免每次 Set 都触发淘汰。
-	target := over + 1 + l.maxEntries/8
-	for k := range l.cache.Items() {
-		if target <= 0 {
-			break
-		}
-		l.cache.Delete(k)
-		target--
+	if l.cache.ItemCount() >= l.maxEntries {
+		l.cache.Flush()
 	}
 }
 

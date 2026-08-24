@@ -72,16 +72,15 @@ func NewSnowflake(centerID, workerID int64) (*Snowflake, error) {
 func (s *Snowflake) GenID() (int64, error) {
 	s.Lock()
 	defer s.Unlock()
-	now := time.Now().UnixNano() / 1e6 // 转毫秒
+	now := time.Now().UnixMilli()
 	// 时钟回拨保护:当前时间小于上次记录的时间戳时,等待追平,避免生成重复/乱序 id。
 	// 回拨幅度过大(超过 5ms)直接返回错误,由调用方决定降级策略。
 	if now < s.timestamp {
 		if s.timestamp-now > 5 {
 			return 0, fmt.Errorf("%w: %dms", ErrClockBackwards, s.timestamp-now)
 		}
-		for now < s.timestamp {
-			now = time.Now().UnixNano() / 1e6
-		}
+		time.Sleep(time.Duration(s.timestamp-now) * time.Millisecond)
+		now = time.Now().UnixMilli()
 	}
 	if s.timestamp == now {
 		// 当同一时间戳（精度：毫秒）下多次生成id会增加序列号
@@ -90,7 +89,8 @@ func (s *Snowflake) GenID() (int64, error) {
 			// 如果当前序列超出12bit长度，则需要等待下一毫秒
 			// 下一毫秒将使用sequence:0
 			for now <= s.timestamp {
-				now = time.Now().UnixNano() / 1e6
+				time.Sleep(time.Millisecond)
+				now = time.Now().UnixMilli()
 			}
 		}
 	} else {

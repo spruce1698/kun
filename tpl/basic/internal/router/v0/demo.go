@@ -30,6 +30,6 @@ func Demo(e *gin.Engine, jwt *token.Jwt, ctx *handler.Ctx) {
 	// mgr Demo路由
 	mgrGroup := e.Group(global.RouterPrefixMgr).Use(middleware.Auth(jwt))
 	{
-		mgrGroup.GET("/demo", ctx.DemoHandler.Detail)
+		mgrGroup.GET("/demo/:id", ctx.DemoHandler.Detail)
 	}
 }

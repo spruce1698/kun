@@ -11,8 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"basic/pkg/encrypt"
@@ -54,8 +54,6 @@ const (
 )
 
 var (
-	reBearer = regexp.MustCompile(`(?i)Bearer `)
-
 	ErrInvalidSigningAlgorithm = newError("invalid signing algorithm", ErrorInvalidSigningAlgorithm)
 	ErrInvalidToken            = newError("token is invalid", ErrorInvalidToken)
 	ErrEmptyToken              = newError("token is empty", ErrorEmptyToken)
@@ -268,7 +266,10 @@ func (j *Jwt) Parse(ctx context.Context, tokenStr string, optType ...string) (*v
 		ctx = context.Background()
 	}
 	cTime := time.Now()
-	tokenStr = reBearer.ReplaceAllString(tokenStr, "")
+	tokenStr = strings.TrimSpace(tokenStr)
+	if len(tokenStr) >= 7 && strings.EqualFold(tokenStr[:7], "bearer ") {
+		tokenStr = strings.TrimSpace(tokenStr[7:])
+	}
 	if tokenStr == "" {
 		return nil, ErrEmptyToken
 	}

@@ -23,6 +23,10 @@ import (
 // Auth jwt授权
 func Auth(jwt *token.Jwt) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
+		if _, exists := ctx.Get(global.CtxAuthUserId); exists {
+			ctx.Next()
+			return
+		}
 		err := parsePayload(ctx, jwt)
 		if err != nil {
 			var e *token.Error
@@ -49,17 +53,18 @@ func Auth(jwt *token.Jwt) gin.HandlerFunc {
 // 可选授权
 func OptAuth(jwt *token.Jwt) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		_ = parsePayload(ctx, jwt)
+		if _, exists := ctx.Get(global.CtxAuthUserId); !exists {
+			_ = parsePayload(ctx, jwt)
+		}
 		ctx.Next()
 	}
 }
 
-// 如果有就写入授权
+// 如果有就写入授权(全局可选解析)
 func WriteAuth(conf *xconfig.Conf, jwt *token.Jwt) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		// 查找token
 		if tokenStr := jwt.Find(ctx.Request); tokenStr != "" {
-			ctx.Set(global.CtxAuthToken, tokenStr)
+			_ = parsePayload(ctx, jwt)
 		}
 		ctx.Next()
 	}

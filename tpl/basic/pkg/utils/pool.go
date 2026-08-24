@@ -27,7 +27,7 @@ type Pool struct {
 	wg        sync.WaitGroup
 	once      sync.Once
 	closed    bool
-	mu        sync.Mutex // 保护 closed
+	mu        sync.RWMutex // 读写锁保护 closed 与 taskQueue 发送
 }
 
 // 创建协程池
@@ -50,12 +50,11 @@ func NewPool(numWorkers, queueSize int) *Pool {
 // 队列满时会阻塞,直到有 worker 取走任务。
 // 若池已关闭(Shutdown/Wait 后),返回 ErrPoolClosed,不会 panic。
 func (p *Pool) AddTask(task Task) error {
-	p.mu.Lock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if p.closed {
-		p.mu.Unlock()
 		return ErrPoolClosed
 	}
-	p.mu.Unlock()
 	p.taskQueue <- task
 	return nil
 }
@@ -64,7 +63,6 @@ func (p *Pool) AddTask(task Task) error {
 func (p *Pool) worker() {
 	defer p.wg.Done()
 	for task := range p.taskQueue {
-		fmt.Printf("Worker started task %d\n", task.ID)
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -73,7 +71,6 @@ func (p *Pool) worker() {
 			}()
 			task.Job()
 		}()
-		fmt.Printf("Worker finished task %d\n", task.ID)
 	}
 }
 
@@ -83,8 +80,8 @@ func (p *Pool) Shutdown() {
 	p.once.Do(func() {
 		p.mu.Lock()
 		p.closed = true
-		p.mu.Unlock()
 		close(p.taskQueue)
+		p.mu.Unlock()
 	})
 }
 

@@ -2,9 +2,7 @@ package utils
 
 import (
 	"bufio"
-	"io"
 	"os"
-	"path"
 	"path/filepath"
 )
 
@@ -19,7 +17,7 @@ func CheckFileIsExist(fileName string) bool {
 
 // 创建目录
 func BuildDir(absDir string) error {
-	return os.MkdirAll(path.Dir(absDir), os.ModePerm) // 生成多级目录
+	return os.MkdirAll(filepath.Dir(absDir), os.ModePerm) // 生成多级目录
 }
 
 // 删除文件或文件夹
@@ -106,13 +104,9 @@ func ReadFile(fileName string) (src []string) {
 	}
 	defer f.Close()
 
-	rd := bufio.NewReader(f)
-	for {
-		line, _, rErr := rd.ReadLine()
-		if rErr != nil || io.EOF == rErr {
-			break
-		}
-		src = append(src, string(line))
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		src = append(src, scanner.Text())
 	}
 
 	return src

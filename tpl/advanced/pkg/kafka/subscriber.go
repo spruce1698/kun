@@ -58,12 +58,17 @@ func (s *Subscriber) Sub(ctx context.Context, topic, group string, handler func(
 	})
 	for {
 		msg, err := reader.ReadMessage(ctx)
-		if errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) {
+		if errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) || ctx.Err() != nil {
 			break
 		}
 		if err != nil {
-			klog.Printf("sub consume error: %v", err)
-			break
+			klog.Printf("sub consume error: %v, retrying...", err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+			}
+			continue
 		}
 		// 从消息 header 提取上游 trace context,启动 consumer span,
 		// 使"生产->消费"跨进程链路在同一 trace 下串联。
@@ -95,12 +100,17 @@ func (s *Subscriber) SubFetch(ctx context.Context, topic, group string, handler 
 		// io.EOF means sub closed
 		// io.ErrClosedPipe means committing messages on the sub,
 		// kafka will refire the messages on uncommitted messages, ignore
-		if errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) {
+		if errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) || ctx.Err() != nil {
 			break
 		}
 		if err != nil {
-			klog.Printf("subfetch consume error: %v", err)
-			break
+			klog.Printf("subfetch consume error: %v, retrying...", err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+			}
+			continue
 		}
 
 		// 从消息 header 提取上游 trace context,启动 consumer span 包裹处理逻辑。
@@ -160,7 +170,10 @@ func (s *Subscriber) getOrCreateReader(topic, group string, config kafkaGo.Reade
 		return v.(*kafkaGo.Reader)
 	}
 	reader := kafkaGo.NewReader(config)
-	actual, _ := s.box.LoadOrStore(key, reader)
+	actual, loaded := s.box.LoadOrStore(key, reader)
+	if loaded {
+		_ = reader.Close()
+	}
 	return actual.(*kafkaGo.Reader)
 }
 

@@ -33,7 +33,8 @@ const (
 
 type (
 	Asynq struct {
-		Redis asynq.RedisClientOpt
+		Redis  asynq.RedisClientOpt
+		client *asynq.Client
 	}
 	Task = asynq.Task
 )
@@ -42,16 +43,23 @@ func New(conf *xconfig.Conf) *Asynq {
 	if len(conf.Redis.Source) == 0 {
 		panic("redis 配置错误")
 	}
+	opt := asynq.RedisClientOpt{
+		Addr:     conf.Redis.Source[0],
+		Password: conf.Redis.Password,
+		DB:       conf.Redis.DB,
+	}
 	return &Asynq{
-		Redis: asynq.RedisClientOpt{Addr: conf.Redis.Source[0], Password: conf.Redis.Password},
+		Redis:  opt,
+		client: asynq.NewClient(opt),
 	}
 }
 
-// newClient 创建一个一次性 asynq.Client,调用方负责 Close。
-// 不再复用 *Asynq 上的共享 Client 字段:原实现每次 publish 都 a.Client = NewClient(...),
-// 并发 publish 会互相覆盖字段、且 defer Close 可能关闭另一协程正在使用的 client(数据竞争)。
-func (a *Asynq) newClient() *asynq.Client {
-	return asynq.NewClient(a.Redis)
+// Close 关闭底层 client 连接池
+func (a *Asynq) Close() error {
+	if a.client != nil {
+		return a.client.Close()
+	}
+	return nil
 }
 
 // 异步消息推送
@@ -64,14 +72,12 @@ func (a *Asynq) SyncPubCtx(ctx context.Context, queue, taskName, payload string)
 	if queue == "" {
 		queue = DefaultQueue
 	}
-	client := a.newClient()
-	defer func() { _ = client.Close() }()
 
 	ctx, span := startEnqueueSpan(ctx, taskName)
 	defer span.End()
 
 	task := asynq.NewTask(taskName, []byte(payload))
-	info, err := client.EnqueueContext(ctx, task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue))
+	info, err := a.client.EnqueueContext(ctx, task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue))
 	if err != nil {
 		span.RecordError(err)
 		return "", err
@@ -89,14 +95,12 @@ func (a *Asynq) DelayPubCtx(ctx context.Context, queue, taskName, payload string
 	if queue == "" {
 		queue = DefaultQueue
 	}
-	client := a.newClient()
-	defer func() { _ = client.Close() }()
 
 	ctx, span := startEnqueueSpan(ctx, taskName)
 	defer span.End()
 
 	task := asynq.NewTask(taskName, []byte(payload))
-	info, err := client.EnqueueContext(ctx, task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue), asynq.ProcessIn(after))
+	info, err := a.client.EnqueueContext(ctx, task, asynq.MaxRetry(RetryTime), asynq.Timeout(TimeOut), asynq.Queue(queue), asynq.ProcessIn(after))
 	if err != nil {
 		span.RecordError(err)
 		return "", err

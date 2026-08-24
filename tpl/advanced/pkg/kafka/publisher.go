@@ -33,7 +33,7 @@ func NewPublisher(conf *xconfig.Conf) *Publisher {
 	return &Publisher{
 		writer: &kafkaGo.Writer{
 			Addr:         kafkaGo.TCP(conf.Kafka.Brokers...),
-			Balancer:     &kafkaGo.LeastBytes{},
+			Balancer:     &kafkaGo.Hash{},
 			Compression:  kafkaGo.Snappy,        // 启用压缩
 			BatchTimeout: 50 * time.Millisecond, // linger.ms 如果消息的大小一直达不到batch.size设置的值，那么等待多久后任然允许发送消息
 			// 配置为消息体积，而非条数，单位为字节

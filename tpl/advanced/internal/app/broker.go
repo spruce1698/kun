@@ -26,14 +26,19 @@ import (
 	"advanced/pkg/xconfig"
 	"advanced/pkg/xlog"
 	"advanced/pkg/xserver"
+	"advanced/pkg/xserver/broker"
 
 	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
 )
 
 // NewBrokerHealth 装配 broker 父进程的健康探针 gin 引擎。
-// 由 broker.Server 负责创建 http.Server 并启动。
+// 由 broker.Server 负责创建 http.Server 并启动。子进程无需承载 HTTP 探针，直接跳过构建以节约资源并避免重复打印日志。
 func NewBrokerHealth(conf *xconfig.Conf, log *xlog.Logger) *gin.Engine {
+	if broker.IsChild() {
+		return nil
+	}
+
 	// 统一设置 gin 全局模式与输出,与 http server 保持一致,避免多实例重复覆盖全局状态。
 	xserver.InitGinMode(conf.Env)
 	engine := gin.New()

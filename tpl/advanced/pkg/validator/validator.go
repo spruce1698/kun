@@ -119,31 +119,46 @@ func translate(trans ut.Translator, fe vali10.FieldError) string {
 	return msg
 }
 
-// 以下是自定义校验函数  函数名,函数,错误信息
+// 自定义校验规则集合：{Tag标签, 校验函数, 错误提示模板}
 var customFuncSet = []customFunc{
-	{"minNow", afterNow, "参数:{0} 不能大于当前时间"},
-	{"maxNow", beforeNow, "参数:{0} 不能小于当前时间"},
+	// 历史/当前日期校验 (传入日期 <= 今天)
+	{"beforeNow", beforeNow, "参数:{0} 不能晚于今天"},
+	// 未来/当前日期校验 (传入日期 >= 今天)
+	{"afterNow", afterNow, "参数:{0} 不能早于今天"},
+	// 手机号格式校验
 	{"mobile", mobile, "参数:{0} 手机号号码不合法"},
 }
 
-// 自定义校验函数,参数日期不能小于今天
-func beforeNow(fl vali10.FieldLevel) bool {
-	field := fl.Field().String()
-	date, err := time.Parse("2006-01-02", field)
-	if err != nil {
-		return false
-	}
-	return time.Now().Before(date)
-}
-
-// 自定义校验函数,参数日期不能大于今天
+// afterNow 校验日期是否为「今天或未来日期」（date >= 今天 00:00:00）
+// 适用场景：预约开始日、任务计划生效日等不能选择过去日期的业务字段
 func afterNow(fl vali10.FieldLevel) bool {
 	field := fl.Field().String()
-	date, err := time.Parse("2006-01-02", field)
+	if field == "" {
+		return true // 空值由 required 标签负责
+	}
+	date, err := time.ParseInLocation("2006-01-02", field, time.Local)
 	if err != nil {
 		return false
 	}
-	return time.Now().After(date)
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	return !date.Before(todayStart)
+}
+
+// beforeNow 校验日期是否为「今天或历史日期」（date <= 今天 23:59:59）
+// 适用场景：生日、过去事件发生日、历史记录查询截止日等不能选择未来日期的业务字段
+func beforeNow(fl vali10.FieldLevel) bool {
+	field := fl.Field().String()
+	if field == "" {
+		return true // 空值由 required 标签负责
+	}
+	date, err := time.ParseInLocation("2006-01-02", field, time.Local)
+	if err != nil {
+		return false
+	}
+	now := time.Now()
+	todayEnd := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, time.Local)
+	return !date.After(todayEnd)
 }
 
 // 校验手机号

@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"database/sql/driver"
 	"fmt"
 	"strings"
 	"time"
@@ -183,16 +184,25 @@ func EndOfMonth(date time.Time) time.Time {
 	return firstDayOfNextMonth.Add(-time.Second)
 }
 
-// 该日期所在周的第一天
+// 该日期所在周的第一天(周一 00:00:00)
 func StartOfDayOfWeek(date time.Time) time.Time {
-	daysSinceSunday := int(date.Weekday())
-	return date.AddDate(0, 0, -daysSinceSunday+1)
+	weekday := int(date.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	d := date.AddDate(0, 0, -weekday+1)
+	return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, d.Location())
 }
 
-// 该日期所在周的最后一天。
+// 该日期所在周的最后一天(周日 23:59:59)
 func EndOfDayOfWeek(date time.Time) time.Time {
-	daysUntilSaturday := 7 - int(date.Weekday())
-	return date.AddDate(0, 0, daysUntilSaturday)
+	weekday := int(date.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	daysUntilSunday := 7 - weekday
+	d := date.AddDate(0, 0, daysUntilSunday)
+	return time.Date(d.Year(), d.Month(), d.Day(), 23, 59, 59, 0, d.Location())
 }
 
 // 获取给定月份每周的开始日和结束日
@@ -301,11 +311,61 @@ func (t *Time) UnmarshalJSON(data []byte) (err error) {
 	return fmt.Errorf("invalid time format: %s", tmp)
 }
 
-func (t *Time) MarshalJSON() ([]byte, error) {
+func (t Time) MarshalJSON() ([]byte, error) {
+	if t.IsZero() {
+		return []byte(`""`), nil
+	}
 	var stamp = fmt.Sprintf(`"%s"`, t.Format("2006-01-02 15:04:05"))
 	return []byte(stamp), nil
 }
 
-func (t *Time) String() string {
+func (t Time) String() string {
+	if t.IsZero() {
+		return ""
+	}
 	return t.Format("2006-01-02 15:04:05")
+}
+
+// Value 实现 driver.Valuer 接口,支持 GORM 写入数据库
+func (t Time) Value() (driver.Value, error) {
+	if t.IsZero() {
+		return nil, nil
+	}
+	return t.Time, nil
+}
+
+// Scan 实现 sql.Scanner 接口,支持 GORM 从数据库读取
+func (t *Time) Scan(v any) error {
+	if v == nil {
+		*t = Time{}
+		return nil
+	}
+	switch vt := v.(type) {
+	case time.Time:
+		*t = Time{vt}
+		return nil
+	case string:
+		parsed, err := time.ParseInLocation("2006-01-02 15:04:05", vt, time.Local)
+		if err != nil {
+			parsed, err = time.ParseInLocation("2006-01-02", vt, time.Local)
+		}
+		if err != nil {
+			return err
+		}
+		*t = Time{parsed}
+		return nil
+	case []byte:
+		s := string(vt)
+		parsed, err := time.ParseInLocation("2006-01-02 15:04:05", s, time.Local)
+		if err != nil {
+			parsed, err = time.ParseInLocation("2006-01-02", s, time.Local)
+		}
+		if err != nil {
+			return err
+		}
+		*t = Time{parsed}
+		return nil
+	default:
+		return fmt.Errorf("unsupported Scan, storing driver.Value type %T into type utils.Time", v)
+	}
 }

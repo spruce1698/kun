@@ -59,11 +59,24 @@ func New(conf *xconfig.Conf) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("初始化MySql数据库失败: %w", err)
 	}
+	connMaxLifetime := conf.Mysql.ConnMaxLifetime
+	if connMaxLifetime <= 0 {
+		connMaxLifetime = 3600 // 默认 1 小时
+	}
+
 	if len(conf.Mysql.Source) > 1 {
+		var replicas []gorm.Dialector
+		for _, src := range conf.Mysql.Source[1:] {
+			replicas = append(replicas, mysql.Open(src))
+		}
 		err = db.Use(dbresolver.Register(dbresolver.Config{
-			Replicas: []gorm.Dialector{mysql.Open(conf.Mysql.Source[1])},
+			Replicas: replicas,
 			Policy:   dbresolver.RandomPolicy{},
-		}))
+		}).
+			SetMaxIdleConns(conf.Mysql.MaxIdleConns).
+			SetMaxOpenConns(conf.Mysql.MaxOpenConns).
+			SetConnMaxLifetime(time.Duration(connMaxLifetime) * time.Second).
+			SetConnMaxIdleTime(time.Minute * 10))
 		if err != nil {
 			return nil, fmt.Errorf("初始化从数据库失败: %w", err)
 		}
@@ -81,11 +94,6 @@ func New(conf *xconfig.Conf) (*Client, error) {
 	}
 	sqlDB.SetMaxIdleConns(conf.Mysql.MaxIdleConns) // 设置空闲连接池中连接的最大数量
 	sqlDB.SetMaxOpenConns(conf.Mysql.MaxOpenConns) // 设置打开连接池中连接的最大数量
-	// 设置了连接可复用的最大时间，默认1小时，避免 MySQL wait_timeout 断开空闲连接
-	connMaxLifetime := conf.Mysql.ConnMaxLifetime
-	if connMaxLifetime <= 0 {
-		connMaxLifetime = 3600 // 默认 1 小时
-	}
 	sqlDB.SetConnMaxLifetime(time.Duration(connMaxLifetime) * time.Second)
 	// 限制空闲连接最大存活时间,避免长期空闲的连接被 MySQL wait_timeout 单方面关闭后,
 	// 下次复用时拿到坏连接报 bad connection。

@@ -41,6 +41,7 @@ func New(conf *xconfig.Conf, logger *xlog.Logger) (*Client, error) {
 		client = redis.NewClient(&redis.Options{
 			Addr:     conf.Redis.Source[0],
 			Password: conf.Redis.Password, // no password set
+			DB:       conf.Redis.DB,       // redis db 索引
 			PoolSize: conf.Redis.PoolSize, // 连接池大小
 		})
 	}

@@ -70,11 +70,14 @@ func RateLimiter(maxAttempts int, window, cooldown time.Duration) gin.HandlerFun
 
 		mu.Lock()
 		// 检查是否在封禁中
-		if until, ok := banned[ip]; ok && time.Now().Before(until) {
-			retryAfter := int(time.Until(until).Seconds()) + 1
-			mu.Unlock()
-			abortTooManyRequests(ctx, retryAfter)
-			return
+		if until, ok := banned[ip]; ok {
+			if time.Now().Before(until) {
+				retryAfter := int(time.Until(until).Seconds()) + 1
+				mu.Unlock()
+				abortTooManyRequests(ctx, retryAfter)
+				return
+			}
+			delete(banned, ip)
 		}
 
 		r, ok := records[ip]

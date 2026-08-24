@@ -158,12 +158,14 @@ func (d *demoSvc) FindList(ctx context.Context, args *DemoListArgs) ([]*Demo, in
 		return nil, 0, xerror.NewError(ctx, xerror.BusinessError, "Get Demo List 失败", listErr)
 	}
 	result := make([]*Demo, 0, len(list))
-	if len(list) > 0 {
-		for _, demo := range list {
-			var item Demo
-			_ = copier.Copy(&item, demo)
-			result = append(result, &item)
-		}
+	for _, demo := range list {
+		result = append(result, &Demo{
+			Id:     demo.Id,
+			Name:   demo.Name,
+			Test1:  demo.Test1,
+			Test4:  demo.Test4,
+			RoleId: demo.RoleId,
+		})
 	}
 	return result, total, nil
 }
@@ -535,6 +537,7 @@ func (d *demoSvc) WS(ctx context.Context, conn *websocket.Conn) error {
 				}
 				if err := conn.WriteMessage(out.msgType, out.payload); err != nil {
 					xlog.Error(ctx, "websocket write failed", err)
+					writeCancel()
 					return
 				}
 			}

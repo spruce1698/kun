@@ -34,10 +34,15 @@ func NewPub(conf *xconfig.Conf, log *xlog.Logger) *Pub {
 	}
 }
 
-// Close 关闭底层 kafka Writer 等资源,应在进程退出前调用。
+// Close 关闭底层 kafka Writer 和 asynq Client 等资源,应在进程退出前调用。
 func (p *Pub) Close() {
 	if err := p.kQueue.Close(); err != nil {
 		p.logger.Warn(fmt.Sprintf("kafka publisher close err: %v", err))
+	}
+	if p.aQueue != nil {
+		if err := p.aQueue.Close(); err != nil {
+			p.logger.Warn(fmt.Sprintf("asynq publisher close err: %v", err))
+		}
 	}
 }
 

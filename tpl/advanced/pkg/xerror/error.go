@@ -80,7 +80,9 @@ func errCode(err error) string {
 	s := base36Encode(binary.BigEndian.Uint64(h[:8]) & 0xFFFFF)
 	// 手动补零到4位（fmt %04s 对字符串无效，会补空格而非零）
 	if len(s) < 4 {
-		s = "0000"[4-len(s):] + s
+		s = "0000"[:4-len(s)] + s
+	} else if len(s) > 4 {
+		s = s[:4]
 	}
 	return errCodeReplacer.Replace(s)
 }
