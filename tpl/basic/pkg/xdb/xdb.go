@@ -76,6 +76,8 @@ func New(conf *xconfig.Conf) (*Client, error) {
 				SkipInitializeWithVersion: true,
 			}))
 		}
+		// dbresolver 连接池设置作用于从库副本(Replicas)连接池;
+		// 主库连接池由下方的 sqlDB 直接设置,两者作用域不同,分属不同连接池。
 		err = db.Use(dbresolver.Register(dbresolver.Config{
 			Replicas: replicas,
 			Policy:   dbresolver.RandomPolicy{},
@@ -94,7 +96,7 @@ func New(conf *xconfig.Conf) (*Client, error) {
 		return nil, fmt.Errorf("初始化MySql tracing插件失败: %w", err)
 	}
 
-	// 设置连接池
+	// 设置主库底层 sql.DB 连接池(若未启用 dbresolver,这也是唯一生效的连接池)
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, fmt.Errorf("获取sql.DB失败: %w", err)

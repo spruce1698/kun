@@ -17,7 +17,7 @@ func CheckFileIsExist(fileName string) bool {
 
 // 创建目录
 func BuildDir(absDir string) error {
-	return os.MkdirAll(filepath.Dir(absDir), os.ModePerm) // 生成多级目录
+	return os.MkdirAll(filepath.Dir(absDir), 0755) // 生成多级目录
 }
 
 // 删除文件或文件夹
@@ -73,10 +73,10 @@ func SaveToFile(fileName string, src []string, isClear bool) bool {
 
 // 写入文件
 func WriteFile(fileName string, src []string, isClear bool) bool {
-	BuildDir(fileName)
+	_ = BuildDir(fileName)
 	flag := os.O_CREATE | os.O_WRONLY | os.O_TRUNC
 	if !isClear {
-		flag = os.O_CREATE | os.O_RDWR | os.O_APPEND
+		flag = os.O_CREATE | os.O_WRONLY | os.O_APPEND
 	}
 	f, err := os.OpenFile(fileName, flag, 0666)
 	if err != nil {
@@ -88,7 +88,7 @@ func WriteFile(fileName string, src []string, isClear bool) bool {
 		if _, err := f.WriteString(v); err != nil {
 			return false
 		}
-		if _, err := f.WriteString("\r\n"); err != nil {
+		if _, err := f.WriteString("\n"); err != nil {
 			return false
 		}
 	}

@@ -36,6 +36,9 @@ var CmdRun = &cobra.Command{
 	Example: "kun run cmd",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cmdArgs, programArgs := helper.SplitArgs(cmd, args)
+		if len(cmdArgs) > 1 {
+			return fmt.Errorf("accepts at most 1 arg, use '--' to pass arguments to the program, e.g. kun run cmd -- -flag")
+		}
 		var dir string
 		if len(cmdArgs) > 0 {
 			dir = cmdArgs[0]
@@ -124,33 +127,44 @@ func watch(dir string, programArgs []string) {
 
 	var (
 		cmd        *exec.Cmd
-		cmdExit    = make(chan error, 1)
+		cmdExit    chan error
+		cmdDone    chan struct{}
 		timer      *time.Timer
 		debounce   = 300 * time.Millisecond
-		restarting bool
+		trigger    = make(chan string, 1)
+		restarting = false
 	)
 
-	restart := func() {
+	restart := func(source string) {
+		if source != "" {
+			output.Success("file modified: %s, restarting...", source)
+		}
 		if cmd != nil && cmd.Process != nil {
+			restarting = true
 			_ = killProcessGroup(cmd)
-			waitProcessExit(cmd)
-			// 清空历史退出信号
-			select {
-			case <-cmdExit:
-			default:
+			if cmdDone != nil {
+				select {
+				case <-cmdDone:
+				case <-time.After(3 * time.Second):
+					output.Warn("old process (pid %d) did not exit within 3s, new process may fail to bind ports", cmd.Process.Pid)
+				}
 			}
 		}
+		cmdExit = make(chan error, 1)
+		cmdDone = make(chan struct{})
 		cmd = start(dir, programArgs)
 		if cmd != nil {
-			go func(c *exec.Cmd) {
-				cmdExit <- c.Wait()
-			}(cmd)
+			go func(c *exec.Cmd, exitCh chan error, doneCh chan struct{}) {
+				err := c.Wait()
+				exitCh <- err
+				close(doneCh)
+			}(cmd, cmdExit, cmdDone)
 		}
 		restarting = false
 	}
 
 	// 首次启动
-	restart()
+	restart("")
 
 	// Loop listening file modification
 	for {
@@ -167,29 +181,31 @@ func watch(dir string, programArgs []string) {
 			output.Success("server exiting...")
 			return
 
+		case src := <-trigger:
+			restart(src)
+
 		case event := <-watcher.Events:
-			// 文件被修改或删除时防抖重启
-			if event.Op&fsnotify.Write == fsnotify.Write ||
-				event.Op&fsnotify.Remove == fsnotify.Remove {
+			// 文件被修改、删除、创建、重命名（支持原子保存）时防抖重启
+			if event.Op&(fsnotify.Write|fsnotify.Remove|fsnotify.Create|fsnotify.Rename) != 0 {
+				if fi, fiErr := os.Stat(event.Name); fiErr == nil && fi.IsDir() {
+					if !helper.IsExcluded(event.Name, excludeDirArr) {
+						_ = watcher.Add(event.Name)
+					}
+					continue
+				}
 				if !shouldRestart(event.Name) {
 					continue
 				}
 				if timer != nil {
 					timer.Stop()
 				}
+				evtName := event.Name
 				timer = time.AfterFunc(debounce, func() {
-					output.Success("file modified: %s, restarting...", event.Name)
-					restart()
+					select {
+					case trigger <- evtName:
+					default:
+					}
 				})
-			}
-			// 新建目录时加入 watcher，使其内部文件也被监听
-			if event.Op&fsnotify.Create == fsnotify.Create {
-				if helper.IsExcluded(event.Name, excludeDirArr) {
-					continue
-				}
-				if fi, fiErr := os.Stat(event.Name); fiErr == nil && fi.IsDir() {
-					_ = watcher.Add(event.Name)
-				}
 			}
 		case err := <-watcher.Errors:
 			output.Error("Error: %s", err)
@@ -218,22 +234,6 @@ func shouldRestart(name string) bool {
 		}
 	}
 	return false
-}
-
-// waitProcessExit 等待进程组退出，避免端口/资源尚未释放就重启导致冲突。
-func waitProcessExit(cmd *exec.Cmd) {
-	if cmd == nil || cmd.Process == nil {
-		return
-	}
-	done := make(chan struct{})
-	go func() {
-		_ = cmd.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-	}
 }
 
 func isProcessRunning(cmd *exec.Cmd) bool {

@@ -27,10 +27,21 @@ type (
 		Set(ctx context.Context, id int64, data *Demo, expiration int64) (err error)
 		// 删除缓存(Redis + 本地),用于数据更新/删除后失效缓存
 		Delete(ctx context.Context, id int64) error
+
+		// SetWSTicket 存储 WebSocket 一次性升级票据
+		SetWSTicket(ctx context.Context, ticket string, userId, roleId int64, ttl time.Duration) error
+		// ConsumeWSTicket 原子校验并消费票据(单次有效)
+		ConsumeWSTicket(ctx context.Context, ticket string) (userId, roleId int64, err error)
 	}
 	demoCache struct {
 		common     *xredis.Client
 		localCache *LocalCache
+	}
+
+	// WSTicketPayload WebSocket 升级票据载荷
+	WSTicketPayload struct {
+		UserId int64 `json:"user_id"`
+		RoleId int64 `json:"role_id"`
 	}
 
 	//  Demo缓存数据
@@ -126,8 +137,24 @@ func (d *demoCache) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// TODO Warmup 缓存预热
-func (d *demoCache) Warmup(ctx context.Context) error {
+func (d *demoCache) SetWSTicket(ctx context.Context, ticket string, userId, roleId int64, ttl time.Duration) error {
+	data, err := json.Marshal(&WSTicketPayload{UserId: userId, RoleId: roleId})
+	if err != nil {
+		return err
+	}
+	key := fmt.Sprintf(WSTicketKey, ticket)
+	return d.common.Set(ctx, key, data, ttl).Err()
+}
 
-	return nil
+func (d *demoCache) ConsumeWSTicket(ctx context.Context, ticket string) (userId, roleId int64, err error) {
+	key := fmt.Sprintf(WSTicketKey, ticket)
+	val, err := d.common.GetDel(ctx, key).Result()
+	if err != nil {
+		return 0, 0, err
+	}
+	var p WSTicketPayload
+	if err := json.Unmarshal([]byte(val), &p); err != nil {
+		return 0, 0, err
+	}
+	return p.UserId, p.RoleId, nil
 }

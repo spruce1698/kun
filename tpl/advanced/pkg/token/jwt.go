@@ -272,12 +272,12 @@ func (j *Jwt) Parse(ctx context.Context, tokenStr string, optType ...string) (*v
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if len(tokenStr) >= 7 && (strings.HasPrefix(tokenStr, "Bearer ") || strings.HasPrefix(tokenStr, "bearer ")) {
-		tokenStr = tokenStr[7:]
-	} else if reBearer.MatchString(tokenStr) {
-		tokenStr = reBearer.ReplaceAllString(tokenStr, "")
-	}
 	tokenStr = strings.TrimSpace(tokenStr)
+	// 精确匹配 "Bearer "（7 字节，含空格），不依赖 TrimSpace 去掉空格，
+	// 避免 token 本身以空格开头时被误截；EqualFold 兼容大小写变体。
+	if len(tokenStr) > 7 && strings.EqualFold(tokenStr[:7], "bearer ") {
+		tokenStr = tokenStr[7:]
+	}
 	if tokenStr == "" {
 		return nil, ErrEmptyToken
 	}

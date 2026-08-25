@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"unicode"
 
 	"github.com/spf13/cobra"
 	"github.com/spruce1698/kun/internal/create/kernel"
@@ -200,7 +201,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	c.TplPath, _ = cmd.Flags().GetString("tpl-path")
 	c.Force, _ = cmd.Flags().GetBool("force")
 
-	c.CmdType = cmd.Use
+	c.CmdType = cmd.Name()
 	arg := args[0]
 	if c.CmdType == "svc" || c.CmdType == "hs" {
 		if strings.HasPrefix(strings.ToLower(arg), "svc/") {
@@ -210,9 +211,15 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		}
 	}
 	c.FilePath, c.FileName = filepath.Split(arg)
-	c.FileName = strings.ReplaceAll(strings.ToUpper(string(c.FileName[0]))+c.FileName[1:], ".go", "")
-	c.FileNameTitleLower = strings.ToLower(string(c.FileName[0])) + c.FileName[1:]
-	c.FileNameFirstChar = string(c.FileNameTitleLower[0])
+	cleanName := strings.TrimSuffix(c.FileName, ".go")
+	cleanName = strings.TrimSpace(cleanName)
+	if cleanName == "" {
+		return fmt.Errorf("name argument %q cannot be empty or resolve to an empty name", arg)
+	}
+	runes := []rune(cleanName)
+	c.FileName = string(unicode.ToUpper(runes[0])) + string(runes[1:])
+	c.FileNameTitleLower = string(unicode.ToLower(runes[0])) + string(runes[1:])
+	c.FileNameFirstChar = string(unicode.ToLower(runes[0]))
 
 	switch c.CmdType {
 	case "hdl":
@@ -312,7 +319,7 @@ func (c *Create) generateFile() error {
 		return fmt.Errorf("create %s error: %w", c.CreateType, err)
 	}
 	if existed {
-		output.Warn("warn: file %s%s %s", absLinuxPath, fileName, "already exists.")
+		output.Warn("warn: file %s%s already exists.", absLinuxPath, fileName)
 		return nil
 	}
 	defer func(f *os.File) {
@@ -320,6 +327,8 @@ func (c *Create) generateFile() error {
 	}(f)
 
 	if err = t.Execute(f, c); err != nil {
+		_ = f.Close()
+		_ = os.Remove(filepath.Join(filePath, fileName))
 		return fmt.Errorf("create %s error: %w", c.CreateType, err)
 	}
 	output.Success("created new %s: %s", c.CreateType, filepath.Join(absLinuxPath, fileName))

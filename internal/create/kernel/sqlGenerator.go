@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,7 +10,6 @@ import (
 	"regexp"
 	"strings"
 	"text/template"
-	"unicode"
 
 	"github.com/spruce1698/kun/pkg/output"
 	"github.com/spruce1698/kun/tpl"
@@ -172,7 +172,7 @@ func (g *Generator) AddRepoMeta(meta *StructMeta) {
 		return
 	}
 	g.repos[meta.StructName] = meta
-	output.Success("got %d columns from table <%s", len(meta.Fields), meta.TableName)
+	output.Success("got %d columns from table <%s>", len(meta.Fields), meta.TableName)
 }
 
 // Generate db repository by table name
@@ -184,7 +184,7 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 		return nil, fmt.Errorf("repo name %q is invalid: %w", structName, err)
 	}
 
-	fileName := string(unicode.ToLower(rune(structName[0]))) + structName[1:]
+	fileName := toLowerCamel(structName)
 
 	columns, err := g.getTableColumns(tableName)
 	if err != nil || len(columns) == 0 {
@@ -193,6 +193,8 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 
 	primaryKeyType := "int64"
 	fields := make([]*Field, 0, len(columns))
+	seenFields := make(map[string]string)
+	seenJSON := make(map[string]string)
 	for _, col := range columns {
 		m := col.ToField(g.Conf.FieldNullable, g.Conf.FieldCoverable, g.Conf.FieldSignable)
 		if t, ok := col.ColumnType.ColumnType(); ok && !g.Conf.FieldWithTypeTag { // remove type tag if FieldWithTypeTag == false
@@ -204,7 +206,20 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 			primaryKeyType = m.Type
 		}
 		// json 小驼峰
-		m.JSONTag = strings.ToLower(m.Name[:1]) + m.Name[1:]
+		m.JSONTag = toLowerCamel(m.Name)
+
+		if prevCol, exists := seenFields[m.Name]; exists {
+			output.Warn("table %q 中列 %q 与 %q 映射到重复的 Go 字段名 %q", tableName, prevCol, m.ColumnName, m.Name)
+		} else {
+			seenFields[m.Name] = m.ColumnName
+		}
+		if m.JSONTag != "" && m.JSONTag != "-" {
+			if prevCol, exists := seenJSON[m.JSONTag]; exists {
+				output.Warn("table %q 中列 %q 与 %q 映射到重复的 JSON tag %q", tableName, prevCol, m.ColumnName, m.JSONTag)
+			} else {
+				seenJSON[m.JSONTag] = m.ColumnName
+			}
+		}
 
 		fields = append(fields, m)
 	}
@@ -316,6 +331,7 @@ func (g *Generator) generateRepoFile() error {
 		return fmt.Errorf("create repository pkg path(%s) fail: %w", repoOutPath, err)
 	}
 
+	var diErrs []error
 	for _, data := range g.repos {
 		if data == nil {
 			continue
@@ -339,17 +355,18 @@ func (g *Generator) generateRepoFile() error {
 		}
 
 		contentMap := map[string]string{
-			"// ==== Add Repo before this line, don't edit this line.====": "    " + data.PackageName + ".New" + data.StructName + "Db,",
+			"// ==== Add Repo before this line, don't edit this line.====": "\t" + data.PackageName + ".New" + data.StructName + "Db,",
 		}
 		err = Wire2DIFile(repoOutPath, contentMap)
 		if err != nil {
 			output.Error("generate db repository insert New%sDb to DI file error: %s", data.StructName, err)
+			diErrs = append(diErrs, fmt.Errorf("table %s insert to DI file error: %w", data.TableName, err))
 			continue
 		}
 		output.Success("generate db repository insert New%sDb to DI file", data.StructName)
 	}
 
-	return nil
+	return errors.Join(diErrs...)
 }
 
 func (g *Generator) getRepoOutputPath() (outPath string, err error) {
@@ -505,6 +522,7 @@ func (c *Column) ToField(nullable, coverable, signable bool) *Field {
 
 	var commentTag string
 	if ct, ok := c.Comment(); ok {
+		ct = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(ct)
 		commentTag = fmt.Sprintf("// %s", ct)
 	}
 

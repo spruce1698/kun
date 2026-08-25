@@ -1,12 +1,12 @@
 package middleware
 
 import (
+	"context"
 	"math"
-	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
+	"advanced/pkg/xhttp"
 	"advanced/pkg/xredis"
 
 	"github.com/gin-gonic/gin"
@@ -48,8 +48,14 @@ end
 )
 
 // RateLimiter 基于 IP 的单机内存滑动窗口限流中间件(分段锁降低并发冲突,值类型降低堆分配)
-// maxAttempts: 窗口内最大允许次数; window: 时间窗口; cooldown: 超限后封禁时长
-func RateLimiter(maxAttempts int, window, cooldown time.Duration) gin.HandlerFunc {
+// maxAttempts: 窗口内最大允许次数; window: 时间窗口; cooldown: 超限后封禁时长;
+// cancelCtx: 可选的上下文,用于控制内部清理 goroutine 生命周期,进程退出或测试结束时取消即可。
+func RateLimiter(maxAttempts int, window, cooldown time.Duration, cancelCtx ...context.Context) gin.HandlerFunc {
+	ctx := context.Background()
+	if len(cancelCtx) > 0 && cancelCtx[0] != nil {
+		ctx = cancelCtx[0]
+	}
+
 	const numShards = 16
 	type shard struct {
 		mu      sync.Mutex
@@ -74,36 +80,42 @@ func RateLimiter(maxAttempts int, window, cooldown time.Duration) gin.HandlerFun
 		return &shards[h%numShards]
 	}
 
-	// 定期清理协程
+	// 定期清理协程——监听 ctx.Done() 退出，防止测试场景下 goroutine + Ticker 泄漏。
+	// 生产环境中，ctx 由 app.NewHttp 注册进 xserver.Closer，进程退出时统一取消。
 	go func() {
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
-		for range ticker.C {
-			now := time.Now()
-			for i := 0; i < numShards; i++ {
-				s := &shards[i]
-				s.mu.Lock()
-				for ip, t := range s.banned {
-					if now.After(t) {
-						delete(s.banned, ip)
-					}
-				}
-				for ip, r := range s.records {
-					if now.Sub(r.firstSeen) > window {
-						delete(s.records, ip)
-					}
-				}
-				if len(s.records) > maxRateLimitEntries/numShards {
-					half := len(s.records) / 2
-					for ip := range s.records {
-						delete(s.records, ip)
-						half--
-						if half <= 0 {
-							break
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				now := time.Now()
+				for i := 0; i < numShards; i++ {
+					s := &shards[i]
+					s.mu.Lock()
+					for ip, t := range s.banned {
+						if now.After(t) {
+							delete(s.banned, ip)
 						}
 					}
+					for ip, r := range s.records {
+						if now.Sub(r.firstSeen) > window {
+							delete(s.records, ip)
+						}
+					}
+					if len(s.records) > maxRateLimitEntries/numShards {
+						half := len(s.records) / 2
+						for ip := range s.records {
+							delete(s.records, ip)
+							half--
+							if half <= 0 {
+								break
+							}
+						}
+					}
+					s.mu.Unlock()
 				}
-				s.mu.Unlock()
 			}
 		}
 	}()
@@ -211,12 +223,5 @@ func RedisRateLimiter(
 
 // abortTooManyRequests 返回统一的 JSON 错误体并带上 Retry-After。
 func abortTooManyRequests(ctx *gin.Context, retryAfterSec int) {
-	if retryAfterSec < 1 {
-		retryAfterSec = 1
-	}
-	ctx.Header("Retry-After", strconv.Itoa(retryAfterSec))
-	ctx.AbortWithStatusJSON(http.StatusTooManyRequests, map[string]any{
-		"code":    http.StatusTooManyRequests,
-		"message": "请求过于频繁,请稍后重试",
-	})
+	xhttp.RateLimitFail(ctx, retryAfterSec)
 }

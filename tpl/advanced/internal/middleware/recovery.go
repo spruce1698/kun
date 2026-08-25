@@ -74,10 +74,13 @@ func Recovery(verbose bool) gin.HandlerFunc {
 
 				// 堆栈始终记录:生产环境没有堆栈的 panic 日志几乎无法定位问题。
 				// verbose 只决定是否把堆栈也返回给客户端(绝不能在生产回显)。
+				// 缓存 stack 结果:两次调用 debug.Stack() 返回不同时刻的帧,
+				// verbose 模式下响应体与日志中的堆栈会不一致,给定位造成困惑。
+				stack := debug.Stack()
 				xlog.Error(lCtx, "[Recovery from panic]", panicErr, map[string]any{
 					"request": string(httpRequest),
 					"url":     ctx.Request.URL.Path,
-					"stack":   string(debug.Stack()),
+					"stack":   string(stack),
 				})
 
 				body := map[string]any{
@@ -86,7 +89,7 @@ func Recovery(verbose bool) gin.HandlerFunc {
 				}
 				if verbose {
 					body["error"] = panicErr.Error()
-					body["stack"] = string(debug.Stack())
+					body["stack"] = string(stack)
 				}
 				// 返回统一 JSON 错误体,避免客户端收到空 500。
 				// 若 header 已写出(tracing/handler 已写部分响应),WriteHeaderString 会告警但不崩。

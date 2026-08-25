@@ -60,6 +60,12 @@ func run(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("accepts %d arg(s), received %d", 1, len(args))
 	}
 
+	p.ProjectName = strings.TrimSpace(p.ProjectName)
+	if p.ProjectName == "." || p.ProjectName == ".." || filepath.IsAbs(p.ProjectName) ||
+		strings.ContainsAny(p.ProjectName, `/\`) {
+		return fmt.Errorf("invalid project name %q: must be a relative directory name without path separators", p.ProjectName)
+	}
+
 	// clone repo
 	yes, err := p.cloneTemplate()
 	if err != nil || !yes {
@@ -141,8 +147,9 @@ func (p *Project) cloneTemplate() (bool, error) {
 	} else { // clone from repoURL
 		output.Success("git clone %s", repoURL)
 		cmd := exec.Command("git", "clone", repoURL, p.ProjectName)
-		if _, err := cmd.CombinedOutput(); err != nil {
-			return false, fmt.Errorf("git clone %s error: %w", repoURL, err)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return false, fmt.Errorf("git clone %s error: %w\n%s", repoURL, err, string(out))
 		}
 	}
 	return true, nil
@@ -160,8 +167,9 @@ func (p *Project) replacePackageName() error {
 
 	cmd := exec.Command("go", "mod", "edit", "-module", p.ProjectName)
 	cmd.Dir = p.ProjectName
-	if _, err = cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("go mod edit error: %w", err)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("go mod edit error: %w\n%s", err, string(out))
 	}
 	return nil
 }
@@ -169,6 +177,8 @@ func (p *Project) modTidy() error {
 	output.Success("go mod tidy")
 	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Dir = p.ProjectName
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("go mod tidy error: %w", err)
 	}

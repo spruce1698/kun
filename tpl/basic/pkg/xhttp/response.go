@@ -9,6 +9,7 @@ package xhttp
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"basic/pkg/validator"
 	"basic/pkg/xerror"
@@ -42,13 +43,24 @@ type (
 	}
 )
 
-// TooRequest 请求繁忙
-func TooRequest(ctx *gin.Context) {
-	r := &Response{
-		Code:    http.StatusServiceUnavailable,
-		Message: "Too many request.",
+// RateLimitFail 请求过于频繁(429 Too Many Requests)
+func RateLimitFail(ctx *gin.Context, retryAfterSec int) {
+	if retryAfterSec < 1 {
+		retryAfterSec = 1
 	}
-	ctx.JSON(http.StatusServiceUnavailable, r)
+	ctx.Header("Retry-After", strconv.Itoa(retryAfterSec))
+	ctx.AbortWithStatusJSON(http.StatusTooManyRequests, &RespData[string]{
+		Response: Response{
+			Code:    http.StatusTooManyRequests,
+			Message: "请求过于频繁,请稍后重试",
+		},
+		Data: "",
+	})
+}
+
+// TooRequest 请求繁忙(兼容旧签名)
+func TooRequest(ctx *gin.Context) {
+	RateLimitFail(ctx, 1)
 }
 
 // AuthFail 未授权。返回 HTTP 401(标准语义) + 业务 code,前端按业务 code 处理。
@@ -80,22 +92,38 @@ func WithNotFoundPath(ctx *gin.Context) {
 	ctx.JSON(http.StatusNotFound, r)
 }
 
-// BusFail 业务错误
-// 统一记录错误日志(含 trace_id/span_id),仅 xerror.Error 类型向客户端暴露 message; 其余错误返回通用掩码。
-func BusFail(ctx *gin.Context, err error) {
-	if err != nil {
-		xlog.Errorf(ctx.Request.Context(), "api business error: %v", err)
+// rootCause 获取最底层的根因错误
+func rootCause(err error) error {
+	for {
+		unwrapped := errors.Unwrap(err)
+		if unwrapped == nil {
+			return err
+		}
+		err = unwrapped
 	}
+}
 
+// BusFail 业务错误
+// 业务错误(xerror.Error): 记录 Warn 日志并附带底层 root cause，向客户端暴露其 message;
+// 系统内部错误: 记录 Error 日志(含堆栈)，向客户端返回通用掩码，避免信息泄漏。
+func BusFail(ctx *gin.Context, err error) {
 	r := &RespData[string]{
 		Data: "",
 	}
 
 	var e xerror.Error
 	if ok := errors.As(err, &e); ok {
+		if inner := errors.Unwrap(e); inner != nil {
+			xlog.Warnf(ctx.Request.Context(), "api business error: %s, cause: %v", e.Error(), inner)
+		} else {
+			xlog.Warnf(ctx.Request.Context(), "api business error: %s", e.Error())
+		}
 		r.Code = e.Code()
 		r.Message = e.Error()
 	} else {
+		if err != nil {
+			xlog.Errorf(ctx.Request.Context(), "api internal error: %+v", err)
+		}
 		// 非业务错误:返回通用消息
 		r.Code = xerror.BusinessError
 		r.Message = xerror.CodeMap[xerror.BusinessError]

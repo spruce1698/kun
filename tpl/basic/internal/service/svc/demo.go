@@ -177,7 +177,7 @@ func (d *demoSvc) Update(ctx context.Context, args *Demo) error {
 		//	return err
 		//})
 		// 方式2:
-		err := d.ctx.DemoDb.UpdateTrans(ctx, args.Id, &db.Demo{
+		err := d.ctx.DemoDb.DemoUpdateTrans(ctx, args.Id, &db.Demo{
 			Name:  args.Name,
 			Test1: args.Test1,
 			Test4: args.Test4,
@@ -186,7 +186,7 @@ func (d *demoSvc) Update(ctx context.Context, args *Demo) error {
 		if err != nil {
 			return xerror.NewError(xerror.BusinessError, "Update Demo 失败", err)
 		}
-		// UpdateTrans 内部会删除 id-1 的记录,故 args.Id 与 args.Id-1 的缓存都要失效。
+		// DemoUpdateTrans 内部会删除 id-1 的记录,故 args.Id 与 args.Id-1 的缓存都要失效。
 		d.invalidateCache(ctx, args.Id)
 		d.invalidateCache(ctx, args.Id-1)
 		return nil

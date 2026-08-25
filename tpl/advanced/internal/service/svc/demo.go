@@ -75,8 +75,8 @@ type (
 	DemoListArgs struct {
 		OrderField string // 排序字段
 		OrderType  int64  // 排序类型 0:降序(默认),1:升序
-		Page       int
-		PageSize   int
+		Page       int64
+		PageSize   int64
 		// 游标分页:上一页最后一条记录的 id。
 		// 必须从 Handler 透传进来(见 handler/demo/demo.go 的 c.Query("lastId")),否则
 		// repo 层的游标分页分支(args.LastId > 0)永远进不去,深分页优化形同虚设。
@@ -98,12 +98,6 @@ type (
 	SSEMessage struct {
 		Time string `json:"time"`
 		Msg  string `json:"msg"`
-	}
-
-	// wsTicketPayload WebSocket 升级票据载荷
-	wsTicketPayload struct {
-		UserId int64 `json:"user_id"`
-		RoleId int64 `json:"role_id"`
 	}
 )
 
@@ -234,7 +228,7 @@ func (d *demoSvc) Update(ctx context.Context, args *Demo) error {
 		//    return err
 		//})
 		// 方式2:
-		err := d.ctx.DemoDb.UpdateTrans(ctx, args.Id, &db.Demo{
+		err := d.ctx.DemoDb.DemoUpdateTrans(ctx, args.Id, &db.Demo{
 			Name:  args.Name,
 			Test1: args.Test1,
 			Test4: args.Test4,
@@ -243,7 +237,7 @@ func (d *demoSvc) Update(ctx context.Context, args *Demo) error {
 		if err != nil {
 			return xerror.NewError(xerror.BusinessError, "Update Demo 失败", err)
 		}
-		// UpdateTrans 内部会删除 id-1 的记录,故 args.Id 与 args.Id-1 的缓存都要失效。
+		// DemoUpdateTrans 内部会删除 id-1 的记录,故 args.Id 与 args.Id-1 的缓存都要失效。
 		d.invalidateCache(ctx, args.Id)
 		d.invalidateCache(ctx, args.Id-1)
 		return nil
@@ -345,9 +339,7 @@ func (d *demoSvc) WSTicket(ctx context.Context, userId, roleId int64) (string, e
 		return "", xerror.NewError(xerror.Unauthorized, "用户未登录", nil)
 	}
 	ticket := utils.GenUUid()
-	data, _ := json.Marshal(&wsTicketPayload{UserId: userId, RoleId: roleId})
-	key := fmt.Sprintf(cache.WSTicketKey, ticket)
-	if err := d.ctx.RedisCli.Set(ctx, key, data, 30*time.Second).Err(); err != nil {
+	if err := d.ctx.DemoCache.SetWSTicket(ctx, ticket, userId, roleId, 30*time.Second); err != nil {
 		return "", xerror.NewError(xerror.BusinessError, "生成票据失败", err)
 	}
 	return ticket, nil
@@ -358,19 +350,14 @@ func (d *demoSvc) ConsumeWSTicket(ctx context.Context, ticket string) (int64, in
 	if ticket == "" {
 		return 0, 0, xerror.NewError(xerror.Unauthorized, "票据不能为空", nil)
 	}
-	key := fmt.Sprintf(cache.WSTicketKey, ticket)
-	val, err := d.ctx.RedisCli.GetDel(ctx, key).Result()
+	userId, roleId, err := d.ctx.DemoCache.ConsumeWSTicket(ctx, ticket)
 	if err != nil {
 		if errors.Is(err, xredis.Nil) {
 			return 0, 0, xerror.NewError(xerror.Unauthorized, "票据无效或已过期", nil)
 		}
 		return 0, 0, xerror.NewError(xerror.BusinessError, "票据校验失败", err)
 	}
-	var p wsTicketPayload
-	if err := json.Unmarshal([]byte(val), &p); err != nil {
-		return 0, 0, xerror.NewError(xerror.Unauthorized, "票据无效", err)
-	}
-	return p.UserId, p.RoleId, nil
+	return userId, roleId, nil
 }
 
 // 发送消息

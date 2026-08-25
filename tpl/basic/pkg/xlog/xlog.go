@@ -173,16 +173,33 @@ type logContent struct {
 	Params  any    `json:"params,omitempty"` // 参数信息
 }
 
-// Info 统一的 Info 级别日志记录。params 支持多个,整体存入 Params 切片,不再只取第一个。
+// splitFieldsAndParams 分离出 zap.Field(作为顶层结构化日志字段)与其它通用参数
+func splitFieldsAndParams(params ...any) ([]zap.Field, []any) {
+	var fields []zap.Field
+	var rest []any
+	for _, p := range params {
+		if f, ok := p.(zap.Field); ok {
+			fields = append(fields, f)
+		} else {
+			rest = append(rest, p)
+		}
+	}
+	return fields, rest
+}
+
+// Info 统一的 Info 级别日志记录。支持传 zap.Field(如 KVStr/KVInt/KVErr)作为顶层结构化字段,
+// 非 zap.Field 类型的参数存入 content.params 数组。
 func Info(ctx context.Context, message string, params ...any) {
 	logger := fromContext(ctx)
+	fields, rest := splitFieldsAndParams(params...)
 	c := logContent{
 		Message: message,
 	}
-	if len(params) > 0 {
-		c.Params = params
+	if len(rest) > 0 {
+		c.Params = rest
 	}
-	logger.Info("", zap.Any("content", c))
+	fields = append(fields, zap.Any("content", c))
+	logger.Info("", fields...)
 }
 func Infof(ctx context.Context, message string, params ...any) {
 	logger := fromContext(ctx)
@@ -191,19 +208,22 @@ func Infof(ctx context.Context, message string, params ...any) {
 	}))
 }
 
-// Error 统一的 Error 级别日志记录
+// Error 统一的 Error 级别日志记录。支持传 zap.Field 作为顶层结构化字段。
 func Error(ctx context.Context, message string, err error, params ...any) {
 	logger := fromContext(ctx)
+	fields, rest := splitFieldsAndParams(params...)
 	c := logContent{
 		Message: message,
 	}
 	if err != nil {
 		c.Error = err.Error()
+		fields = append(fields, zap.NamedError("error", err))
 	}
-	if len(params) > 0 {
-		c.Params = params
+	if len(rest) > 0 {
+		c.Params = rest
 	}
-	logger.Error("", zap.Any("content", c))
+	fields = append(fields, zap.Any("content", c))
+	logger.Error("", fields...)
 }
 func Errorf(ctx context.Context, message string, params ...any) {
 	logger := fromContext(ctx)
@@ -212,16 +232,18 @@ func Errorf(ctx context.Context, message string, params ...any) {
 	}))
 }
 
-// 统一的 Warn 级别日志记录
+// Warn 统一的 Warn 级别日志记录。支持传 zap.Field 作为顶层结构化字段。
 func Warn(ctx context.Context, message string, params ...any) {
 	logger := fromContext(ctx)
+	fields, rest := splitFieldsAndParams(params...)
 	c := logContent{
 		Message: message,
 	}
-	if len(params) > 0 {
-		c.Params = params
+	if len(rest) > 0 {
+		c.Params = rest
 	}
-	logger.Warn("", zap.Any("content", c))
+	fields = append(fields, zap.Any("content", c))
+	logger.Warn("", fields...)
 }
 func Warnf(ctx context.Context, message string, params ...any) {
 	logger := fromContext(ctx)
@@ -230,16 +252,18 @@ func Warnf(ctx context.Context, message string, params ...any) {
 	}))
 }
 
-// 统一的 Debug 级别日志记录
+// Debug 统一的 Debug 级别日志记录。支持传 zap.Field 作为顶层结构化字段。
 func Debug(ctx context.Context, message string, params ...any) {
 	logger := fromContext(ctx)
+	fields, rest := splitFieldsAndParams(params...)
 	c := logContent{
 		Message: message,
 	}
-	if len(params) > 0 {
-		c.Params = params
+	if len(rest) > 0 {
+		c.Params = rest
 	}
-	logger.Debug("", zap.Any("content", c))
+	fields = append(fields, zap.Any("content", c))
+	logger.Debug("", fields...)
 }
 func Debugf(ctx context.Context, message string, params ...any) {
 	logger := fromContext(ctx)
@@ -255,10 +279,13 @@ func WithLogger(ctx context.Context, logger *zap.Logger) context.Context {
 
 // 从 context 中获取 logger
 func fromContext(ctx context.Context) *zap.Logger {
+	if ctx == nil {
+		return zap.L()
+	}
 	if logger, ok := ctx.Value(loggerKey{}).(*zap.Logger); ok {
 		return logger
 	}
-	return zap.L()
+	return WithTraceID(ctx, zap.L())
 }
 
 // 添加追踪信息到 logger

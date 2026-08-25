@@ -1,7 +1,7 @@
 package cache
 
 import (
-	"sync/atomic"
+	"sync"
 	"time"
 
 	goCache "github.com/patrickmn/go-cache"
@@ -13,11 +13,11 @@ import (
 // 就能在一个 TTL 窗口内把任意多条记录塞进进程内存,直到 OOM(可远程触发)。
 const defaultMaxEntries = 10000
 
-// LocalCache 本地缓存。go-cache 本身并发安全,这里额外加一层容量上限。
+// LocalCache 本地缓存。go-cache 本身并发安全,这里额外加一层容量上限控制。
 type LocalCache struct {
 	cache      *goCache.Cache
 	maxEntries int
-	evicting   atomic.Bool
+	evictMu    sync.Mutex
 }
 
 // NewLocalCache 创建本地缓存,使用默认容量上限。
@@ -40,10 +40,11 @@ func NewLocalCacheWithLimit(defaultExpiration, cleanupInterval time.Duration, ma
 func (l *LocalCache) Set(key string, value any, expiration time.Duration) {
 	// 已存在的 key 是覆盖写,不会增加条目数,无需淘汰。
 	if _, exists := l.cache.Get(key); !exists && l.cache.ItemCount() >= l.maxEntries {
-		if l.evicting.CompareAndSwap(false, true) {
+		l.evictMu.Lock()
+		if l.cache.ItemCount() >= l.maxEntries {
 			l.evict()
-			l.evicting.Store(false)
 		}
+		l.evictMu.Unlock()
 	}
 	l.cache.Set(key, value, expiration)
 }

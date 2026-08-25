@@ -88,13 +88,14 @@ func NewHttp(
 
 	// 全局: 有 token 就解析写入 context,没有也放行(不强制)
 	// 配合各业务组的 Auth() 中间件实现"默认公开,显式加锁"
-	eng.Use(middleware.WriteAuth(conf, jwt))
+	eng.Use(middleware.WriteAuth(jwt))
 
 	// 全局限流: 每 IP 每分钟最多 600 次,超限封禁 1 分钟。
 	// 登录等敏感接口在各自路由上再叠加更严格的 RateLimiter / RedisRateLimiter。
 	// 注意:状态在进程内存,多副本部署时实际阈值 = 该值 × 副本数;
 	// 需要精确全局限流请换成基于 Redis 的令牌桶。
-	eng.Use(middleware.RateLimiter(600, time.Minute, time.Minute))
+	rlCtx, rlCancel := context.WithCancel(context.Background())
+	eng.Use(middleware.RateLimiter(600, time.Minute, time.Minute, rlCtx))
 
 	// 缺失路由
 	eng.NoRoute(router.NotFoundHandle)
@@ -115,6 +116,8 @@ func NewHttp(
 	// 因此注册顺序:xlog(最先注册,最后关) -> tracer -> redis -> db
 	closer := xserver.NewCloser()
 	closer.Add(func() error { return xlog.Close() }, "xlog")
+	// rlCancel 停止限流器内部清理 goroutine(先于其他资源取消,无副作用)
+	closer.Add(func() error { rlCancel(); return nil }, "rate-limiter")
 	if tp != nil {
 		closer.Add(func() error {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

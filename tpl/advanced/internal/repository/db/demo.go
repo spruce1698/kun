@@ -17,7 +17,7 @@ type (
 
 		ListWithTotal(ctx context.Context, args *DemoSearch) ([]*Demo, int64, error)
 		ListWithMore(ctx context.Context, args *DemoSearch) ([]*Demo, bool, error)
-		UpdateTrans(ctx context.Context, id int64, upData *Demo) error
+		DemoUpdateTrans(ctx context.Context, id int64, upData *Demo) error
 		FindStream(ctx context.Context, handler func(*Demo) error) error
 		FindByName(ctx context.Context, name string) (*Demo, error)
 
@@ -41,26 +41,15 @@ func NewDemoDb(c *Conn) DemoDb {
 	}
 }
 
-func (c *customDemoDb) ListWithTotal(ctx context.Context, args *DemoSearch) ([]*Demo, int64, error) {
-	// filter 每次都从 c.WithContext(ctx).Model(c.model) 起全新的 *gorm.DB 再叠加过滤条件,
-	// 各调用之间不共享 Statement,天然无污染,无需手动 Session 克隆。过滤逻辑只写这一处。
-	filter := func() *gorm.DB {
-		d := c.WithContext(ctx).Model(c.model)
-		// TODO 自定义条件处理
+func (c *customDemoDb) buildListFilter(ctx context.Context, args *DemoSearch) *gorm.DB {
+	d := c.WithContext(ctx).Model(c.model)
+	// TODO 自定义条件处理
 
-		return d
-	}
+	return d
+}
 
-	var total int64
-	if err := filter().Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	if total == 0 {
-		// 空结果返回 (nil,0,nil) 而非 ErrNotFound;
-		// ErrNotFound 仅用于单条 Find 找不到,避免"空列表"与"查询错误"语义混淆。
-		return nil, 0, nil
-	}
-
+func (c *customDemoDb) buildListQuery(ctx context.Context, args *DemoSearch, limit int) *gorm.DB {
+	filter := c.buildListFilter(ctx, args)
 	order := c.HandleRank(
 		args.OrderField,
 		args.OrderType,
@@ -68,9 +57,8 @@ func (c *customDemoDb) ListWithTotal(ctx context.Context, args *DemoSearch) ([]*
 		TableDemo+".id",
 	)
 
-	offset, limit := c.HandlePage(args.Page, args.PageSize)
+	offset, _ := c.HandlePage(args.Page, args.PageSize)
 
-	var model *gorm.DB
 	switch {
 	case args.LastId > 0: // 游标分页
 		// 游标按主键 id 比较,因此排序也必须按 id,否则(如按 name 排序而按 id 取游标)
@@ -81,13 +69,28 @@ func (c *customDemoDb) ListWithTotal(ctx context.Context, args *DemoSearch) ([]*
 			cursorOrder = TableDemo + ".id ASC"
 			lastCond = TableDemo + ".`id` > ?"
 		}
-		model = filter().Where(lastCond, args.LastId).Order(cursorOrder).Limit(limit)
+		return filter.Where(lastCond, args.LastId).Order(cursorOrder).Limit(limit)
 	case offset > 100000: // 深分页: SELECT * FROM demo INNER JOIN (SELECT id FROM demo WHERE ... ORDER BY id LIMIT ?,?) AS tmp USING(id)
-		subQuery := filter().Order(order).Select("id").Offset(offset).Limit(limit)
-		model = c.WithContext(ctx).Model(c.model).Order(order).Joins("INNER JOIN (?) AS tmp USING(id)", subQuery)
+		subQuery := filter.Order(order).Select("id").Offset(offset).Limit(limit)
+		return c.WithContext(ctx).Model(c.model).Order(order).Joins("INNER JOIN (?) AS tmp USING(id)", subQuery)
 	default:
-		model = filter().Order(order).Offset(offset).Limit(limit)
+		return filter.Order(order).Offset(offset).Limit(limit)
 	}
+}
+
+func (c *customDemoDb) ListWithTotal(ctx context.Context, args *DemoSearch) ([]*Demo, int64, error) {
+	var total int64
+	if err := c.buildListFilter(ctx, args).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if total == 0 {
+		// 空结果返回 (nil,0,nil) 而非 ErrNotFound;
+		// ErrNotFound 仅用于单条 Find 找不到,避免"空列表"与"查询错误"语义混淆。
+		return nil, 0, nil
+	}
+
+	_, limit := c.HandlePage(args.Page, args.PageSize)
+	model := c.buildListQuery(ctx, args, limit)
 
 	result := make([]*Demo, 0, limit)
 	if err := model.Find(&result).Error; err != nil {
@@ -97,43 +100,11 @@ func (c *customDemoDb) ListWithTotal(ctx context.Context, args *DemoSearch) ([]*
 }
 
 func (c *customDemoDb) ListWithMore(ctx context.Context, args *DemoSearch) ([]*Demo, bool, error) {
-	// filter 每次都从 c.WithContext(ctx).Model(c.model) 起全新的 *gorm.DB 再叠加过滤条件,
-	// 各调用之间不共享 Statement,天然无污染。过滤逻辑只写这一处。
-	filter := func() *gorm.DB {
-		d := c.WithContext(ctx).Model(c.model)
-		// TODO 自定义条件处理
-
-		return d
-	}
-
-	order := c.HandleRank(
-		args.OrderField,
-		args.OrderType,
-		DemoFields,
-		TableDemo+".id",
-	)
-
-	offset, limit := c.HandlePage(args.Page, args.PageSize)
-	// 在请求的数据基础上+1，以此来判断是否还有数据
+	_, limit := c.HandlePage(args.Page, args.PageSize)
 	want := limit
 	limit++
 
-	var model *gorm.DB
-	switch {
-	case args.LastId > 0: // 游标分页
-		cursorOrder := TableDemo + ".id DESC"
-		lastCond := TableDemo + ".`id` < ?"
-		if args.OrderType == 1 {
-			cursorOrder = TableDemo + ".id ASC"
-			lastCond = TableDemo + ".`id` > ?"
-		}
-		model = filter().Where(lastCond, args.LastId).Order(cursorOrder).Limit(limit)
-	case offset > 100000: // 深分页
-		subQuery := filter().Order(order).Select("id").Offset(offset).Limit(limit)
-		model = c.WithContext(ctx).Model(c.model).Order(order).Joins("INNER JOIN (?) AS tmp USING(id)", subQuery)
-	default:
-		model = filter().Order(order).Offset(offset).Limit(limit)
-	}
+	model := c.buildListQuery(ctx, args, limit)
 
 	result := make([]*Demo, 0, limit)
 	if err := model.Find(&result).Error; err != nil {
@@ -154,7 +125,7 @@ func (c *customDemoDb) ListWithMore(ctx context.Context, args *DemoSearch) ([]*D
 	return result, hasMore, nil
 }
 
-func (c *customDemoDb) UpdateTrans(ctx context.Context, id int64, upData *Demo) error {
+func (c *customDemoDb) DemoUpdateTrans(ctx context.Context, id int64, upData *Demo) error {
 	err := c.Conn.Tx(ctx, func(ctx context.Context) error {
 		preOne := id - 1
 		demo, err := c.Find(ctx, preOne)
@@ -165,6 +136,7 @@ func (c *customDemoDb) UpdateTrans(ctx context.Context, id int64, upData *Demo) 
 		if err != nil {
 			return err
 		}
+		// demo 事务错误数据回滚
 		if demo.Id == 3 {
 			return errors.New("id是3,不能修改")
 		}

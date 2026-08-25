@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf16"
 
 	"github.com/spruce1698/kun/pkg/output"
@@ -350,6 +351,23 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 		return nil
 	}
 
+	seenFields := make(map[string]string)
+	seenJSON := make(map[string]string)
+	for _, f := range fields {
+		if prevCol, exists := seenFields[f.Name]; exists {
+			output.Warn("table %q 中列 %q 与 %q 映射到重复的 Go 字段名 %q", tableName, prevCol, f.ColumnName, f.Name)
+		} else {
+			seenFields[f.Name] = f.ColumnName
+		}
+		if f.JSONTag != "" && f.JSONTag != "-" {
+			if prevCol, exists := seenJSON[f.JSONTag]; exists {
+				output.Warn("table %q 中列 %q 与 %q 映射到重复的 JSON tag %q", tableName, prevCol, f.ColumnName, f.JSONTag)
+			} else {
+				seenJSON[f.JSONTag] = f.ColumnName
+			}
+		}
+	}
+
 	// 复合主键与"完全没有主键"都会让生成的 repo 残缺(Find/Update/Delete by id 无法工作),
 	// 必须显式告警 —— 静默生成半成品代码远比报错更难排查。
 	if compositePK {
@@ -526,18 +544,19 @@ func extractQuotedName(s string) (string, string) {
 		}
 		return s[1 : end+1], strings.TrimSpace(s[end+2:])
 	}
-	// 裸单词
-	parts := strings.SplitN(s, " ", 2)
-	if len(parts) < 2 {
+	// 裸单词: 支持空格与 Tab 分隔
+	fields := strings.Fields(s)
+	if len(fields) < 2 {
 		return "", s
 	}
-	return parts[0], strings.TrimSpace(parts[1])
+	name := fields[0]
+	return name, strings.TrimSpace(s[len(name):])
 }
 
 // extractTypeWithParens 提取类型单词 + 平衡括号参数，返回 (rawType, params, remaining)
 func extractTypeWithParens(s string) (string, string, string) {
 	s = strings.TrimSpace(s)
-	spaceIdx := strings.Index(s, " ")
+	spaceIdx := strings.IndexFunc(s, unicode.IsSpace)
 	parenIdx := strings.Index(s, "(")
 
 	// 没有空格和括号 → 整个字符串就是类型
@@ -603,13 +622,15 @@ func buildField(cd *columnDef, uniqueIdxs []uniqueIndexInfo, conf *SQLConfig) *F
 	defaultVal := ""
 	comment := ""
 
-	// 提取 COMMENT
+	// 提取 COMMENT 并消毒换行符
 	if cre := reComment.FindStringSubmatch(cd.Constraints); cre != nil {
 		comment = unescapeSQLString(cre[1])
+		comment = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(comment)
 	}
 
-	// 提取 DEFAULT（支持字符串、数字、NULL）
-	if dre := reDefault.FindStringSubmatch(cd.Constraints); dre != nil {
+	// 提取 DEFAULT 前必须先剔除 COMMENT 避免 COMMENT 内部的 DEFAULT 关键字污染默认值
+	constraintsWithoutComment := reComment.ReplaceAllString(cd.Constraints, "")
+	if dre := reDefault.FindStringSubmatch(constraintsWithoutComment); dre != nil {
 		if !strings.EqualFold(dre[1], "NULL") {
 			defaultVal = strings.Trim(dre[1], "'")
 		}

@@ -106,6 +106,9 @@ func (r *Conn) HandleRank(orderField string, orderType int64, fields string, def
 }
 
 func (r *Conn) HandlePage(page, pageSize int64) (offset, limit int) {
+	if page <= 0 {
+		page = 1
+	}
 	if pageSize <= 0 {
 		pageSize = defaultPageSize
 	}

@@ -125,9 +125,3 @@ func (d *demoCache) Delete(ctx context.Context, id int64) error {
 	}
 	return nil
 }
-
-// TODO Warmup 缓存预热
-func (d *demoCache) Warmup(ctx context.Context) error {
-
-	return nil
-}

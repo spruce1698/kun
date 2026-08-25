@@ -458,7 +458,7 @@ func (d *DemoHandler) Excel(ctx *gin.Context) {
 	// 4. 调用 Svc 层进行 Excel 流式写入
 	err := d.DemoSvc.ExportExcel(ctx.Request.Context(), ctx.Writer)
 	if err != nil {
-		xhttp.BusFail(ctx, err)
+		xlog.Errorf(ctx.Request.Context(), "ExportExcel stream write error: %v", err)
 		return
 	}
 	flusher.Flush()

@@ -7,13 +7,11 @@
 package middleware
 
 import (
-	"strconv"
-
 	"errors"
+	"strconv"
 
 	"basic/internal/global"
 	"basic/pkg/token"
-	"basic/pkg/xconfig"
 	"basic/pkg/xerror"
 	"basic/pkg/xhttp"
 
@@ -27,7 +25,8 @@ func Auth(jwt *token.Jwt) gin.HandlerFunc {
 			ctx.Next()
 			return
 		}
-		err := parsePayload(ctx, jwt)
+		tokenStr := jwt.Find(ctx.Request)
+		err := parsePayload(ctx, jwt, tokenStr)
 		if err != nil {
 			var e *token.Error
 			if errors.As(err, &e) {
@@ -50,41 +49,42 @@ func Auth(jwt *token.Jwt) gin.HandlerFunc {
 	}
 }
 
-// 可选授权
+// OptAuth 可选授权
 func OptAuth(jwt *token.Jwt) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		if _, exists := ctx.Get(global.CtxAuthUserId); !exists {
-			_ = parsePayload(ctx, jwt)
+			tokenStr := jwt.Find(ctx.Request)
+			_ = parsePayload(ctx, jwt, tokenStr)
 		}
 		ctx.Next()
 	}
 }
 
-// 如果有就写入授权(全局可选解析)
-func WriteAuth(conf *xconfig.Conf, jwt *token.Jwt) gin.HandlerFunc {
+// WriteAuth 全局可选解析——有 token 就写入 context,没有也放行。
+// conf 参数已移除(无实际用途),调用方签名简化为 WriteAuth(jwt)。
+func WriteAuth(jwt *token.Jwt) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		if tokenStr := jwt.Find(ctx.Request); tokenStr != "" {
-			_ = parsePayload(ctx, jwt)
+			_ = parsePayload(ctx, jwt, tokenStr)
 		}
 		ctx.Next()
 	}
 }
 
-func parsePayload(ctx *gin.Context, jwt *token.Jwt) (err error) {
-	// 查找token
-	if tokenStr := jwt.Find(ctx.Request); tokenStr != "" {
-		payload, parseErr := jwt.Parse(ctx.Request.Context(), tokenStr)
-		if parseErr != nil {
-			err = parseErr
-		} else {
-			userId, _ := strconv.ParseInt(payload.Subject, 10, 64)
-			roleId, _ := strconv.ParseInt(payload.Issuer, 10, 64)
-			ctx.Set(global.CtxAuthToken, tokenStr)
-			ctx.Set(global.CtxAuthUserId, userId)
-			ctx.Set(global.CtxAuthRoleId, roleId)
-		}
-	} else {
-		err = token.ErrEmptyToken
+// parsePayload 解析 JWT 并将 userId/roleId 写入 gin context。
+// tokenStr 由调用方预先通过 jwt.Find 获取，避免在同一请求中重复解析 Header/Query。
+func parsePayload(ctx *gin.Context, jwt *token.Jwt, tokenStr string) (err error) {
+	if tokenStr == "" {
+		return token.ErrEmptyToken
 	}
-	return err
+	payload, parseErr := jwt.Parse(ctx.Request.Context(), tokenStr)
+	if parseErr != nil {
+		return parseErr
+	}
+	userId, _ := strconv.ParseInt(payload.Subject, 10, 64)
+	roleId, _ := strconv.ParseInt(payload.Issuer, 10, 64)
+	ctx.Set(global.CtxAuthToken, tokenStr)
+	ctx.Set(global.CtxAuthUserId, userId)
+	ctx.Set(global.CtxAuthRoleId, roleId)
+	return nil
 }

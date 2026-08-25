@@ -51,7 +51,7 @@ var CmdWire = &cobra.Command{
 				}
 				sort.Strings(wirePaths)
 				prompt := &survey.Select{
-					Message:  "Which directory do you want to run?",
+					Message:  "Which wire.go directory do you want to run?",
 					Options:  wirePaths,
 					PageSize: 10,
 				}
@@ -112,13 +112,21 @@ var CmdWireAll = &cobra.Command{
 
 // wireRun 在指定目录执行 wire 命令。
 func wireRun(wirePath string) error {
+	if _, err := exec.LookPath("wire"); err != nil {
+		return fmt.Errorf("wire is not installed or not in PATH, please install it: go install github.com/google/wire/cmd/wire@latest")
+	}
 	output.Success("wire.go path: %s", wirePath)
 	cmd := exec.Command("wire")
 	cmd.Dir = wirePath
 	out, err := cmd.CombinedOutput()
-	output.Success(string(out))
 	if err != nil {
+		if len(out) > 0 {
+			output.Error(string(out))
+		}
 		return fmt.Errorf("wire fail (%s): %w", wirePath, err)
+	}
+	if len(out) > 0 {
+		output.Success(string(out))
 	}
 	return nil
 }

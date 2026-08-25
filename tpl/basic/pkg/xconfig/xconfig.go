@@ -139,8 +139,14 @@ func New(path string) *Conf {
 }
 
 // Get 返回当前配置的稳定快照指针,热重载后返回新快照。
-// 运行期重复读取配置的逻辑应通过此方法,而非直接访问字段。
-// 内部为 atomic.Pointer.Load,零分配、零竞态。不要长期缓存返回值。
+//
+// ⚠️ 重要使用准则:
+//  1. 运行期重复读取配置的逻辑必须通过此方法(如 conf.Get().Env),而非直接访问字段。
+//  2. 始终通过依赖注入持有的根 *Conf 实例调用 Get(),严禁长期缓存 Get() 返回的快照指针,
+//     否则后续配置再次热重载时将无法感知最新变更。
+//  3. 结构体内嵌 atomic.Pointer 不可值复制(禁止 copy value / 传值),全程须以指针 (*Conf) 传递。
+//
+// 内部为 atomic.Pointer.Load,零分配、零竞态。
 func (c *Conf) Get() *Conf {
 	return c.current.Load()
 }

@@ -183,16 +183,25 @@ func EndOfMonth(date time.Time) time.Time {
 	return firstDayOfNextMonth.Add(-time.Second)
 }
 
-// 该日期所在周的第一天
+// 该日期所在周的第一天(周一 00:00:00)
 func StartOfDayOfWeek(date time.Time) time.Time {
-	daysSinceSunday := int(date.Weekday())
-	return date.AddDate(0, 0, -daysSinceSunday+1)
+	weekday := int(date.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	d := date.AddDate(0, 0, -weekday+1)
+	return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, d.Location())
 }
 
-// 该日期所在周的最后一天。
+// 该日期所在周的最后一天(周日 23:59:59)
 func EndOfDayOfWeek(date time.Time) time.Time {
-	daysUntilSaturday := 7 - int(date.Weekday())
-	return date.AddDate(0, 0, daysUntilSaturday)
+	weekday := int(date.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	daysUntilSunday := 7 - weekday
+	d := date.AddDate(0, 0, daysUntilSunday)
+	return time.Date(d.Year(), d.Month(), d.Day(), 23, 59, 59, 0, d.Location())
 }
 
 // 获取给定月份每周的开始日和结束日
