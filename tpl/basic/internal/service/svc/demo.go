@@ -68,7 +68,7 @@ func NewDemoSvc(ctx *DemoCtx) DemoSvc {
 // 查找一个(接入 singleflight 防缓存击穿)
 func (d *demoSvc) Detail(ctx context.Context, id int64) (*Demo, error) {
 	if id <= 0 {
-		return nil, xerror.NewError(ctx, xerror.InvalidArgument, "Get Demo Detail invalid id", nil)
+		return nil, xerror.NewError(xerror.InvalidArgument, "Get Demo Detail invalid id", nil)
 	}
 
 	xlog.Info(ctx, "Get Demo Detail", "测试手工日志")
@@ -108,9 +108,9 @@ func (d *demoSvc) Detail(ctx context.Context, id int64) (*Demo, error) {
 
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			return nil, xerror.NewError(ctx, xerror.BusinessError, "没有相关记录", err)
+			return nil, xerror.NewError(xerror.BusinessError, "没有相关记录", err)
 		}
-		return nil, xerror.NewError(ctx, xerror.BusinessError, "Get Demo Detail 失败", err)
+		return nil, xerror.NewError(xerror.BusinessError, "Get Demo Detail 失败", err)
 	}
 
 	result := &Demo{}
@@ -129,7 +129,7 @@ func (d *demoSvc) FindList(ctx context.Context, args *DemoListArgs) ([]*Demo, in
 		if errors.Is(listErr, db.ErrNotFound) {
 			return []*Demo{}, 0, nil
 		}
-		return nil, 0, xerror.NewError(ctx, xerror.BusinessError, "Get Demo List 失败", listErr)
+		return nil, 0, xerror.NewError(xerror.BusinessError, "Get Demo List 失败", listErr)
 	}
 	result := make([]*Demo, 0, len(list))
 	if len(list) > 0 {
@@ -150,7 +150,7 @@ func (d *demoSvc) Create(ctx context.Context, args *Demo) error {
 		Test4: args.Test4,
 	})
 	if dbErr != nil {
-		return xerror.NewError(ctx, xerror.BusinessError, "Create Demo 失败", dbErr)
+		return xerror.NewError(xerror.BusinessError, "Create Demo 失败", dbErr)
 	}
 	return nil
 }
@@ -184,24 +184,24 @@ func (d *demoSvc) Update(ctx context.Context, args *Demo) error {
 		})
 
 		if err != nil {
-			return xerror.NewError(ctx, xerror.BusinessError, "Update Demo 失败", err)
+			return xerror.NewError(xerror.BusinessError, "Update Demo 失败", err)
 		}
 		// UpdateTrans 内部会删除 id-1 的记录,故 args.Id 与 args.Id-1 的缓存都要失效。
 		d.invalidateCache(ctx, args.Id)
 		d.invalidateCache(ctx, args.Id-1)
 		return nil
 	}
-	return xerror.NewError(ctx, xerror.BusinessError, "Update Demo 失败", nil)
+	return xerror.NewError(xerror.BusinessError, "Update Demo 失败", nil)
 }
 
 // 物理删除
 func (d *demoSvc) Delete(ctx context.Context, id int64) error {
 	if id <= 0 {
-		return xerror.NewError(ctx, xerror.InvalidArgument, "Delete Demo invalid id", nil)
+		return xerror.NewError(xerror.InvalidArgument, "Delete Demo invalid id", nil)
 	}
 	err := d.ctx.DemoDb.Delete(ctx, []int64{id})
 	if err != nil {
-		return xerror.NewError(ctx, xerror.BusinessError, "Delete Demo 失败", err)
+		return xerror.NewError(xerror.BusinessError, "Delete Demo 失败", err)
 	}
 	d.invalidateCache(ctx, id)
 	return nil
@@ -210,11 +210,11 @@ func (d *demoSvc) Delete(ctx context.Context, id int64) error {
 // 逻辑删除
 func (d *demoSvc) SoftDelete(ctx context.Context, id int64) error {
 	if id <= 0 {
-		return xerror.NewError(ctx, xerror.InvalidArgument, "SoftDelete Demo invalid id", nil)
+		return xerror.NewError(xerror.InvalidArgument, "SoftDelete Demo invalid id", nil)
 	}
 	err := d.ctx.DemoDb.SoftDelete(ctx, []int64{id})
 	if err != nil {
-		return xerror.NewError(ctx, xerror.BusinessError, "SoftDelete Demo 失败", err)
+		return xerror.NewError(xerror.BusinessError, "SoftDelete Demo 失败", err)
 	}
 	d.invalidateCache(ctx, id)
 	return nil

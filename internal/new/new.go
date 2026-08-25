@@ -178,6 +178,10 @@ func (p *Project) rmGit() {
 	_ = os.RemoveAll(p.ProjectName + "/.git")
 }
 func (p *Project) installWire() error {
+	if _, err := exec.LookPath("wire"); err == nil {
+		output.Success("wire is already installed, skipping go install.")
+		return nil
+	}
 	output.Success("go install %s", config.WireUrl)
 	cmd := exec.Command("go", "install", config.WireUrl)
 	cmd.Stdout = os.Stdout

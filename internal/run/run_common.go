@@ -122,18 +122,43 @@ func watch(dir string, programArgs []string) {
 		return
 	}
 
-	cmd := start(dir, programArgs)
+	var (
+		cmd        *exec.Cmd
+		cmdExit    = make(chan error, 1)
+		timer      *time.Timer
+		debounce   = 300 * time.Millisecond
+		restarting bool
+	)
 
-	// 接收子进程(go run)退出,捕获编译/运行错误
-	cmdExit := make(chan error, 1)
-	if cmd != nil {
-		go func() { cmdExit <- cmd.Wait() }()
+	restart := func() {
+		if cmd != nil && cmd.Process != nil {
+			_ = killProcessGroup(cmd)
+			waitProcessExit(cmd)
+			// 清空历史退出信号
+			select {
+			case <-cmdExit:
+			default:
+			}
+		}
+		cmd = start(dir, programArgs)
+		if cmd != nil {
+			go func(c *exec.Cmd) {
+				cmdExit <- c.Wait()
+			}(cmd)
+		}
+		restarting = false
 	}
+
+	// 首次启动
+	restart()
 
 	// Loop listening file modification
 	for {
 		select {
 		case <-quit:
+			if timer != nil {
+				timer.Stop()
+			}
 			if cmd != nil && cmd.Process != nil {
 				if err := killProcessGroup(cmd); err != nil {
 					output.Error("server exit error: %s", err)
@@ -143,27 +168,19 @@ func watch(dir string, programArgs []string) {
 			return
 
 		case event := <-watcher.Events:
-			// 文件被修改或删除时重启
+			// 文件被修改或删除时防抖重启
 			if event.Op&fsnotify.Write == fsnotify.Write ||
 				event.Op&fsnotify.Remove == fsnotify.Remove {
 				if !shouldRestart(event.Name) {
 					continue
 				}
-				output.Success("file modified: %s", event.Name)
-				if cmd != nil && cmd.Process != nil {
-					_ = killProcessGroup(cmd)
-					waitProcessExit(cmd)
-					// 消费旧的退出信号,避免重启后误触发
-					select {
-					case <-cmdExit:
-					default:
-					}
+				if timer != nil {
+					timer.Stop()
 				}
-				cmd = start(dir, programArgs)
-				if cmd != nil {
-					cmdExit = make(chan error, 1)
-					go func() { cmdExit <- cmd.Wait() }()
-				}
+				timer = time.AfterFunc(debounce, func() {
+					output.Success("file modified: %s, restarting...", event.Name)
+					restart()
+				})
 			}
 			// 新建目录时加入 watcher，使其内部文件也被监听
 			if event.Op&fsnotify.Create == fsnotify.Create {
@@ -177,13 +194,14 @@ func watch(dir string, programArgs []string) {
 		case err := <-watcher.Errors:
 			output.Error("Error: %s", err)
 		case err := <-cmdExit:
-			// 子进程退出(编译失败/运行 panic),报告并停止
-			if err != nil {
-				output.Error("process exited: %s", err)
-			} else {
-				output.Error("process exited")
+			// 子进程退出(编译失败/运行 panic/被终止),记录状态但保持监听器运行
+			if !restarting {
+				if err != nil {
+					output.Error("process exited with error: %v (waiting for file changes...)", err)
+				} else {
+					output.Warn("process exited (waiting for file changes...)")
+				}
 			}
-			return
 		}
 	}
 }

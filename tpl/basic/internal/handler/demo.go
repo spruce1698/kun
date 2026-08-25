@@ -116,7 +116,7 @@ func (d *DemoHandler) Create(ctx *gin.Context) {
 		xhttp.BusFail(ctx, err)
 		return
 	}
-	xhttp.Data(ctx, "Create Demo 成功", nil)
+	xhttp.Success(ctx, "Create Demo 成功")
 }
 
 // @Summary Update
@@ -145,7 +145,7 @@ func (d *DemoHandler) Update(ctx *gin.Context) {
 		xhttp.BusFail(ctx, err)
 		return
 	}
-	xhttp.Data(ctx, "Update Demo 成功", nil)
+	xhttp.Success(ctx, "Update Demo 成功")
 }
 
 // @Summary Delete
@@ -171,7 +171,7 @@ func (d *DemoHandler) Delete(ctx *gin.Context) {
 		xhttp.BusFail(ctx, err)
 		return
 	}
-	xhttp.Data(ctx, "Delete Demo 成功", nil)
+	xhttp.Success(ctx, "Delete Demo 成功")
 }
 
 // @Summary SoftDelete
@@ -197,5 +197,5 @@ func (d *DemoHandler) SoftDelete(ctx *gin.Context) {
 		xhttp.BusFail(ctx, err)
 		return
 	}
-	xhttp.Data(ctx, "SoftDelete Demo 成功", nil)
+	xhttp.Success(ctx, "SoftDelete Demo 成功")
 }

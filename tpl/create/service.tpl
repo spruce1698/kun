@@ -74,12 +74,12 @@ func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Svc) Detail(ctx context
 		// if dbErr != nil {
 		// 	xlog.Errorf(ctx,"{{ .FileName }} Detail db query fail, id: %d, err: %v", id, dbErr)
 		// 	if errors.Is(dbErr, db.ErrNotFound) {
-		// 		return nil, xerror.NewError(ctx,xerror.BusinessError, "No relevant records", dbErr)
+		// 		return nil, xerror.NewError(xerror.BusinessError, "No relevant records", dbErr)
 		// 	}
-		// 	return result, xerror.NewError(ctx,xerror.BusinessError, "{{ .FileName }} Detail fail", dbErr)
+		// 	return result, xerror.NewError(xerror.BusinessError, "{{ .FileName }} Detail fail", dbErr)
 		// }
 		// if err := copier.Copy(result, {{ .FileNameTitleLower }}); err != nil {
-		// 	return nil, xerror.NewError(ctx, xerror.BusinessError, "data copy fail", err)
+		// 	return nil, xerror.NewError(xerror.BusinessError, "data copy fail", err)
 		// }
 
 		// TODO: write cache after query db successfully here and delete this line
@@ -87,7 +87,7 @@ func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Svc) Detail(ctx context
 
 		return result, nil
 	}
-	return nil, xerror.NewError(ctx,xerror.BusinessError, "{{ .FileName }} Detail fail", nil)
+	return nil, xerror.NewError(xerror.BusinessError, "{{ .FileName }} Detail fail", nil)
 }
 
 // TODO: add your code here and delete this line

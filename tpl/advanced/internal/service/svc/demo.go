@@ -116,7 +116,7 @@ func NewDemoSvc(ctx *DemoCtx) DemoSvc {
 // 查找一个(接入 singleflight 防缓存击穿)
 func (d *demoSvc) Detail(ctx context.Context, id int64) (*Demo, error) {
 	if id <= 0 {
-		return nil, xerror.NewError(ctx, xerror.InvalidArgument, "Get Demo Detail invalid id", nil)
+		return nil, xerror.NewError(xerror.InvalidArgument, "Get Demo Detail invalid id", nil)
 	}
 	xlog.Info(ctx, "Demo Detail")
 
@@ -153,9 +153,9 @@ func (d *demoSvc) Detail(ctx context.Context, id int64) (*Demo, error) {
 
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			return nil, xerror.NewError(ctx, xerror.BusinessError, "没有相关记录", err)
+			return nil, xerror.NewError(xerror.BusinessError, "没有相关记录", err)
 		}
-		return nil, xerror.NewError(ctx, xerror.BusinessError, "Demo Detail 失败", err)
+		return nil, xerror.NewError(xerror.BusinessError, "Demo Detail 失败", err)
 	}
 
 	result := &Demo{}
@@ -174,7 +174,7 @@ func (d *demoSvc) FindList(ctx context.Context, args *DemoListArgs) ([]*Demo, in
 		if errors.Is(listErr, db.ErrNotFound) {
 			return []*Demo{}, 0, nil
 		}
-		return nil, 0, xerror.NewError(ctx, xerror.BusinessError, "Get Demo List 失败", listErr)
+		return nil, 0, xerror.NewError(xerror.BusinessError, "Get Demo List 失败", listErr)
 	}
 	result := make([]*Demo, 0, len(list))
 	for _, demo := range list {
@@ -193,11 +193,11 @@ func (d *demoSvc) FindList(ctx context.Context, args *DemoListArgs) ([]*Demo, in
 func (d *demoSvc) Create(ctx context.Context, args *Demo) error {
 	password := args.Password
 	if password == "" {
-		return xerror.NewError(ctx, xerror.InvalidArgument, "密码不能为空", nil)
+		return xerror.NewError(xerror.InvalidArgument, "密码不能为空", nil)
 	}
 	hash, hashErr := encrypt.BcryptHash(password)
 	if hashErr != nil {
-		return xerror.NewError(ctx, xerror.BusinessError, "Create Demo 密码加密失败", hashErr)
+		return xerror.NewError(xerror.BusinessError, "Create Demo 密码加密失败", hashErr)
 	}
 	_, dbErr := d.ctx.DemoDb.Insert(ctx, &db.Demo{
 		Name:     args.Name,
@@ -207,7 +207,7 @@ func (d *demoSvc) Create(ctx context.Context, args *Demo) error {
 		Password: hash,
 	})
 	if dbErr != nil {
-		return xerror.NewError(ctx, xerror.BusinessError, "Create Demo 失败", dbErr)
+		return xerror.NewError(xerror.BusinessError, "Create Demo 失败", dbErr)
 	}
 	return nil
 }
@@ -241,24 +241,24 @@ func (d *demoSvc) Update(ctx context.Context, args *Demo) error {
 		})
 
 		if err != nil {
-			return xerror.NewError(ctx, xerror.BusinessError, "Update Demo 失败", err)
+			return xerror.NewError(xerror.BusinessError, "Update Demo 失败", err)
 		}
 		// UpdateTrans 内部会删除 id-1 的记录,故 args.Id 与 args.Id-1 的缓存都要失效。
 		d.invalidateCache(ctx, args.Id)
 		d.invalidateCache(ctx, args.Id-1)
 		return nil
 	}
-	return xerror.NewError(ctx, xerror.BusinessError, "Update Demo 失败", nil)
+	return xerror.NewError(xerror.BusinessError, "Update Demo 失败", nil)
 }
 
 // 物理删除
 func (d *demoSvc) Delete(ctx context.Context, id int64) error {
 	if id <= 0 {
-		return xerror.NewError(ctx, xerror.InvalidArgument, "Delete Demo invalid id", nil)
+		return xerror.NewError(xerror.InvalidArgument, "Delete Demo invalid id", nil)
 	}
 	err := d.ctx.DemoDb.Delete(ctx, []int64{id})
 	if err != nil {
-		return xerror.NewError(ctx, xerror.BusinessError, "Delete Demo 失败", err)
+		return xerror.NewError(xerror.BusinessError, "Delete Demo 失败", err)
 	}
 	d.invalidateCache(ctx, id)
 	return nil
@@ -267,11 +267,11 @@ func (d *demoSvc) Delete(ctx context.Context, id int64) error {
 // 逻辑删除
 func (d *demoSvc) SoftDelete(ctx context.Context, id int64) error {
 	if id <= 0 {
-		return xerror.NewError(ctx, xerror.InvalidArgument, "SoftDelete Demo invalid id", nil)
+		return xerror.NewError(xerror.InvalidArgument, "SoftDelete Demo invalid id", nil)
 	}
 	err := d.ctx.DemoDb.SoftDelete(ctx, []int64{id})
 	if err != nil {
-		return xerror.NewError(ctx, xerror.BusinessError, "SoftDelete Demo 失败", err)
+		return xerror.NewError(xerror.BusinessError, "SoftDelete Demo 失败", err)
 	}
 	d.invalidateCache(ctx, id)
 	return nil
@@ -291,21 +291,21 @@ func (d *demoSvc) invalidateCache(ctx context.Context, id int64) {
 // Login 登录(账号:demo名称,密码:password),校验通过后签发双token
 func (d *demoSvc) Login(ctx context.Context, name, password string) (*token.JwtToken, error) {
 	if name == "" || password == "" {
-		return nil, xerror.NewError(ctx, xerror.AccountOrPasswordError, "账号或密码不能为空", nil)
+		return nil, xerror.NewError(xerror.AccountOrPasswordError, "账号或密码不能为空", nil)
 	}
 	demoDb, err := d.ctx.DemoDb.FindByName(ctx, name)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			return nil, xerror.NewError(ctx, xerror.AccountOrPasswordError, "账号或密码错误", nil)
+			return nil, xerror.NewError(xerror.AccountOrPasswordError, "账号或密码错误", nil)
 		}
-		return nil, xerror.NewError(ctx, xerror.BusinessError, "Login 失败", err)
+		return nil, xerror.NewError(xerror.BusinessError, "Login 失败", err)
 	}
 	if !encrypt.BcryptCompare(demoDb.Password, password) {
-		return nil, xerror.NewError(ctx, xerror.AccountOrPasswordError, "账号或密码错误", nil)
+		return nil, xerror.NewError(xerror.AccountOrPasswordError, "账号或密码错误", nil)
 	}
 	tokenInfo, err := d.ctx.Jwt.Gen(demoDb.Id, demoDb.RoleId)
 	if err != nil {
-		return nil, xerror.NewError(ctx, xerror.BusinessError, "Login 生成token失败", err)
+		return nil, xerror.NewError(xerror.BusinessError, "Login 生成token失败", err)
 	}
 	return tokenInfo, nil
 }
@@ -314,7 +314,7 @@ func (d *demoSvc) Login(ctx context.Context, name, password string) (*token.JwtT
 func (d *demoSvc) RefreshToken(ctx context.Context, accessToken, refreshToken string) (*token.JwtToken, error) {
 	tokenInfo, err := d.ctx.Jwt.Refresh(accessToken, refreshToken)
 	if err != nil {
-		return nil, xerror.NewError(ctx, xerror.AuthRefreshErr, "刷新token失败", err)
+		return nil, xerror.NewError(xerror.AuthRefreshErr, "刷新token失败", err)
 	}
 	return tokenInfo, nil
 }
@@ -326,7 +326,7 @@ func (d *demoSvc) Logout(ctx context.Context, tokenStr string) error {
 	}
 	payload, err := d.ctx.Jwt.Parse(ctx, tokenStr)
 	if err != nil && !errors.Is(err, token.ErrExpiredToken) {
-		return xerror.NewError(ctx, xerror.AuthError, "token无效", err)
+		return xerror.NewError(xerror.AuthError, "token无效", err)
 	}
 	if payload == nil {
 		return nil
@@ -342,13 +342,13 @@ func (d *demoSvc) Logout(ctx context.Context, tokenStr string) error {
 // 浏览器 WebSocket 升级请求无法设置自定义 Header,改用短票据换连接,长 token 不进 URL
 func (d *demoSvc) WSTicket(ctx context.Context, userId, roleId int64) (string, error) {
 	if userId <= 0 {
-		return "", xerror.NewError(ctx, xerror.Unauthorized, "用户未登录", nil)
+		return "", xerror.NewError(xerror.Unauthorized, "用户未登录", nil)
 	}
 	ticket := utils.GenUUid()
 	data, _ := json.Marshal(&wsTicketPayload{UserId: userId, RoleId: roleId})
 	key := fmt.Sprintf(cache.WSTicketKey, ticket)
 	if err := d.ctx.RedisCli.Set(ctx, key, data, 30*time.Second).Err(); err != nil {
-		return "", xerror.NewError(ctx, xerror.BusinessError, "生成票据失败", err)
+		return "", xerror.NewError(xerror.BusinessError, "生成票据失败", err)
 	}
 	return ticket, nil
 }
@@ -356,19 +356,19 @@ func (d *demoSvc) WSTicket(ctx context.Context, userId, roleId int64) (string, e
 // ConsumeWSTicket 校验并消费票据(GetDel 原子取删,保证单次有效)
 func (d *demoSvc) ConsumeWSTicket(ctx context.Context, ticket string) (int64, int64, error) {
 	if ticket == "" {
-		return 0, 0, xerror.NewError(ctx, xerror.Unauthorized, "票据不能为空", nil)
+		return 0, 0, xerror.NewError(xerror.Unauthorized, "票据不能为空", nil)
 	}
 	key := fmt.Sprintf(cache.WSTicketKey, ticket)
 	val, err := d.ctx.RedisCli.GetDel(ctx, key).Result()
 	if err != nil {
 		if errors.Is(err, xredis.Nil) {
-			return 0, 0, xerror.NewError(ctx, xerror.Unauthorized, "票据无效或已过期", nil)
+			return 0, 0, xerror.NewError(xerror.Unauthorized, "票据无效或已过期", nil)
 		}
-		return 0, 0, xerror.NewError(ctx, xerror.BusinessError, "票据校验失败", err)
+		return 0, 0, xerror.NewError(xerror.BusinessError, "票据校验失败", err)
 	}
 	var p wsTicketPayload
 	if err := json.Unmarshal([]byte(val), &p); err != nil {
-		return 0, 0, xerror.NewError(ctx, xerror.Unauthorized, "票据无效", err)
+		return 0, 0, xerror.NewError(xerror.Unauthorized, "票据无效", err)
 	}
 	return p.UserId, p.RoleId, nil
 }
@@ -385,7 +385,7 @@ func (d *demoSvc) SendMsg(ctx context.Context) error {
 		Remark:     "Kafka-无type-消息",
 	})
 	if err != nil {
-		return xerror.NewError(ctx, xerror.BusinessError, "序列化 Kafka 消息失败", err)
+		return xerror.NewError(xerror.BusinessError, "序列化 Kafka 消息失败", err)
 	}
 	if err = d.ctx.MsgPub.KafkaCtx(ctx, global.EventTopicPay, demoMsg0); err != nil {
 		return err
@@ -401,7 +401,7 @@ func (d *demoSvc) SendMsg(ctx context.Context) error {
 		Remark:     "Kafka-type-消息",
 	})
 	if err != nil {
-		return xerror.NewError(ctx, xerror.BusinessError, "序列化 Kafka-type 消息失败", err)
+		return xerror.NewError(xerror.BusinessError, "序列化 Kafka-type 消息失败", err)
 	}
 	if err = d.ctx.MsgPub.KafkaWithTypeCtx(ctx, global.EventTopicPay, global.EventTypePayRecharge, demoMsg1); err != nil {
 		return err
@@ -417,7 +417,7 @@ func (d *demoSvc) SendMsg(ctx context.Context) error {
 		Remark:     "5s延迟消息",
 	})
 	if err != nil {
-		return xerror.NewError(ctx, xerror.BusinessError, "序列化延迟消息失败", err)
+		return xerror.NewError(xerror.BusinessError, "序列化延迟消息失败", err)
 	}
 	if err = d.ctx.MsgPub.DelayCtx(ctx, global.EventTopicPay, string(demoMsg2), 5); err != nil {
 		return err
@@ -433,7 +433,7 @@ func (d *demoSvc) SendMsg(ctx context.Context) error {
 		Remark:     "AQ-异步-消息",
 	})
 	if err != nil {
-		return xerror.NewError(ctx, xerror.BusinessError, "序列化 AQ 异步消息失败", err)
+		return xerror.NewError(xerror.BusinessError, "序列化 AQ 异步消息失败", err)
 	}
 	if err = d.ctx.MsgPub.SyncCtx(ctx, global.EventTopicPay, string(demoMsg3)); err != nil {
 		return err
@@ -449,7 +449,7 @@ func (d *demoSvc) SendMsg(ctx context.Context) error {
 		Remark:     "AQ-MsgTopicPay1-异步-消息",
 	})
 	if err != nil {
-		return xerror.NewError(ctx, xerror.BusinessError, "序列化 AQ TopicPay1 消息失败", err)
+		return xerror.NewError(xerror.BusinessError, "序列化 AQ TopicPay1 消息失败", err)
 	}
 	if err = d.ctx.MsgPub.SyncCtx(ctx, global.EventTopicPay1, string(demoMsg4)); err != nil {
 		return err
@@ -465,7 +465,7 @@ func (d *demoSvc) SendMsg(ctx context.Context) error {
 		Remark:     "AQ-每三秒一次-消息",
 	})
 	if err != nil {
-		return xerror.NewError(ctx, xerror.BusinessError, "序列化定时消息失败", err)
+		return xerror.NewError(xerror.BusinessError, "序列化定时消息失败", err)
 	}
 	if err = d.ctx.MsgPub.Cron(global.EventTopicPay, string(demoMsg5), "@every 3s"); err != nil {
 		return err
@@ -486,7 +486,7 @@ func (d *demoSvc) AddMsg(ctx context.Context) error {
 		Remark:     "Kafka-无type-手动添加消息",
 	})
 	if err != nil {
-		return xerror.NewError(ctx, xerror.BusinessError, "序列化 Kafka 消息失败", err)
+		return xerror.NewError(xerror.BusinessError, "序列化 Kafka 消息失败", err)
 	}
 	if err = d.ctx.MsgPub.KafkaCtx(ctx, global.EventTopicPay, demoMsg0); err != nil {
 		return err
