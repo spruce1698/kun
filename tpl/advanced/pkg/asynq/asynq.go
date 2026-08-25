@@ -224,7 +224,10 @@ func (cp *cfgProvider) GetConfigs() ([]*asynq.PeriodicTaskConfig, error) {
 
 	redisClient, closeFn := newRedisClient(cp.redis)
 	defer closeFn()
-	configs := redisClient.HGetAll(ctx, RedisKey).Val()
+	configs, err := redisClient.HGetAll(ctx, RedisKey).Result()
+	if err != nil {
+		return nil, err
+	}
 
 	var tasks []*asynq.PeriodicTaskConfig
 	for k, v := range configs {

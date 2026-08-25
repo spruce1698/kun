@@ -28,21 +28,31 @@ func New(conf *xconfig.Conf) (*Client, error) {
 		return nil, fmt.Errorf("redis 配置错误")
 	}
 
+	minIdleConns := conf.Redis.MinIdleConns
+	if minIdleConns <= 0 && conf.Redis.PoolSize > 0 {
+		minIdleConns = conf.Redis.PoolSize / 4
+		if minIdleConns < 2 {
+			minIdleConns = 2
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	var client redis.UniversalClient
 	if conf.Redis.Cluster {
 		client = redis.NewClusterClient(&redis.ClusterOptions{
-			Addrs:    conf.Redis.Source,
-			Password: conf.Redis.Password,
-			PoolSize: conf.Redis.PoolSize,
+			Addrs:        conf.Redis.Source,
+			Password:     conf.Redis.Password,
+			PoolSize:     conf.Redis.PoolSize,
+			MinIdleConns: minIdleConns,
 		})
 	} else {
 		client = redis.NewClient(&redis.Options{
-			Addr:     conf.Redis.Source[0],
-			Password: conf.Redis.Password, // no password set
-			DB:       conf.Redis.DB,       // redis db 索引
-			PoolSize: conf.Redis.PoolSize, // 连接池大小
+			Addr:         conf.Redis.Source[0],
+			Password:     conf.Redis.Password, // no password set
+			DB:           conf.Redis.DB,       // redis db 索引
+			PoolSize:     conf.Redis.PoolSize, // 连接池大小
+			MinIdleConns: minIdleConns,        // 最小空闲连接数
 		})
 	}
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
+	"golang.org/x/sync/singleflight"
 )
 
 //go:generate mockgen -source=./demo.go -destination=../../../test/mocks/service/demo.go  -package mock_service
@@ -33,6 +34,7 @@ type (
 	}
 	demoSvc struct {
 		ctx *DemoCtx
+		sf  singleflight.Group
 	}
 
 	DemoListArgs struct {
@@ -63,38 +65,56 @@ func NewDemoSvc(ctx *DemoCtx) DemoSvc {
 	}
 }
 
-// 查找一个
+// 查找一个(接入 singleflight 防缓存击穿)
 func (d *demoSvc) Detail(ctx context.Context, id int64) (*Demo, error) {
-	if id <= 2 {
+	if id <= 0 {
 		return nil, xerror.NewError(ctx, xerror.InvalidArgument, "Get Demo Detail invalid id", nil)
 	}
 
 	xlog.Info(ctx, "Get Demo Detail", "测试手工日志")
 
-	result := &Demo{}
+	// 1. 优先查缓存 (LocalCache + Redis)
 	demo, cacheErr := d.ctx.DemoCache.Get(ctx, id)
-	if cacheErr != nil {
-		xlog.Info(ctx, fmt.Sprintf("Get Demo Detail 失败:err %v", cacheErr))
+	if cacheErr == nil {
+		result := &Demo{}
+		_ = copier.Copy(result, demo)
+		return result, nil
+	}
+
+	// 2. 缓存未命中: singleflight 合并同 ID 并发请求,防缓存击穿
+	val, err, _ := d.sf.Do(fmt.Sprintf("demo:detail:%d", id), func() (any, error) {
+		// double check 缓存,避免并发排队协程重复打库
+		if dCached, cErr := d.ctx.DemoCache.Get(ctx, id); cErr == nil {
+			return dCached, nil
+		}
+
 		demoDb, dbErr := d.ctx.DemoDb.Find(ctx, id)
 		if dbErr != nil {
-			if errors.Is(dbErr, db.ErrNotFound) {
-				return nil, xerror.NewError(ctx, xerror.BusinessError, "没有相关记录", dbErr)
-			}
-			return nil, xerror.NewError(ctx, xerror.BusinessError, "Get Demo Detail 失败", dbErr)
+			return nil, dbErr
 		}
-		// 缓存写入 5 分钟过期,与本地缓存对齐;失败仅记日志不阻断主流程。
-		if cacheErr := d.ctx.DemoCache.Set(ctx, id, &cache.Demo{
+
+		cacheData := &cache.Demo{
 			Id:    demoDb.Id,
 			Name:  demoDb.Name,
 			Test1: demoDb.Test1,
 			Test4: demoDb.Test4,
-		}, 300); cacheErr != nil {
-			xlog.Error(ctx, fmt.Sprintf("set demo cache failed, id=%d", id), cacheErr)
 		}
-		_ = copier.Copy(result, demoDb)
-		return result, nil
+		// 缓存写入 5 分钟过期,与本地缓存对齐;失败仅记日志不阻断主流程。
+		if cErr := d.ctx.DemoCache.Set(ctx, id, cacheData, 300); cErr != nil {
+			xlog.Error(ctx, fmt.Sprintf("set demo cache failed, id=%d", id), cErr)
+		}
+		return cacheData, nil
+	})
+
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return nil, xerror.NewError(ctx, xerror.BusinessError, "没有相关记录", err)
+		}
+		return nil, xerror.NewError(ctx, xerror.BusinessError, "Get Demo Detail 失败", err)
 	}
-	_ = copier.Copy(result, demo)
+
+	result := &Demo{}
+	_ = copier.Copy(result, val)
 	return result, nil
 }
 

@@ -89,11 +89,12 @@ type (
 		ConnMaxLifetime int // 连接可复用的最大时间(秒)
 	}
 	RedisConf struct {
-		Source   []string
-		Password string
-		DB       int // Redis 数据库索引(单机模式有效)
-		Cluster  bool
-		PoolSize int // 连接池大小
+		Source       []string
+		Password     string
+		DB           int // Redis 数据库索引(单机模式有效)
+		Cluster      bool
+		PoolSize     int // 连接池大小
+		MinIdleConns int // 最小空闲连接数
 	}
 	KafkaConf struct {
 		Brokers []string
@@ -143,7 +144,7 @@ func New(path string) *Conf {
 		nc.current.Store(nc)
 		c.current.Store(nc)
 	})
-	go v.WatchConfig()
+	v.WatchConfig()
 
 	return c
 }

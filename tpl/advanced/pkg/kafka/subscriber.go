@@ -167,7 +167,10 @@ func (s *Subscriber) getOrCreateReader(topic, group string, conf kafkaGo.ReaderC
 	}
 
 	reader := kafkaGo.NewReader(conf)
-	actual, _ := s.box.LoadOrStore(key, reader)
+	actual, loaded := s.box.LoadOrStore(key, reader)
+	if loaded {
+		_ = reader.Close() // 关闭多余创建的 reader,防止连接与协程泄漏
+	}
 	return actual.(*kafkaGo.Reader)
 }
 
