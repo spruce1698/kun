@@ -256,10 +256,14 @@ func WithLogger(ctx context.Context, logger *zap.Logger) context.Context {
 
 // 从 context 中获取 logger
 func fromContext(ctx context.Context) *zap.Logger {
+	if ctx == nil {
+		return zap.L()
+	}
 	if logger, ok := ctx.Value(loggerKey{}).(*zap.Logger); ok {
 		return logger
 	}
-	return zap.L()
+	// 兜底：若 ctx 含有 trace 信息，自动附带 trace_id 与 span_id
+	return WithTraceID(ctx, zap.L())
 }
 
 // 添加追踪信息到 logger
