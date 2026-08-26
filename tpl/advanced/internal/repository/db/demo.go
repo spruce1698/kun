@@ -61,7 +61,7 @@ func (c *customDemoDb) buildListQuery(ctx context.Context, args *DemoSearch, lim
 
 	switch {
 	case args.LastId > 0: // 游标分页
-		// 游标按主键 id 比较,因此排序也必须按 id,否则(如按 name 排序而按 id 取游标)
+		// 游标按主键 id 比较,因此排序也必须按 id,否则(如按其它列排序而按主键取游标)
 		// 翻页结果会重复或漏行。需要按其它列做游标分页时,应改为 (orderCol, id) 复合游标。
 		cursorOrder := TableDemo + ".id DESC"
 		lastCond := TableDemo + ".`id` < ?"
@@ -84,8 +84,6 @@ func (c *customDemoDb) ListWithTotal(ctx context.Context, args *DemoSearch) ([]*
 		return nil, 0, err
 	}
 	if total == 0 {
-		// 空结果返回 (nil,0,nil) 而非 ErrNotFound;
-		// ErrNotFound 仅用于单条 Find 找不到,避免"空列表"与"查询错误"语义混淆。
 		return nil, 0, nil
 	}
 
@@ -113,7 +111,6 @@ func (c *customDemoDb) ListWithMore(ctx context.Context, args *DemoSearch) ([]*D
 
 	ln := len(result)
 	if ln == 0 {
-		// 空结果返回 nil error;ErrNotFound 仅用于单条 Find 找不到。
 		return nil, false, nil
 	}
 	var hasMore bool

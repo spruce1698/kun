@@ -73,7 +73,7 @@ func newDemoDb(c *Conn) *defaultDemoDb {
 
 func (d *defaultDemoDb) Insert(ctx context.Context, data *Demo) (int64, error) {
 	var zero int64
-	data.Id = zero // 该表主键自增,清零让 DB 分配
+	data.Id = zero // 自增主键:清零让 DB 分配;非自增主键保留调用方传入值
 	err := d.WithContext(ctx).Create(data).Error
 	if err != nil {
 		return zero, err
