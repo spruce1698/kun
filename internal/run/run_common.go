@@ -89,6 +89,11 @@ var CmdRun = &cobra.Command{
 	},
 }
 
+// Register 将 run 子命令挂载到 parent。
+func Register(parent *cobra.Command) {
+	parent.AddCommand(CmdRun)
+}
+
 func watch(dir string, programArgs []string) {
 
 	// Listening file path
@@ -103,6 +108,15 @@ func watch(dir string, programArgs []string) {
 	defer watcher.Close()
 
 	excludeDirArr := strings.Split(excludeDir, ",")
+
+	// P2: 预处理扩展名白名单为 set，避免文件变更事件中反复 Split
+	includeExtSet := make(map[string]struct{})
+	for _, e := range strings.Split(includeExt, ",") {
+		e = strings.TrimSpace(e)
+		if e != "" {
+			includeExtSet[e] = struct{}{}
+		}
+	}
 
 	// 添加所有非排除目录到 watcher（监听目录而非单个文件，新文件自动被覆盖）
 	err = filepath.Walk(watchPath, func(path string, info os.FileInfo, err error) error {
@@ -193,7 +207,7 @@ func watch(dir string, programArgs []string) {
 					}
 					continue
 				}
-				if !shouldRestart(event.Name) {
+				if !shouldRestart(event.Name, includeExtSet) {
 					continue
 				}
 				if timer != nil {
@@ -222,25 +236,15 @@ func watch(dir string, programArgs []string) {
 	}
 }
 
-// shouldRestart 判断指定文件是否应触发重启：仅当扩展名在 includeExt 白名单内时。
-func shouldRestart(name string) bool {
+// shouldRestart 判断指定文件是否应触发重启：仅当扩展名在 includeExtSet 白名单内时。
+// P2: 接收预处理好的 set，避免每次调用重复 Split。
+func shouldRestart(name string, includeExtSet map[string]struct{}) bool {
 	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), ".")
 	if ext == "" {
 		return false
 	}
-	for _, e := range strings.Split(includeExt, ",") {
-		if strings.TrimSpace(e) == ext {
-			return true
-		}
-	}
-	return false
-}
-
-func isProcessRunning(cmd *exec.Cmd) bool {
-	if cmd == nil || cmd.Process == nil {
-		return false
-	}
-	return isProcessAlive(cmd)
+	_, ok := includeExtSet[ext]
+	return ok
 }
 
 // buildProbeDelay 是判断 `go run` 是否"立即编译失败"的等待时长。
@@ -266,7 +270,8 @@ func start(dir string, programArgs []string) *exec.Cmd {
 	// 注意: 这里不调用 cmd.Wait(),Wait 由 watch 统一管理(同一 cmd 只能 Wait 一次)。
 	output.Success("building & running...") // 提示用户正在编译启动,避免误以为卡住
 	time.Sleep(buildProbeDelay)
-	if !isProcessRunning(cmd) {
+	// B6: 直接调用 isProcessAlive，移除冗余的 isProcessRunning 包装
+	if cmd.Process == nil || !isProcessAlive(cmd) {
 		// 进程已退出,Wait 一次拿回编译错误(此时 Wait 不会阻塞,进程已死)
 		if waitErr := cmd.Wait(); waitErr != nil {
 			output.Error("process exited immediately: %s", waitErr)

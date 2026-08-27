@@ -1,14 +1,13 @@
 package kun
 
 import (
+	"github.com/spf13/cobra"
 	"github.com/spruce1698/kun/config"
 	"github.com/spruce1698/kun/internal/create"
 	"github.com/spruce1698/kun/internal/new"
 	"github.com/spruce1698/kun/internal/run"
 	"github.com/spruce1698/kun/internal/upgrade"
 	"github.com/spruce1698/kun/internal/wire"
-
-	"github.com/spf13/cobra"
 )
 
 var CmdRoot = &cobra.Command{
@@ -22,23 +21,16 @@ var CmdRoot = &cobra.Command{
 }
 
 func init() {
-	CmdRoot.AddCommand(new.CmdNew)
-	CmdRoot.AddCommand(run.CmdRun)
-	CmdRoot.AddCommand(upgrade.CmdUpgrade)
-	CmdRoot.AddCommand(create.CmdCreate)
-
-	create.CmdCreate.AddCommand(create.CmdCreateHandler)
-	create.CmdCreate.AddCommand(create.CmdCreateService)
-	create.CmdCreate.AddCommand(create.CmdCreateHandlerAndService)
-	create.CmdCreate.AddCommand(create.CmdCreateRouter)
-	create.CmdCreate.AddCommand(create.CmdCreateDBRepository)
-	create.CmdCreate.AddCommand(create.CmdCreateCacheRepository)
-
-	CmdRoot.AddCommand(wire.CmdWire)
-	wire.CmdWire.AddCommand(wire.CmdWireAll)
+	// E6: 各子命令包通过 Register 自行维护命令树，root 只负责顶层注册，
+	// 新增子命令只需在对应包中修改，不会遗漏。
+	new.Register(CmdRoot)
+	run.Register(CmdRoot)
+	upgrade.Register(CmdRoot)
+	create.Register(CmdRoot)
+	wire.Register(CmdRoot)
 }
 
-// executes the root command.
+// Execute executes the root command.
 func Execute() error {
 	return CmdRoot.Execute()
 }

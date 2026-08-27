@@ -17,6 +17,9 @@ import (
 	"gorm.io/gorm"
 )
 
+// E3: 包级预编译正则，避免在 checkStructName 热路径中重复编译。
+var reValidStructName = regexp.MustCompile(`^\w+$`)
+
 // generator's basic configuration
 type SQLConfig struct {
 	DbConn *gorm.DB // db connection
@@ -224,36 +227,12 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 		fields = append(fields, m)
 	}
 
+	// E8: 使用公共 findPrimaryKey 函数，消除与 sqlParser.go 的重复逻辑。
 	var hasPrimaryKey bool
 	var primaryKeyName string
 	var primaryKeyColumn string
 	var primaryKeyAutoIncrement bool
-
-	// 1. First look for IsPrimaryKey = true
-	for _, f := range fields {
-		if f.IsPrimaryKey {
-			hasPrimaryKey = true
-			primaryKeyName = f.Name
-			primaryKeyColumn = f.ColumnName
-			primaryKeyType = f.Type
-			primaryKeyAutoIncrement = strings.Contains(f.GORMTag, "autoIncrement:true")
-			break
-		}
-	}
-
-	// 2. If not found, look for field Name == "Id" (case-insensitive column name "id")
-	if !hasPrimaryKey {
-		for _, f := range fields {
-			if strings.ToLower(f.ColumnName) == "id" || f.Name == "Id" {
-				hasPrimaryKey = true
-				primaryKeyName = f.Name
-				primaryKeyColumn = f.ColumnName
-				primaryKeyType = f.Type
-				primaryKeyAutoIncrement = strings.Contains(f.GORMTag, "autoIncrement:true")
-				break
-			}
-		}
-	}
+	primaryKeyName, primaryKeyColumn, primaryKeyType, primaryKeyAutoIncrement, hasPrimaryKey = findPrimaryKey(fields)
 
 	return &StructMeta{
 		DbConn:                  g.Conf.DbConn,
@@ -396,14 +375,16 @@ func (g *Generator) output(tmpl string, data interface{}, fileName string) error
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(fileName, result, 0640)
+	// M3: 统一使用 0644（与其他生成文件一致）
+	return os.WriteFile(fileName, result, 0644)
 }
 
 func (g *Generator) checkStructName(name string) error {
 	if name == "" {
 		return nil
 	}
-	if !regexp.MustCompile(`^\w+$`).MatchString(name) {
+	// E3: 使用包级预编译正则
+	if !reValidStructName.MatchString(name) {
 		return fmt.Errorf("repo name cannot contains invalid character")
 	}
 	if name[0] < 'A' || name[0] > 'Z' {

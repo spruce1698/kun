@@ -29,19 +29,26 @@ var CmdNew = &cobra.Command{
 	Long:    `create a new project with kun layout.`,
 	RunE:    run,
 }
-var (
-	repoURL string
-)
 
 func init() {
-	CmdNew.Flags().StringVarP(&repoURL, "repo-url", "g", repoURL, "layout repo")
+	// repo-url flag 只在 RunE 内通过 cmd.Flags().GetString 读取，
+	// 避免包级变量在多次调用间泄漏（对比 create.go 的正确做法）。
+	CmdNew.Flags().StringP("repo-url", "g", "", "layout repo")
+}
+
+// Register 将 new 子命令挂载到 parent。
+func Register(parent *cobra.Command) {
+	parent.AddCommand(CmdNew)
 }
 
 func NewProject() *Project {
 	return &Project{}
 }
 
-func run(_ *cobra.Command, args []string) error {
+func run(cmd *cobra.Command, args []string) error {
+	// B4 fix: 从 flag 读取而非包级变量
+	repoURL, _ := cmd.Flags().GetString("repo-url")
+
 	p := NewProject()
 	switch len(args) {
 	case 0:
@@ -67,7 +74,7 @@ func run(_ *cobra.Command, args []string) error {
 	}
 
 	// clone repo
-	yes, err := p.cloneTemplate()
+	yes, err := p.cloneTemplate(repoURL)
 	if err != nil || !yes {
 		return err
 	}
@@ -89,7 +96,7 @@ func run(_ *cobra.Command, args []string) error {
 	return nil
 }
 
-func (p *Project) cloneTemplate() (bool, error) {
+func (p *Project) cloneTemplate(repoURL string) (bool, error) {
 
 	stat, _ := os.Stat(p.ProjectName)
 	if stat != nil {
@@ -173,6 +180,7 @@ func (p *Project) replacePackageName() error {
 	}
 	return nil
 }
+
 func (p *Project) modTidy() error {
 	output.Success("go mod tidy")
 	cmd := exec.Command("go", "mod", "tidy")
@@ -184,9 +192,11 @@ func (p *Project) modTidy() error {
 	}
 	return nil
 }
+
 func (p *Project) rmGit() {
 	_ = os.RemoveAll(p.ProjectName + "/.git")
 }
+
 func (p *Project) installWire() error {
 	if _, err := exec.LookPath("wire"); err == nil {
 		output.Success("wire is already installed, skipping go install.")
@@ -234,20 +244,20 @@ func (p *Project) replaceFiles(packageName string) error {
 	return nil
 }
 
+// handlerZip 将内嵌 zip 模板解压到 projectName 目录。
 func handlerZip(projectName, templateName string) error {
 	// 创建项目目录
-	mkDirErr := os.MkdirAll(projectName, os.ModePerm)
-	if mkDirErr != nil {
-		return mkDirErr
+	if err := os.MkdirAll(projectName, 0755); err != nil {
+		return err
 	}
-	tempFile, readErr := tpl.NewTplZipFS.ReadFile(templateName + ".zip")
-	if readErr != nil {
-		return readErr
+	tempFile, err := tpl.NewTplZipFS.ReadFile(templateName + ".zip")
+	if err != nil {
+		return err
 	}
 
-	zipReader, zipReaderErr := zip.NewReader(bytes.NewReader(tempFile), int64(len(tempFile)))
-	if zipReaderErr != nil {
-		return zipReaderErr
+	zipReader, err := zip.NewReader(bytes.NewReader(tempFile), int64(len(tempFile)))
+	if err != nil {
+		return err
 	}
 
 	// 遍历 zip 包里的文件
@@ -261,10 +271,9 @@ func handlerZip(projectName, templateName string) error {
 		if strings.HasPrefix(name, ".."+string(filepath.Separator)) || filepath.IsAbs(name) {
 			return fmt.Errorf("zip entry %q has unsafe path", file.Name)
 		}
-		path := filepath.Join(projectName, name)
+		dstPath := filepath.Join(projectName, name)
 		// 防 zip slip:解析为绝对路径后,必须仍在 baseAbs 之下。
-		// 不能拿相对 path 和绝对 baseAbs 直接比前缀,否则永远不匹配(如 .dockerignore)。
-		absPath, err := filepath.Abs(path)
+		absPath, err := filepath.Abs(dstPath)
 		if err != nil {
 			return err
 		}
@@ -275,79 +284,36 @@ func handlerZip(projectName, templateName string) error {
 		fileMode := file.Mode()
 		// 如果是目录，就创建目录
 		if file.FileInfo().IsDir() {
-			if tempMkDirErr := os.MkdirAll(path, fileMode); tempMkDirErr != nil {
-				return tempMkDirErr
+			if err := os.MkdirAll(dstPath, fileMode); err != nil {
+				return err
 			}
-			// 因为是目录，跳过当前循环，因为后面都是文件的处理
 			continue
 		}
 
-		// 获取到 Reader
-		fr, frErr := file.Open()
-		if frErr != nil {
-			return frErr
+		// 获取 Reader
+		fr, err := file.Open()
+		if err != nil {
+			return err
 		}
 
-		// 创建要写出的文件对应的 Write
-		fw, fwErr := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, fileMode)
-		if fwErr != nil {
+		// 创建目标文件
+		fw, err := os.OpenFile(dstPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, fileMode)
+		if err != nil {
 			_ = fr.Close()
-			return fwErr
+			return err
 		}
 
 		_, copyErr := io.Copy(fw, fr)
+		// M5: 同时检查写关闭的错误（磁盘满时 Close 可能携带错误）
+		closeWErr := fw.Close()
+		_ = fr.Close()
 		if copyErr != nil {
-			_ = fw.Close()
-			_ = fr.Close()
 			return copyErr
 		}
-		_ = fw.Close()
-		_ = fr.Close()
+		if closeWErr != nil {
+			return fmt.Errorf("close %s: %w", dstPath, closeWErr)
+		}
 	}
 
 	return nil
 }
-
-// func handlerFiles(projectName, templateName string) error {
-// 	// 创建项目目录
-// 	mkDirErr := os.MkdirAll(projectName, os.ModeExclusive)
-// 	if mkDirErr != nil {
-// 		return mkDirErr
-// 	}
-// 	files, _ := fs.ReadDir(tpl.NewTplDirFS, templateName)
-// 	for _, file := range files {
-// 		fileName := file.Name()
-// 		fileMode := file.Type()
-// 		path := filepath.Join(projectName, fileName)
-// 		if fileName == "go.mod.tpl" {
-// 			path = filepath.Join(projectName, "go.mod")
-// 		}
-// 		// 如果是目录，就创建目录
-// 		if file.IsDir() {
-// 			if mkdirErr := os.MkdirAll(path, fileMode); mkdirErr != nil {
-// 				return mkdirErr
-// 			}
-// 			// 因为是目录，跳过当前循环，因为后面都是文件的处理
-// 			continue
-// 		}
-//
-// 		// 获取到 Reader
-// 		fr, frErr := fs.ReadFile(tpl.NewTplDirFS, templateName+"/"+fileName)
-// 		if frErr != nil {
-// 			return frErr
-// 		}
-//
-// 		// 创建要写出的文件对应的 Write
-// 		fw, fwErr := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, fileMode)
-// 		if fwErr != nil {
-// 			_ = fw.Close()
-// 			return fwErr
-// 		}
-// 		_, writeErr := fw.Write(fr)
-// 		if writeErr != nil {
-// 			_ = fw.Close()
-// 			return writeErr
-// 		}
-// 	}
-// 	return nil
-// }

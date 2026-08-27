@@ -25,7 +25,8 @@ var (
 	rePrimaryKey = regexp.MustCompile(`(?i)PRIMARY\s+KEY\s*\(([^)]*(?:\([^)]*\)[^)]*)*)\)`)
 	// rePKColumn 从列清单里逐个取列名,忽略 (10) 这类前缀长度与 ASC/DESC 修饰。
 	rePKColumn    = regexp.MustCompile("`?(\\w+)`?(?:\\s*\\(\\s*\\d+\\s*\\))?")
-	reUniqueKey   = regexp.MustCompile(`(?i)UNIQUE\s+KEY\s+` + "`" + `(\w+)` + "`" + `\s*\(([^)]+)\)`)
+	// P4: 兼容索引名有/无反引号两种写法（标准 MySQL 有反引号，部分方言无）
+	reUniqueKey   = regexp.MustCompile(`(?i)UNIQUE\s+KEY\s+` + "`?" + `(\w+)` + "`?" + `\s*\(([^)]+)\)`)
 	reComment     = regexp.MustCompile(`(?i)COMMENT\s+'((?:[^']|''|\\.)*)'`)
 	reDefault     = regexp.MustCompile(`(?i)DEFAULT\s+('[^']*'|[\w.]+|NULL)`)
 	reNoiseClause = regexp.MustCompile(`(?i)\b(CHARACTER\s+SET\s+\w+|COLLATE\s+\w+)\b`)
@@ -316,36 +317,11 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 		fields = append(fields, field)
 	}
 
+	// E8: 使用公共 findPrimaryKey 函数，消除与 sqlGenerator.go 的重复逻辑。
 	var hasPrimaryKey bool
-	var primaryKeyName string
-	var primaryKeyColumn string
+	var primaryKeyName, primaryKeyColumn string
 	var primaryKeyAutoIncrement bool
-
-	// 1. First look for IsPrimaryKey = true
-	for _, f := range fields {
-		if f.IsPrimaryKey {
-			hasPrimaryKey = true
-			primaryKeyName = f.Name
-			primaryKeyColumn = f.ColumnName
-			primaryKeyType = f.Type
-			primaryKeyAutoIncrement = strings.Contains(f.GORMTag, "autoIncrement:true")
-			break
-		}
-	}
-
-	// 2. If not found, look for field Name == "Id" (case-insensitive column name "id")
-	if !hasPrimaryKey {
-		for _, f := range fields {
-			if strings.ToLower(f.ColumnName) == "id" || f.Name == "Id" {
-				hasPrimaryKey = true
-				primaryKeyName = f.Name
-				primaryKeyColumn = f.ColumnName
-				primaryKeyType = f.Type
-				primaryKeyAutoIncrement = strings.Contains(f.GORMTag, "autoIncrement:true")
-				break
-			}
-		}
-	}
+	primaryKeyName, primaryKeyColumn, primaryKeyType, primaryKeyAutoIncrement, hasPrimaryKey = findPrimaryKey(fields)
 
 	if structName == "" {
 		return nil
@@ -444,6 +420,10 @@ func isConstraintLine(line string) bool {
 		if strings.HasPrefix(upper, prefix) {
 			return true
 		}
+	}
+	// B5: 兼容 KEY` 无空格形式（部分 SQL dump 省略 KEY 与反引号间的空格）
+	if strings.HasPrefix(upper, "KEY`") {
+		return true
 	}
 	return false
 }

@@ -59,7 +59,7 @@
 │   ├─ sql/                        数据库建表脚本
 │   └── scripts/                       辅助脚本
 │       └── swagger.sh                 自动生成 Swagger 文档
-├── swagger/                       Swagger 接口文档                
+├── swagger/                       Swagger 接口文档              
 ├── internal/                      内部业务逻辑
 │   ├── handler/                   HTTP 处理器层（参数校验、调用 Service）
 │   │   ├── demo/demo.go           Demo CRUD 处理器（含缓存、事件发布）
@@ -186,15 +186,58 @@ kun create cache cache
 kun create hs user
 ```
 
-### 常用命令
+## 常用命令
 
 ```bash
-# 启动项目
+# 启动 HTTP 服务
 kun run
+
+# 启动 Broker 调度服务
+kun run ./cmd/broker
 
 # 编译 Wire 依赖注入
 kun wire
 ```
+
+## 事件发布与订阅开发指南
+
+Advanced Layout 提供了由 `internal/event` 封装的多后端消息发布与订阅架构（Kafka + Asynq）：
+
+### 1. 消息发布 (Publisher)
+
+在 Service 层注入 `*event.Publisher`，即可进行多场景消息投递：
+
+```go
+// 异步投递普通任务
+entryID, err := s.eventPub.AsynqSync(ctx, "default", "task:demo", payload)
+
+// 投递延时任务 (如 30 分钟后超时取消未支付订单)
+entryID, err := s.eventPub.AsynqDelay(ctx, "default", "order:timeout", payload, 30*time.Minute)
+
+// 发布 Kafka 业务事件 (带业务 Key)
+err := s.eventPub.KafkaWithKey(ctx, "topic_user_event", "user_1001", []byte("registered"))
+```
+
+### 2. 消息消费 (Subscriber)
+
+在 `internal/service/svc/broker.go` 中编写消费者处理器：
+
+```go
+// Kafka 消息处理
+func (s *Service) DemoKafkaHandler(ctx context.Context, key, value string) error {
+    // 处理业务逻辑
+    return nil
+}
+
+// Asynq 任务处理
+func (s *Service) DemoAsynqHandler(ctx context.Context, task *asynq.Task) error {
+    payload := task.Payload()
+    // 处理业务逻辑
+    return nil
+}
+```
+
+并在 `internal/service/brokerDI.go` 中注册到 `WireBrokerSet`，即可随 `broker` 进程启动自动消费。
 
 ## 项目约定
 
@@ -203,3 +246,96 @@ kun wire
 3. **错误处理**: 统一使用 `xerror` 包管理错误码，返回结构化错误响应。
 4. **日志**: 使用 `xlog`（基于 Zap）记录结构化日志，支持链路追踪。
 5. **缓存 Key**: 统一在 `repository/cache/keys.go` 中管理，避免散落各处。
+
+
+
+```go
+// ==============github.com/robfig/cron 周期性任务=====================================
+
+// "github.com/robfig/cron/v3"
+//  CronFun func(corner *cron.Cron)
+
+// // 周期性任务服务精确到秒
+// func (s *Sub) Cron() {
+// 	if s.task.CronFunSet == nil || len(s.task.CronFunSet) <= 0 {
+// 		return
+// 	}
+//
+// 	loc, _ := time.LoadLocation("Asia/Shanghai")
+// 	cs := cron.New(cron.WithSeconds(), cron.WithLocation(loc))
+// 	s.wg.Add(1)
+// 	go func() {
+// 		// 添加任务
+// 		for _, fun := range s.task.CronFunSet {
+// 			fun(cs)
+// 		}
+// 		cs.Start()
+//
+// 		defer s.wg.Done()
+// 	}()
+// 	defer cs.Stop() // 需要在协程结束时关闭
+// }
+
+// // 支付事件消费
+// func (s *Service) PayDemo(key, value string) error {
+// 	switch enum.MsgType(key) {
+// 	case enum.MsgTypePayRecharge: // 充值
+//
+// 		msg := &producer.PayRecharge{}
+// 		_ = json.Unmarshal([]byte(value), msg)
+//
+// 		fmt.Printf("KafkaSubscriber-Fetch:消费时间:%s:%s \n", utils.GetTimeStr(time.Now()), value)
+// 		// 逻辑处理start...
+// 		// TODO: do something
+// 		// err := c.DemoCache.SetDemo(context.Background(), 111111, &cache.Demo{Id: 111111, Name: "asdfsadfasf"}, 0)
+// 		// fmt.Println(err)
+//
+// 		return nil
+// 	default:
+// 		log.Fatalln("未知的支付事件类型", key)
+// 	}
+// 	return nil
+// }
+//
+// // 支付事件消费
+// func (s *Service) KQPayDemo(key, value string) error {
+// 	msg := &producer.PayRecharge{}
+// 	_ = json.Unmarshal([]byte(value), msg)
+//
+// 	fmt.Printf("KafkaSubscriber:key 消费时间:%s:%s \n", utils.GetTimeStr(time.Now()), value)
+// 	// 逻辑处理start...
+// 	// TODO: do something
+//
+// 	// err := c.DemoCache.SetDemo(context.Background(), 111111, &cache.Demo{Id: 111111, Name: "asdfsadfasf"}, 0)
+// 	// fmt.Println(err)
+//
+// 	return nil
+// }
+//
+// // aq消费者
+// func (s *Service) AqSubscriberDemo(ctx context.Context, task *asynq.Task) error {
+// 	fmt.Printf("AqSubscriber:消费时间:%s: %s %s  \n", utils.GetTimeStr(time.Now()), task.Type(), task.Payload())
+// 	// 逻辑处理start...
+// 	// TODO: do something
+// 	return nil
+// }
+//
+// // Cron 消费者
+// func (s *Service) CronSubscriberDemo(corner *cron.Cron) {
+// 	// 每个偶数秒执行
+// 	spec := "*/2 * * * * *"
+// 	var demoLock sync.Mutex
+// 	entryID, err := corner.AddFunc(spec, func() {
+// 		demoLock.Lock()
+// 		defer demoLock.Unlock()
+//
+// 		fmt.Printf("CronDemo:消费时间:%s \n", utils.GetTimeStr(time.Now()))
+//
+// 		// 逻辑处理start...
+// 		// TODO: do something
+// 	})
+// 	if err != nil {
+// 		fmt.Printf("启动[demo]定时任务失败:%v %v \n", entryID, err)
+// 	}
+// }
+```

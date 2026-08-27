@@ -79,6 +79,11 @@ func FindMain(base, excludeDir string) (map[string]string, error) {
 			if !hasCmdSeg {
 				return nil
 			}
+			// M4: 超过 1MB 的文件肯定不是普通 Go 源文件，跳过以防读二进制文件
+			const maxGoFileSize = 1 << 20 // 1 MB
+			if info.Size() > maxGoFileSize {
+				return nil
+			}
 			content, err := os.ReadFile(path)
 			if err != nil {
 				return err

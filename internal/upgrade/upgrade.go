@@ -27,3 +27,8 @@ var CmdUpgrade = &cobra.Command{
 		return nil
 	},
 }
+
+// Register 将 upgrade 子命令挂载到 parent。
+func Register(parent *cobra.Command) {
+	parent.AddCommand(CmdUpgrade)
+}

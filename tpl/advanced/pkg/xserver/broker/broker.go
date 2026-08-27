@@ -8,10 +8,12 @@ package broker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -24,7 +26,6 @@ import (
 	"advanced/pkg/xserver"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -239,7 +240,7 @@ func (s *Server) Stop(signal string) {
 	s.mu.Unlock()
 
 	if cmd != nil && cmd.Process != nil {
-		_ = cmd.Process.Signal(syscall.SIGTERM)
+		_ = terminateProcess(cmd.Process)
 
 		// 等待 supervisor 中 cmd.Wait() 返回并关闭 done;
 		// 不依赖 cmdExit 的投递时序(它可能因 cap=1 满了而投递失败)。
@@ -279,3 +280,14 @@ func (s *Server) Stop(signal string) {
 func IsChild() bool {
 	return os.Getenv(ChildKey) == ChildVal
 }
+
+func terminateProcess(p *os.Process) error {
+	if p == nil {
+		return nil
+	}
+	if runtime.GOOS == "windows" {
+		return p.Kill()
+	}
+	return p.Signal(syscall.SIGTERM)
+}
+

@@ -1,9 +1,9 @@
 package create
 
 import (
+	"bytes"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -99,6 +99,17 @@ func init() {
 	} {
 		c.Flags().BoolP("force", "f", false, "force override existing file")
 	}
+}
+
+// Register E6: 将 create 及其子命令挂载到 parent，由本包自行维护命令树。
+func Register(parent *cobra.Command) {
+	parent.AddCommand(CmdCreate)
+	CmdCreate.AddCommand(CmdCreateHandler)
+	CmdCreate.AddCommand(CmdCreateService)
+	CmdCreate.AddCommand(CmdCreateHandlerAndService)
+	CmdCreate.AddCommand(CmdCreateRouter)
+	CmdCreate.AddCommand(CmdCreateDBRepository)
+	CmdCreate.AddCommand(CmdCreateCacheRepository)
 }
 
 type Create struct {
@@ -206,7 +217,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	if c.CmdType == "svc" || c.CmdType == "hs" {
 		if strings.HasPrefix(strings.ToLower(arg), "svc/") {
 			arg = arg[4:]
-		} else if strings.HasPrefix(strings.ToLower(arg), "svc\\") {
+		} else if strings.HasPrefix(strings.ToLower(arg), `svc\`) {
 			arg = arg[4:]
 		}
 	}
@@ -260,12 +271,13 @@ func (c *Create) generateFile() error {
 
 	fileName := strings.ToLower(string(c.FileName[0])) + c.FileName[1:] + ".go"
 
-	// 构建文件路径(统一用正斜杠,跨平台一致)
-	filePath := c.FilePath
-	if filePath == "" {
+	// E2: 统一使用 filepath，再用 filepath.ToSlash 转正斜杠供展示
+	// 构建文件路径
+	var filePath string
+	if c.FilePath == "" {
 		filePath = filepath.ToSlash(filepath.Join(BasePath, config.typePath))
 	} else {
-		filePath = filepath.ToSlash(filepath.Join(BasePath, config.typePath, filePath))
+		filePath = filepath.ToSlash(filepath.Join(BasePath, config.typePath, c.FilePath))
 	}
 	filePath = strings.TrimSuffix(filePath, "/")
 
@@ -277,7 +289,7 @@ func (c *Create) generateFile() error {
 
 	// 校验生成路径确实落在项目的 internal/<typePath> 之下,避免 c.FilePath 里的
 	// "../" 把文件写到项目外。
-	// 必须用 filepath.Rel 判断:子串匹配可被绕过 —— 例如
+	// 必须用 filepath.Rel 判断:子串匹配可被绕过 ——
 	// "../../../tmp/internal/handler/x" 同样包含 "/internal/handler/"。
 	expectedRoot, err := filepath.Abs(filepath.Join(BasePath, config.typePath))
 	if err != nil {
@@ -295,7 +307,6 @@ func (c *Create) generateFile() error {
 	absLinuxPath := filepath.ToSlash(absDir) + "/"
 
 	// 计算相对 internal/ 的层级，用于模板中的 ../ 引用（如 mockgen 目标路径）。
-	// 深度 = 自定义子路径（c.FilePath）的路径段数；默认路径时为 0，模板已含固定 ../../../。
 	c.AddUPPath = strings.Repeat("../", strings.Count(filepath.ToSlash(c.FilePath), "/"))
 
 	// 设置包名:取目标目录名(如 handler/service),而非文件名。
@@ -307,9 +318,10 @@ func (c *Create) generateFile() error {
 	// 根据模板生成文件
 	var t *template.Template
 	if c.TplPath == "" {
-		t, err = template.ParseFS(tpl.CreateTplFS, fmt.Sprintf("create/%s.tpl", c.CreateType))
+		// E2: embed FS 路径使用正斜杠字符串拼接（path/filepath 在 Windows 下会用反斜杠）
+		t, err = template.ParseFS(tpl.CreateTplFS, "create/"+c.CreateType+".tpl")
 	} else {
-		t, err = template.ParseFiles(path.Join(c.TplPath, fmt.Sprintf("%s.tpl", c.CreateType)))
+		t, err = template.ParseFiles(filepath.Join(c.TplPath, c.CreateType+".tpl"))
 	}
 	if err != nil {
 		return fmt.Errorf("create %s error: %w", c.CreateType, err)
@@ -341,18 +353,14 @@ func (c *Create) generateFile() error {
 	}
 
 	// 更新DI文件
-	// DI 文件位置:cache 的 DI 文件在 repository/(生成目录 repository/cache 的父级),
-	// 其余类型的 DI 文件就在生成目录本身(handler/service-svc/router)。
-	// 统一传"生成目录",由 Wire2DIFile 向上逐级查找 marker DI 文件。
+	// E4: DI 文件查找规则——所有类型（含 cache）统一传"生成目录"，
+	// 由 Wire2DIFile 向上逐级查找含 marker 的 DI 文件。
+	// cache 的 DI 文件在 repository/（生成目录 repository/cache 的父级），
+	// Wire2DIFile 的向上搜索逻辑可以自动找到，无需在此区分。
 	diPath := absLinuxPath
-	if c.CreateType != TypeCache {
-		diPath = filepath.ToSlash(filepath.Join(BasePath, config.typePath))
-	}
 
 	contentMap := config.diBuilder(c)
 	// 非默认包名(即在子目录下生成)时,需要把新包的 import 注入到对应 DI 文件的 import 块。
-	// 锚定到该类型专属的 import marker 注释行,避免用 "github.com/google/wire" 字面量
-	// 这类非 marker key 误匹配 import 区任意位置。
 	if c.PackageName != config.defaultPkg && config.importMarker != "" {
 		contentMap[config.importMarker] = "\t\"" + c.ProjectName + "/" + filePath + "\""
 	}
@@ -367,8 +375,8 @@ func (c *Create) generateFile() error {
 // createFile 创建文件。返回 (file, existed, err)：existed 表示文件已存在且未强制覆盖。
 func createFile(dirPath string, filename string, force bool) (*os.File, bool, error) {
 	filePath := filepath.Join(dirPath, filename)
-	err := os.MkdirAll(dirPath, os.ModePerm)
-	if err != nil {
+	// M2: 目录权限改为 0755，避免 os.ModePerm(0777) 过于宽泛
+	if err := os.MkdirAll(dirPath, 0755); err != nil {
 		return nil, false, fmt.Errorf("failed to create dir %s: %w", dirPath, err)
 	}
 	if stat, err := os.Stat(filePath); err == nil && stat != nil && !force {
@@ -381,15 +389,46 @@ func createFile(dirPath string, filename string, force bool) (*os.File, bool, er
 	return file, false, nil
 }
 
+// keysFileTpl E7: 用 text/template 生成 keys.go，避免字符串拼接在特殊字符场景下生成非法代码。
+var keysFileTpl = template.Must(template.New("keys").Parse(
+	`package {{.PackageName}}
+
+const (
+	{{.KeyName}} = "{{.KeyValue}}"
+)
+`))
+
+// keysAppendTpl 用于向已存在的 const 块追加常量。
+var keysAppendTpl = template.Must(template.New("keysAppend").Parse(
+	`const (
+	{{.KeyName}} = "{{.KeyValue}}"
+`))
+
+type keysData struct {
+	PackageName string
+	KeyName     string
+	KeyValue    string
+}
+
 func generateKeysFile(dirPath string, c *Create) error {
 	keysPath := filepath.Join(dirPath, "keys.go")
 	keyName := c.FileName + "DataKey"
 	keyValue := "cache:" + c.FileNameTitleLower + ":%d"
 
-	// 1. 如果 keys.go 不存在，直接创建并写入初始模板
+	kd := keysData{
+		PackageName: c.PackageName,
+		KeyName:     keyName,
+		KeyValue:    keyValue,
+	}
+
+	// 1. 如果 keys.go 不存在，直接用模板创建
 	if _, err := os.Stat(keysPath); os.IsNotExist(err) {
-		content := "package " + c.PackageName + "\n\nconst (\n\t" + keyName + " = \"" + keyValue + "\"\n)\n"
-		return os.WriteFile(keysPath, []byte(content), 0644)
+		var buf bytes.Buffer
+		if err := keysFileTpl.Execute(&buf, kd); err != nil {
+			return err
+		}
+		// M3: 统一文件权限 0644
+		return os.WriteFile(keysPath, buf.Bytes(), 0644)
 	}
 
 	// 2. 如果 keys.go 已存在，读取它
@@ -404,11 +443,18 @@ func generateKeysFile(dirPath string, c *Create) error {
 		return nil
 	}
 
-	// 4. 追加逻辑
+	// 4. 追加逻辑：向已有 const 块插入，或追加新 const 块
 	if strings.Contains(content, "const (") {
-		content = strings.Replace(content, "const (", "const (\n\t"+keyName+" = \""+keyValue+"\"", 1)
+		// 在已有 const ( 后插入新常量
+		newConst := "\t" + keyName + " = \"" + keyValue + "\""
+		content = strings.Replace(content, "const (", "const (\n"+newConst, 1)
 	} else {
-		content += "\n\nconst (\n\t" + keyName + " = \"" + keyValue + "\"\n)\n"
+		// 追加新 const 块
+		var buf bytes.Buffer
+		if err := keysAppendTpl.Execute(&buf, kd); err != nil {
+			return err
+		}
+		content += "\n" + buf.String() + ")\n"
 	}
 
 	return os.WriteFile(keysPath, []byte(content), 0644)

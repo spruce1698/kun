@@ -12,6 +12,9 @@ import (
 // Wire2DIFile 在 filePath 指向的位置扫描 DI 文件并写入注入内容。
 // filePath 既可以是 DI 文件所在目录,也可以是 DI 文件本身(此时取其所在目录),
 // 还可以是生成代码所在目录(此时向上逐级查找含 marker 的 DI 文件)。
+//
+// B7 并发安全声明: wireProcess 是 read-modify-write 操作，目前调用方（kun create / kun wire all）
+// 均为串行逢历，无并发写问题。若未来引入并发，需对 DI 文件加文件锁。
 func Wire2DIFile(filePath string, contentMap map[string]string) error {
 	// 确定起始扫描目录:filePath 为目录则直接用,为文件则取其所在目录。
 	dirName := filePath
@@ -71,6 +74,11 @@ func findDIFiles(dir string, contentMap map[string]string, maxUp int) []string {
 		}
 		for _, fileInfo := range fileInfos {
 			if fileInfo.IsDir() {
+				continue
+			}
+			// P3: 先按文件名过滤(只读 .go 文件)，避免对非 Go 文件的内容搜索。
+			// DI 文件必然是 .go 文件，提前过滤可显著减少 I/O。
+			if filepath.Ext(fileInfo.Name()) != ".go" {
 				continue
 			}
 			p := filepath.Join(dir, fileInfo.Name())

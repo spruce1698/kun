@@ -3,6 +3,7 @@ package svc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -20,7 +21,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/jinzhu/copier"
-	"github.com/pkg/errors"
 	"github.com/xuri/excelize/v2"
 	"golang.org/x/sync/singleflight"
 )

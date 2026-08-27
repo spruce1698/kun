@@ -21,51 +21,17 @@ var CmdWire = &cobra.Command{
 	Long:    "kun wire [wire.go path]",
 	Example: "kun wire server/wire",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cmdArgs, _ := helper.SplitArgs(cmd, args)
-		var dir string
-		if len(cmdArgs) > 0 {
-			dir = cmdArgs[0]
-		}
-		base, err := os.Getwd()
+		dir, err := resolveWireDir(cmd, args)
 		if err != nil {
-			return fmt.Errorf("getwd error: %w", err)
+			return err
 		}
 		if dir == "" {
-			// find the directory containing the cmd/*
-			wirePath, err := findWire(base)
-
-			if err != nil {
-				return err
-			}
-			switch len(wirePath) {
-			case 0:
-				return fmt.Errorf("the wire.go cannot be found in the current directory")
-			case 1:
-				for _, v := range wirePath {
-					dir = v
-				}
-			default:
-				var wirePaths []string
-				for k := range wirePath {
-					wirePaths = append(wirePaths, k)
-				}
-				sort.Strings(wirePaths)
-				prompt := &survey.Select{
-					Message:  "Which wire.go directory do you want to run?",
-					Options:  wirePaths,
-					PageSize: 10,
-				}
-				e := survey.AskOne(prompt, &dir)
-				if e != nil || dir == "" {
-					// 交互中断,静默退出
-					return nil
-				}
-				dir = wirePath[dir]
-			}
+			return nil // 交互中断
 		}
 		return wireRun(dir)
 	},
 }
+
 var CmdWireAll = &cobra.Command{
 	Use:     "all",
 	Short:   "kun wire all",
@@ -73,18 +39,14 @@ var CmdWireAll = &cobra.Command{
 	Example: "kun wire all",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cmdArgs, _ := helper.SplitArgs(cmd, args)
-		var dir string
-		if len(cmdArgs) > 0 {
-			dir = cmdArgs[0]
-		}
 		base, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("getwd error: %w", err)
 		}
-		// 指定了目录:以该目录为根查找其下所有 wire.go 并逐个执行。
-		// 此前这里直接 return nil,导致 `kun wire all <dir>` 静默什么都不做且退出码为 0。
+
 		searchRoot := base
-		if dir != "" {
+		if len(cmdArgs) > 0 && cmdArgs[0] != "" {
+			dir := cmdArgs[0]
 			if filepath.IsAbs(dir) {
 				searchRoot = dir
 			} else {
@@ -110,6 +72,61 @@ var CmdWireAll = &cobra.Command{
 	},
 }
 
+// Register 将 wire 及其子命令挂载到 parent。
+func Register(parent *cobra.Command) {
+	parent.AddCommand(CmdWire)
+	CmdWire.AddCommand(CmdWireAll)
+}
+
+// resolveWireDir E5: 提取公共的"从参数或交互选择 wire.go 目录"逻辑，
+// 供 CmdWire 使用。返回 ("", nil) 表示用户交互中断。
+func resolveWireDir(cmd *cobra.Command, args []string) (string, error) {
+	cmdArgs, _ := helper.SplitArgs(cmd, args)
+	var dir string
+	if len(cmdArgs) > 0 {
+		dir = cmdArgs[0]
+	}
+	if dir != "" {
+		return dir, nil
+	}
+
+	base, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("getwd error: %w", err)
+	}
+
+	wirePath, err := findWire(base)
+	if err != nil {
+		return "", err
+	}
+	switch len(wirePath) {
+	case 0:
+		return "", fmt.Errorf("the wire.go cannot be found in the current directory")
+	case 1:
+		for _, v := range wirePath {
+			return v, nil
+		}
+	default:
+		var wirePaths []string
+		for k := range wirePath {
+			wirePaths = append(wirePaths, k)
+		}
+		sort.Strings(wirePaths)
+		prompt := &survey.Select{
+			Message:  "Which wire.go directory do you want to run?",
+			Options:  wirePaths,
+			PageSize: 10,
+		}
+		var selected string
+		e := survey.AskOne(prompt, &selected)
+		if e != nil || selected == "" {
+			return "", nil // 交互中断,静默退出
+		}
+		return wirePath[selected], nil
+	}
+	return "", nil
+}
+
 // wireRun 在指定目录执行 wire 命令。
 func wireRun(wirePath string) error {
 	if _, err := exec.LookPath("wire"); err != nil {
@@ -130,6 +147,7 @@ func wireRun(wirePath string) error {
 	}
 	return nil
 }
+
 func findWire(base string) (map[string]string, error) {
 	wd, err := os.Getwd()
 	if err != nil {

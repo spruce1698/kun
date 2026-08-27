@@ -18,7 +18,7 @@ import (
 
     // TODO: import files here and delete this line
    	// "github.com/jinzhu/copier"
-   	// "github.com/pkg/errors"
+   	// "errors"
 )
 
 //go:generate mockgen -source=./{{ .FileNameTitleLower }}.go -destination=../../../{{ .AddUPPath }}test/mocks/service/{{ .FilePath }}{{ .FileNameTitleLower }}.go  -package mock_service

@@ -2,6 +2,7 @@ package svc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"basic/internal/repository/cache"
@@ -10,7 +11,6 @@ import (
 	"basic/pkg/xlog"
 
 	"github.com/jinzhu/copier"
-	"github.com/pkg/errors"
 	"golang.org/x/sync/singleflight"
 )
 

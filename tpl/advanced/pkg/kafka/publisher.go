@@ -2,11 +2,11 @@ package kafka
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"advanced/pkg/xconfig"
 
-	"github.com/pkg/errors"
 	kafkaGo "github.com/segmentio/kafka-go"
 )
 

@@ -145,17 +145,52 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
 
 ```bash
 go install github.com/spruce1698/kun@latest
-
 ```
 
 国内用户可以使用 `GOPROXY`加速 `go install`
 
-```
-$ go env -w GO111MODULE=on
-$ go env -w GOPROXY=https://goproxy.cn,direct
+```bash
+go env -w GO111MODULE=on
+go env -w GOPROXY=https://goproxy.cn,direct
 ```
 
 > tips: 如果 `go install`成功，却提示找不到kun命令，这是因为环境变量没有配置，可以把 GOBIN 目录配置到环境变量中即可
+
+### 数据库驱动说明
+
+kun 默认只编译 **MySQL** 和 **PostgreSQL** 驱动，支持 `CGO_ENABLED=0` 纯静态构建，可直接用于 Docker 镜像。
+
+| 驱动 | 默认包含 | 启用方式 | 备注 |
+|------|---------|---------|------|
+| MySQL | ✅ | 默认 | 无 CGO 依赖 |
+| PostgreSQL | ✅ | 默认 | 无 CGO 依赖 |
+| SQLite | ❌ | `-tags with_sqlite` | 需要 CGO |
+| ClickHouse | ❌ | `-tags with_clickhouse` | SDK 体积较大 |
+
+**默认安装（推荐，静态构建）：**
+
+```bash
+go install github.com/spruce1698/kun@latest
+```
+
+**包含全部驱动（需要 CGO 环境）：**
+
+```bash
+go install -tags "with_sqlite with_clickhouse" github.com/spruce1698/kun@latest
+```
+
+**本地构建时指定驱动：**
+
+```bash
+# 仅 MySQL + Postgres（默认，CGO_ENABLED=0 可用）
+go build -o kun .
+
+# 含 SQLite
+go build -tags with_sqlite -o kun .
+
+# 含全部驱动
+go build -tags "with_sqlite with_clickhouse" -o kun .
+```
 
 ### 创建新项目
 

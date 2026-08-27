@@ -1,9 +1,6 @@
-/**
- * @Author: spruce
- * @Date: 2024-04-23 17:13
- * @Desc: 根据数据库生成 repository/db
- */
-
+// Package create provides the "kun create db" subcommand.
+// It connects to a database (or parses a SQL file) and generates
+// GORM repository files for the specified tables.
 package create
 
 import (
@@ -15,10 +12,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spruce1698/kun/internal/create/kernel"
 	"github.com/spruce1698/kun/pkg/output"
-	"gorm.io/driver/clickhouse"
-	"gorm.io/driver/mysql"
-	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 )
@@ -46,24 +39,27 @@ type CmdParams struct {
 	DBType  string   // 数据库类型
 }
 
+// driverRegistry P1: 驱动注册表。
+// mysql/postgres 由 genDBRepo_mysql.go 默认注册；
+// sqlite 由 genDBRepo_sqlite.go（build tag: with_sqlite）注册；
+// clickhouse 由 genDBRepo_clickhouse.go（build tag: with_clickhouse）注册。
+var driverRegistry = map[DBType]func(string) gorm.Dialector{}
+
+// registerDriver 由各驱动文件的 init() 调用，将驱动注册到全局表。
+func registerDriver(t DBType, opener func(string) gorm.Dialector) {
+	driverRegistry[t] = opener
+}
+
 // connectDB 连接数据库 选择用于连接到数据库的数据库类型
 func connectDB(t DBType, dsn string) (*gorm.DB, error) {
 	if dsn == "" {
 		return nil, fmt.Errorf("dsn cannot be empty")
 	}
-
-	switch t {
-	case dbMySQL:
-		return gorm.Open(mysql.Open(dsn))
-	case dbPostgres:
-		return gorm.Open(postgres.Open(dsn))
-	case dbClickHouse:
-		return gorm.Open(clickhouse.Open(dsn))
-	case dbSQLite:
-		return gorm.Open(sqlite.Open(dsn))
-	default:
-		return nil, fmt.Errorf("unknow db %q (support mysql || postgres || sqlite || clickhouse for now)", t)
+	opener, ok := driverRegistry[t]
+	if !ok {
+		return nil, fmt.Errorf("driver %q is not available in this build (mysql/postgres built-in; add -tags with_sqlite or -tags with_clickhouse for others)", t)
 	}
+	return gorm.Open(opener(dsn))
 }
 
 func detectDBType(dsn string) DBType {
@@ -151,6 +147,10 @@ func genDBRepo(cmd *cobra.Command, args []string) error {
 }
 
 // maskDSN 将错误信息中可能出现的 DSN 密码替换为 ***,避免明文密码进终端/CI 日志。
+//
+// B3: 此处故意使用 fmt.Errorf("%s", msg) 而非 %w，因为原始错误中包含明文密码片段。
+// 使用 %w 会保留原始错误对象，导致调用方通过 errors.As/Unwrap 拿到含密码的错误文本。
+// 权衡：安全性优先于错误链的可追溯性；调用方若需类型判断，应在 maskDSN 之前处理。
 func maskDSN(err error) error {
 	if err == nil {
 		return nil

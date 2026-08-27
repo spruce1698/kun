@@ -41,7 +41,7 @@ type (
 
 func New(conf *xconfig.Conf) *Asynq {
 	if len(conf.Redis.Source) == 0 {
-		panic("redis 配置错误")
+		return &Asynq{}
 	}
 	var opt asynq.RedisConnOpt
 	if conf.Redis.Cluster {
@@ -138,7 +138,7 @@ func (a *Asynq) CronStaticPub(queue, taskName, payload, cronSpec string) (entryI
 
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
-		panic(err)
+		loc = time.Local
 	}
 	// 创建调度器
 	scheduler := asynq.NewScheduler(
@@ -259,7 +259,7 @@ crontab格式 如下所示：
 func (a *Asynq) CronPub() error {
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
-		panic(err)
+		loc = time.Local
 	}
 	manager, err := asynq.NewPeriodicTaskManager(
 		asynq.PeriodicTaskManagerOpts{
@@ -270,7 +270,7 @@ func (a *Asynq) CronPub() error {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	return manager.Run()
 }
@@ -300,7 +300,7 @@ func (a *Asynq) Server() *asynq.Server {
 func (a *Asynq) PeriodicTaskManager() (*asynq.PeriodicTaskManager, error) {
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
-		panic(err)
+		loc = time.Local
 	}
 	manager, err := asynq.NewPeriodicTaskManager(
 		asynq.PeriodicTaskManagerOpts{
@@ -311,7 +311,7 @@ func (a *Asynq) PeriodicTaskManager() (*asynq.PeriodicTaskManager, error) {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	return manager, nil
 }

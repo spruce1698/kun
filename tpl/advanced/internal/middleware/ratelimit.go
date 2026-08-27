@@ -105,12 +105,13 @@ func RateLimiter(maxAttempts int, window, cooldown time.Duration, cancelCtx ...c
 						}
 					}
 					if len(s.records) > maxRateLimitEntries/numShards {
-						half := len(s.records) / 2
-						for ip := range s.records {
-							delete(s.records, ip)
-							half--
-							if half <= 0 {
-								break
+						// 仍然超标时按最旧条目清理
+						for ip, r := range s.records {
+							if now.Sub(r.firstSeen) > window/2 {
+								delete(s.records, ip)
+								if len(s.records) <= (maxRateLimitEntries/numShards)*3/4 {
+									break
+								}
 							}
 						}
 					}

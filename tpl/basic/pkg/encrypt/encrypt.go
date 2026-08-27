@@ -19,10 +19,10 @@ import (
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 
-	"github.com/pkg/errors"
 	"golang.org/x/crypto/pbkdf2"
 )
 
