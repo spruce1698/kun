@@ -69,7 +69,7 @@ func new{{.StructName}}Db(c *Conn) *default{{.StructName}}Db {
 func (d *default{{.StructName}}Db) Insert(ctx context.Context,data *{{.StructName}}) ({{.PrimaryKeyType}}, error) {
 	var zero {{.PrimaryKeyType}}
 	{{if .PrimaryKeyAutoIncrement -}}
-	data.{{.PrimaryKeyName}} = zero // 自增主键:清零让 DB 分配;非自增主键保留调用方传入值
+	data.{{.PrimaryKeyName}} = zero // 自增主键:清零让 DB 分配
 	{{- end}}
 	err := d.WithContext(ctx).Create(data).Error
 	if err != nil {
@@ -83,7 +83,7 @@ func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context, list []*{{.S
 		return nil, nil
 	}
 	{{if .PrimaryKeyAutoIncrement -}}
-	// 清零主键,避免调用方误传非零 Id 导致插入指定 Id 或主键冲突;非自增主键保留调用方传入值
+	// 清零主键,避免调用方误传非零 Id 导致插入指定 Id 或主键冲突
 	for _, v := range list {
 		v.{{.PrimaryKeyName}} = *new({{.PrimaryKeyType}})
 	}

@@ -71,7 +71,7 @@ func newDemoDb(c *Conn) *defaultDemoDb {
 
 func (d *defaultDemoDb) Insert(ctx context.Context, data *Demo) (int64, error) {
 	var zero int64
-	data.Id = zero // 自增主键:清零让 DB 分配;非自增主键保留调用方传入值
+	data.Id = zero // 自增主键:清零让 DB 分配
 	err := d.WithContext(ctx).Create(data).Error
 	if err != nil {
 		return zero, err
@@ -83,7 +83,7 @@ func (d *defaultDemoDb) BatchInsert(ctx context.Context, list []*Demo) ([]int64,
 	if len(list) == 0 {
 		return nil, nil
 	}
-	// 清零主键,避免调用方误传非零 Id 导致插入指定 Id 或主键冲突;非自增主键保留调用方传入值
+	// 清零主键,避免调用方误传非零 Id 导致插入指定 Id 或主键冲突
 	for _, v := range list {
 		v.Id = *new(int64)
 	}

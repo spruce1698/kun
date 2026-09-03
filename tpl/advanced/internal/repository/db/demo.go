@@ -28,6 +28,9 @@ type (
 
 	DemoSearch struct {
 		SearchPage
+
+		Id   *int64 `json:"id"`   // id
+		Name string `json:"name"` // 名称
 	}
 
 	// TODO: add struct here and delete this line
@@ -42,6 +45,13 @@ func NewDemoDb(c *Conn) DemoDb {
 func (c *customDemoDb) buildListFilter(ctx context.Context, args *DemoSearch) *DB {
 	d := c.WithContext(ctx).Model(c.model)
 	// TODO 自定义条件处理
+
+	if args.Name != "" {
+		d = d.Where(" name LIKE ? ", "%"+args.Name+"%")
+	}
+	if args.Id != nil {
+		d = d.Where(" id = ? ", args.Id)
+	}
 
 	return d
 }
