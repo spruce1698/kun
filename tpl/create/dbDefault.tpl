@@ -6,12 +6,10 @@ package {{.PackageName}}
 import (
 	"context"
 	"time"
-
-	"gorm.io/gorm"
 )
 
 
-var  _ {{.InterfaceName}}Db = (*default{{.StructName}}Db)(nil)
+var _ {{.InterfaceName}}Db = (*default{{.StructName}}Db)(nil)
 
 const Table{{.StructName}} = "{{.TableName}}"
 
@@ -21,24 +19,24 @@ const {{.StructName}}Fields = "{{range $i, $f := .Fields}}{{if $i}},{{end}}{{$f.
 type (
 	{{.InterfaceName}}Db interface {
 		{{if .HasPrimaryKey -}}
-		Insert(ctx context.Context,data *{{.StructName}}) ({{.PrimaryKeyType}}, error)
-		BatchInsert(ctx context.Context,list []*{{.StructName}}) ([]{{.PrimaryKeyType}}, error)
+		Insert(ctx context.Context, data *{{.StructName}}) ({{.PrimaryKeyType}}, error)
+		BatchInsert(ctx context.Context, list []*{{.StructName}}) ([]{{.PrimaryKeyType}}, error)
 
 		Find(ctx context.Context, id {{.PrimaryKeyType}}) (*{{.StructName}}, error)
 		FindByIds(ctx context.Context, ids []{{.PrimaryKeyType}}) ([]*{{.StructName}}, error)
 		FindFields(ctx context.Context, id {{.PrimaryKeyType}}, fields ...string) (*{{.StructName}}, error)
 		Exist(ctx context.Context, id {{.PrimaryKeyType}}) (bool, error)
 
-		Update(ctx context.Context, newData *{{.StructName}}, field []string)  (int64, error)
-		UpdateFields(ctx context.Context, id {{.PrimaryKeyType}}, newData map[string]any)  (int64, error)
+		Update(ctx context.Context, newData *{{.StructName}}, field []string) (int64, error)
+		UpdateFields(ctx context.Context, id {{.PrimaryKeyType}}, newData map[string]any) (int64, error)
 
-		SoftDelete(ctx context.Context,ids []{{.PrimaryKeyType}}) error
-		Delete(ctx context.Context,ids []{{.PrimaryKeyType}}) error
+		SoftDelete(ctx context.Context, ids []{{.PrimaryKeyType}}) error
+		Delete(ctx context.Context, ids []{{.PrimaryKeyType}}) error
 
 		Count(ctx context.Context) (int64, error)
 		{{- else -}}
-		Insert(ctx context.Context,data *{{.StructName}}) error
-		BatchInsert(ctx context.Context,list []*{{.StructName}}) error
+		Insert(ctx context.Context, data *{{.StructName}}) error
+		BatchInsert(ctx context.Context, list []*{{.StructName}}) error
 
 		Count(ctx context.Context) (int64, error)
 		{{- end}}
@@ -80,7 +78,10 @@ func (d *default{{.StructName}}Db) Insert(ctx context.Context,data *{{.StructNam
 	return data.{{.PrimaryKeyName}}, nil
 }
 
-func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context,list []*{{.StructName}}) ([]{{.PrimaryKeyType}}, error) {
+func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context, list []*{{.StructName}}) ([]{{.PrimaryKeyType}}, error) {
+	if len(list) == 0 {
+		return nil, nil
+	}
 	{{if .PrimaryKeyAutoIncrement -}}
 	// 清零主键,避免调用方误传非零 Id 导致插入指定 Id 或主键冲突;非自增主键保留调用方传入值
 	for _, v := range list {
@@ -89,13 +90,13 @@ func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context,list []*{{.St
 	{{- end}}
 	err := d.WithContext(ctx).Create(list).Error
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
-    ids := make([]{{.PrimaryKeyType}}, len(list))
+	ids := make([]{{.PrimaryKeyType}}, len(list))
 	for i, v := range list {
 		ids[i] = v.{{.PrimaryKeyName}}
 	}
-	return ids,nil
+	return ids, nil
 }
 
 
@@ -144,7 +145,7 @@ func (d *default{{.StructName}}Db) Exist(ctx context.Context, id {{.PrimaryKeyTy
 	return count > 0, nil
 }
 
-func (d *default{{.StructName}}Db) Update(ctx context.Context,newData *{{.StructName}}, field []string)  (int64, error)  {
+func (d *default{{.StructName}}Db) Update(ctx context.Context, newData *{{.StructName}}, field []string) (int64, error) {
 	engine := d.WithContext(ctx).Model(d.model)
 	if len(field) > 0 {
 		engine = engine.Select(field)
@@ -153,18 +154,17 @@ func (d *default{{.StructName}}Db) Update(ctx context.Context,newData *{{.Struct
 	return result.RowsAffected, result.Error
 }
 
-func (d *default{{.StructName}}Db) UpdateFields(ctx context.Context,id {{.PrimaryKeyType}}, newData map[string]any)  (int64, error)  {
+func (d *default{{.StructName}}Db) UpdateFields(ctx context.Context, id {{.PrimaryKeyType}}, newData map[string]any) (int64, error) {
 	result := d.WithContext(ctx).Model(d.model).Where(" `{{.PrimaryKeyColumn}}` = ? ", id).Updates(newData)
 	return result.RowsAffected, result.Error
 }
 
-
-func (d *default{{.StructName}}Db) SoftDelete(ctx context.Context,ids []{{.PrimaryKeyType}}) error {
+func (d *default{{.StructName}}Db) SoftDelete(ctx context.Context, ids []{{.PrimaryKeyType}}) error {
 	// 空 ids 直接返回,避免生成 `IN ()` 在 MySQL 上报语法错误
 	if len(ids) == 0 {
 		return nil
 	}
-	err :=  d.WithContext(ctx).Where(" `{{.PrimaryKeyColumn}}`  IN (?)  ", ids).Delete(d.model).Error
+	err := d.WithContext(ctx).Where(" `{{.PrimaryKeyColumn}}`  IN (?)  ", ids).Delete(d.model).Error
 	return err
 }
 
@@ -183,12 +183,15 @@ func (d *default{{.StructName}}Db) Count(ctx context.Context) (int64, error) {
 	return count, err
 }
 {{- else -}}
-func (d *default{{.StructName}}Db) Insert(ctx context.Context,data *{{.StructName}}) error {
+func (d *default{{.StructName}}Db) Insert(ctx context.Context, data *{{.StructName}}) error {
 	err := d.WithContext(ctx).Create(data).Error
 	return err
 }
 
-func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context,list []*{{.StructName}}) error {
+func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context, list []*{{.StructName}}) error {
+	if len(list) == 0 {
+		return nil
+	}
 	err := d.WithContext(ctx).Create(list).Error
 	return err
 }

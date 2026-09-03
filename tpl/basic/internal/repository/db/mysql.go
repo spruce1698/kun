@@ -6,8 +6,6 @@ import (
 	"strings"
 
 	"basic/pkg/xdb"
-
-	"gorm.io/gorm"
 )
 
 //go:generate mockgen -source=./mysql.go -destination=../../../test/mocks/repository/db/mysql.go  -package mock_repo_db
@@ -19,13 +17,16 @@ const (
 )
 
 var (
-	ErrNotFound = gorm.ErrRecordNotFound
+	ErrNotFound = xdb.ErrRecordNotFound
 	ctxDbKey    = ctxDbKeyType{}
 	// reIdentifier 校验排序列名/表名单段(仅字母/数字/下划线),防 ORDER BY 注入。
 	reIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
 type (
+	DB        = xdb.Client
+	DeletedAt = xdb.DeletedAt
+
 	Conn struct {
 		conn *xdb.Client
 	}
@@ -59,7 +60,7 @@ func (r *Conn) WithContext(ctx context.Context) *xdb.Client {
 }
 
 func (r *Conn) Tx(ctx context.Context, fn func(ctx context.Context) error) error {
-	return r.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return r.WithContext(ctx).Transaction(func(tx *xdb.Client) error {
 		// 用新变量而不是对捕获的 ctx 形参赋值:GORM 在重试/嵌套场景下可能多次调用
 		// 本闭包,复用被改写过的 ctx 会把上一次(已提交或已回滚)的 tx 带进来。
 		txCtx := context.WithValue(ctx, ctxDbKey, tx)
@@ -98,6 +99,9 @@ func (r *Conn) HandleRank(orderField string, orderType int64, fields string, def
 				col = name
 			}
 		}
+	}
+	if col == "" {
+		return ""
 	}
 	if orderType == 1 {
 		return col + " ASC"

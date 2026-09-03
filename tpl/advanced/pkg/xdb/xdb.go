@@ -19,7 +19,12 @@ import (
 	"gorm.io/plugin/opentelemetry/tracing"
 )
 
-type Client = gorm.DB
+type (
+	Client    = gorm.DB
+	DeletedAt = gorm.DeletedAt
+)
+
+var ErrRecordNotFound = gorm.ErrRecordNotFound
 
 func New(conf *xconfig.Conf) (*Client, error) {
 	if len(conf.Mysql.Source) == 0 {

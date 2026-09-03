@@ -28,7 +28,7 @@ type (
 
 	{{ .FileNameTitleLower }}Cache struct {
 		common     *xredis.Client
-		lCache *LocalCache
+		localCache *LocalCache
 	}
 
 	//  缓存数据的结构体
@@ -48,7 +48,7 @@ const (
 func New{{ .FileName }}Cache(c *xredis.Client) {{ .FileName }}Cache {
 	return &{{ .FileNameTitleLower }}Cache{
 		common:     c,
-		lCache: NewLocalCache(5*time.Minute, 10*time.Minute),
+		localCache: NewLocalCache(5*time.Minute, 10*time.Minute),
 	}
 }
 
@@ -56,7 +56,7 @@ func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Cache) Get(ctx context.
 	key := fmt.Sprintf({{ .FileName }}DataKey, id)
 
 	// 1.查询本地缓存
-	if value, ok := {{ .FileNameFirstChar }}.lCache.Get(key); ok {
+	if value, ok := {{ .FileNameFirstChar }}.localCache.Get(key); ok {
 		if {{ .FileNameTitleLower }}, ok := value.(*{{ .FileName }}); ok {
 			// 返回副本,避免调用方修改污染缓存内对象
 			cp := *{{ .FileNameTitleLower }}
@@ -69,7 +69,7 @@ func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Cache) Get(ctx context.
 	data, err := {{ .FileNameFirstChar }}.common.Get(ctx, key).Bytes()
 	if err != nil {
 		if errors.Is(err, xredis.Nil) {
-			return nil, fmt.Errorf("cache miss: %w", xredis.Nil)
+			return nil, fmt.Errorf("cache miss: %w", ErrNotFound)
 		}
 		return nil, fmt.Errorf("get cache failed: %w", err)
 	}
@@ -78,7 +78,7 @@ func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Cache) Get(ctx context.
 		return nil, err
 	}
 	// 3.设置本地缓存
-	{{ .FileNameFirstChar }}.lCache.Set(key, {{ .FileNameTitleLower }}, 5*time.Minute)
+	{{ .FileNameFirstChar }}.localCache.Set(key, {{ .FileNameTitleLower }}, 5*time.Minute)
 	// 返回副本,避免调用方修改污染缓存内对象
 	cp := *{{ .FileNameTitleLower }}
 	return &cp, nil
@@ -105,7 +105,7 @@ func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Cache) Set(ctx context.
 	// 同步更新本地缓存,避免 Get 读到脏数据。
 	// 存副本:直接存调用方的指针,调用方之后修改该对象会污染缓存内容。
 	cp := *data
-	{{ .FileNameFirstChar }}.lCache.Set(key, &cp, ttl)
+	{{ .FileNameFirstChar }}.localCache.Set(key, &cp, ttl)
 	return nil
 }
 
@@ -113,7 +113,7 @@ func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Cache) Delete(ctx conte
 	key := fmt.Sprintf({{ .FileName }}DataKey, id)
 
 	// 本地缓存是 Redis 的副本,无论 Redis 删除是否成功都先清本地,避免残留旧值。
-	{{ .FileNameFirstChar }}.lCache.Delete(key)
+	{{ .FileNameFirstChar }}.localCache.Delete(key)
 
 	if err := {{ .FileNameFirstChar }}.common.Del(ctx, key).Err(); err != nil {
 		return fmt.Errorf("delete cache failed: %w", err)

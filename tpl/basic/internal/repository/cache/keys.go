@@ -1,6 +1,11 @@
 package cache
 
-// CacheKey 缓存键同一管理
+import "errors"
+
+// ErrNotFound 缓存未命中或键不存在
+var ErrNotFound = errors.New("cache: key not found")
+
+// CacheKey 缓存键统一管理
 const (
 	DemoInfoKey = "demo:%d"
 )

@@ -3,8 +3,6 @@ package db
 import (
 	"context"
 	"errors"
-
-	"gorm.io/gorm"
 )
 
 //go:generate mockgen -source=./demo.go -destination=../../../test/mocks/repository/db/demo.go -package mock_repo_db -aux_files db=./demo_gen.go
@@ -49,7 +47,7 @@ func (c *customDemoDb) FindByName(ctx context.Context, name string) (*Demo, erro
 	return result, nil
 }
 
-func (c *customDemoDb) buildListFilter(ctx context.Context, args *DemoSearch) *gorm.DB {
+func (c *customDemoDb) buildListFilter(ctx context.Context, args *DemoSearch) *DB {
 	d := c.WithContext(ctx).Model(c.model)
 	// TODO 自定义条件处理
 	if args.Name != "" {
@@ -61,7 +59,7 @@ func (c *customDemoDb) buildListFilter(ctx context.Context, args *DemoSearch) *g
 	return d
 }
 
-func (c *customDemoDb) buildListQuery(ctx context.Context, args *DemoSearch, limit int) *gorm.DB {
+func (c *customDemoDb) buildListQuery(ctx context.Context, args *DemoSearch, limit int) *DB {
 	filter := c.buildListFilter(ctx, args)
 	order := c.HandleRank(
 		args.OrderField,
@@ -84,10 +82,20 @@ func (c *customDemoDb) buildListQuery(ctx context.Context, args *DemoSearch, lim
 		}
 		return filter.Where(lastCond, args.LastId).Order(cursorOrder).Limit(limit)
 	case offset > 100000: // 深分页: SELECT * FROM demo INNER JOIN (SELECT id FROM demo WHERE ... ORDER BY id LIMIT ?,?) AS tmp USING(id)
-		subQuery := filter.Order(order).Select("id").Offset(offset).Limit(limit)
-		return c.WithContext(ctx).Model(c.model).Order(order).Joins("INNER JOIN (?) AS tmp USING(id)", subQuery)
+		subQuery := filter.Select("id").Offset(offset).Limit(limit)
+		if order != "" {
+			subQuery = subQuery.Order(order)
+		}
+		engine := c.WithContext(ctx).Model(c.model)
+		if order != "" {
+			engine = engine.Order(order)
+		}
+		return engine.Joins("INNER JOIN (?) AS tmp USING(id)", subQuery)
 	default:
-		return filter.Order(order).Offset(offset).Limit(limit)
+		if order != "" {
+			filter = filter.Order(order)
+		}
+		return filter.Offset(offset).Limit(limit)
 	}
 }
 

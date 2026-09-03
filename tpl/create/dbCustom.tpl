@@ -2,8 +2,6 @@ package {{.PackageName}}
 
 import (
 	"context"
-
-	"gorm.io/gorm"
 )
 
 //go:generate mockgen -source=./{{.InterfaceName}}.go -destination=../../../test/mocks/repository/db/{{.InterfaceName}}.go -package mock_repo_db -aux_files {{.PackageName}}=./{{.InterfaceName}}_gen.go
@@ -38,14 +36,14 @@ func New{{.StructName}}Db(c *Conn) {{.StructName}}Db {
 }
 
 
-func (c *custom{{.StructName}}Db) buildListFilter(ctx context.Context, args *{{.StructName}}Search) *gorm.DB {
+func (c *custom{{.StructName}}Db) buildListFilter(ctx context.Context, args *{{.StructName}}Search) *DB {
 	d := c.WithContext(ctx).Model(c.model)
 	// TODO 自定义条件处理
 
 	return d
 }
 
-func (c *custom{{.StructName}}Db) buildListQuery(ctx context.Context, args *{{.StructName}}Search, limit int) *gorm.DB {
+func (c *custom{{.StructName}}Db) buildListQuery(ctx context.Context, args *{{.StructName}}Search, limit int) *DB {
 	filter := c.buildListFilter(ctx, args)
 	order := c.HandleRank(
 		args.OrderField,
@@ -69,13 +67,26 @@ func (c *custom{{.StructName}}Db) buildListQuery(ctx context.Context, args *{{.S
 		}
 		return filter.Where(lastCond, args.LastId).Order(cursorOrder).Limit(limit)
 	case offset > 100000: // 深分页: SELECT * FROM {{.TableName}} INNER JOIN (SELECT {{.PrimaryKeyColumn}} FROM {{.TableName}} WHERE ... ORDER BY {{.PrimaryKeyColumn}} LIMIT ?,?) AS tmp USING({{.PrimaryKeyColumn}})
-		subQuery := filter.Order(order).Select("{{.PrimaryKeyColumn}}").Offset(offset).Limit(limit)
-		return c.WithContext(ctx).Model(c.model).Order(order).Joins("INNER JOIN (?) AS tmp USING({{.PrimaryKeyColumn}})", subQuery)
+		subQuery := filter.Select("{{.PrimaryKeyColumn}}").Offset(offset).Limit(limit)
+		if order != "" {
+			subQuery = subQuery.Order(order)
+		}
+		engine := c.WithContext(ctx).Model(c.model)
+		if order != "" {
+			engine = engine.Order(order)
+		}
+		return engine.Joins("INNER JOIN (?) AS tmp USING({{.PrimaryKeyColumn}})", subQuery)
 	default:
-		return filter.Order(order).Offset(offset).Limit(limit)
+		if order != "" {
+			filter = filter.Order(order)
+		}
+		return filter.Offset(offset).Limit(limit)
 	}
 	{{- else -}}
-	return filter.Order(order).Offset(offset).Limit(limit)
+	if order != "" {
+		filter = filter.Order(order)
+	}
+	return filter.Offset(offset).Limit(limit)
 	{{- end}}
 }
 

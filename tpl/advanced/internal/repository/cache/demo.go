@@ -86,7 +86,7 @@ func (d *demoCache) Get(ctx context.Context, id int64) (*Demo, error) {
 	data, err := d.common.Get(ctx, key).Bytes()
 	if err != nil {
 		if errors.Is(err, xredis.Nil) {
-			return nil, fmt.Errorf("cache miss: %w", xredis.Nil)
+			return nil, fmt.Errorf("cache miss: %w", ErrNotFound)
 		}
 		return nil, fmt.Errorf("get cache failed: %w", err)
 	}
@@ -150,6 +150,9 @@ func (d *demoCache) ConsumeWSTicket(ctx context.Context, ticket string) (userId,
 	key := fmt.Sprintf(WSTicketKey, ticket)
 	val, err := d.common.GetDel(ctx, key).Result()
 	if err != nil {
+		if errors.Is(err, xredis.Nil) {
+			return 0, 0, ErrNotFound
+		}
 		return 0, 0, err
 	}
 	var p WSTicketPayload

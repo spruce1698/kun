@@ -24,7 +24,7 @@ var (
 	// 只匹配单列的写法会让这两种主键静默丢失,生成出缺少 Find/Update/Delete 的 repo。
 	rePrimaryKey = regexp.MustCompile(`(?i)PRIMARY\s+KEY\s*\(([^)]*(?:\([^)]*\)[^)]*)*)\)`)
 	// rePKColumn 从列清单里逐个取列名,忽略 (10) 这类前缀长度与 ASC/DESC 修饰。
-	rePKColumn    = regexp.MustCompile("`?(\\w+)`?(?:\\s*\\(\\s*\\d+\\s*\\))?")
+	rePKColumn = regexp.MustCompile("`?(\\w+)`?(?:\\s*\\(\\s*\\d+\\s*\\))?")
 	// P4: 兼容索引名有/无反引号两种写法（标准 MySQL 有反引号，部分方言无）
 	reUniqueKey   = regexp.MustCompile(`(?i)UNIQUE\s+KEY\s+` + "`?" + `(\w+)` + "`?" + `\s*\(([^)]+)\)`)
 	reComment     = regexp.MustCompile(`(?i)COMMENT\s+'((?:[^']|''|\\.)*)'`)
@@ -668,7 +668,7 @@ func buildField(cd *columnDef, uniqueIdxs []uniqueIndexInfo, conf *SQLConfig) *F
 
 	// 处理 deleted_at 特殊类型
 	if cd.Name == "deleted_at" && goType == "time.Time" {
-		goType = "gorm.DeletedAt"
+		goType = "DeletedAt"
 	}
 
 	// FieldCoverable: 当字段具有默认值时生成指针

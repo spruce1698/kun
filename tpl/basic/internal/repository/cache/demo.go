@@ -73,7 +73,7 @@ func (d *demoCache) Get(ctx context.Context, id int64) (*Demo, error) {
 	data, err := d.common.Get(ctx, key).Bytes()
 	if err != nil {
 		if errors.Is(err, xredis.Nil) {
-			return nil, fmt.Errorf("cache miss: %w", xredis.Nil)
+			return nil, fmt.Errorf("cache miss: %w", ErrNotFound)
 		}
 		return nil, fmt.Errorf("get cache failed: %w", err)
 	}

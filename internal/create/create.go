@@ -393,6 +393,12 @@ func createFile(dirPath string, filename string, force bool) (*os.File, bool, er
 var keysFileTpl = template.Must(template.New("keys").Parse(
 	`package {{.PackageName}}
 
+import "errors"
+
+// ErrNotFound 缓存未命中或键不存在
+var ErrNotFound = errors.New("cache: key not found")
+
+// CacheKey 缓存键统一管理
 const (
 	{{.KeyName}} = "{{.KeyValue}}"
 )

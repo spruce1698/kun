@@ -5,8 +5,6 @@ package db
 import (
 	"context"
 	"time"
-
-	"gorm.io/gorm"
 )
 
 var _ demoDb = (*defaultDemoDb)(nil)
@@ -42,19 +40,19 @@ type (
 
 	// Demo mapped from table <demo>
 	Demo struct {
-		Id        int64          `gorm:"column:id;type:int unsigned;primaryKey;autoIncrement:true" json:"id"`         //
-		Name      string         `gorm:"column:name;type:varchar(45);not null;uniqueIndex:a,priority:1" json:"name"`  // 名称
-		Test1     float64        `gorm:"column:test1;type:decimal(10,2) unsigned;not null;default:0.00" json:"test1"` // 测试1
-		Test2     int64          `gorm:"column:test2;type:smallint unsigned;not null" json:"test2"`                   // 测试2
-		Test3     int64          `gorm:"column:test3;type:year;not null" json:"test3"`                                // 测试3
-		Test4     int32          `gorm:"column:test4;type:tinyint unsigned;not null" json:"test4"`                    // 测试4
-		Test5     *string        `gorm:"column:test5;type:varchar(255)" json:"test5"`                                 // 测试5
-		Test6     string         `gorm:"column:test6;type:varchar(255);not null;default:test6666" json:"test6"`       // 测试6
-		Test7     *time.Time     `gorm:"column:test7;type:timestamp" json:"test7"`                                    // 测试7
-		Test8     *string        `gorm:"column:test8;type:json" json:"test8"`                                         // 测试8
-		DeletedAt gorm.DeletedAt `gorm:"column:deleted_at;type:timestamp" json:"deletedAt"`                           // 删除时间
-		TestA888  *string        `gorm:"column:test_a888;type:varchar(255)" json:"testA888"`                          //
-		TestB     int64          `gorm:"column:test_b;type:bigint unsigned;not null" json:"testB"`                    // 测试b
+		Id        int64      `gorm:"column:id;type:int unsigned;primaryKey;autoIncrement:true" json:"id"`         //
+		Name      string     `gorm:"column:name;type:varchar(45);not null;uniqueIndex:a,priority:1" json:"name"`  // 名称
+		Test1     float64    `gorm:"column:test1;type:decimal(10,2) unsigned;not null;default:0.00" json:"test1"` // 测试1
+		Test2     int64      `gorm:"column:test2;type:smallint unsigned;not null" json:"test2"`                   // 测试2
+		Test3     int64      `gorm:"column:test3;type:year;not null" json:"test3"`                                // 测试3
+		Test4     int32      `gorm:"column:test4;type:tinyint unsigned;not null" json:"test4"`                    // 测试4
+		Test5     *string    `gorm:"column:test5;type:varchar(255)" json:"test5"`                                 // 测试5
+		Test6     string     `gorm:"column:test6;type:varchar(255);not null;default:test6666" json:"test6"`       // 测试6
+		Test7     *time.Time `gorm:"column:test7;type:timestamp" json:"test7"`                                    // 测试7
+		Test8     *string    `gorm:"column:test8;type:json" json:"test8"`                                         // 测试8
+		DeletedAt DeletedAt  `gorm:"column:deleted_at;type:timestamp" json:"deletedAt"`                           // 删除时间
+		TestA888  *string    `gorm:"column:test_a888;type:varchar(255)" json:"testA888"`                          //
+		TestB     int64      `gorm:"column:test_b;type:bigint unsigned;not null" json:"testB"`                    // 测试b
 	}
 )
 
@@ -80,6 +78,9 @@ func (d *defaultDemoDb) Insert(ctx context.Context, data *Demo) (int64, error) {
 }
 
 func (d *defaultDemoDb) BatchInsert(ctx context.Context, list []*Demo) ([]int64, error) {
+	if len(list) == 0 {
+		return nil, nil
+	}
 	// 清零主键,避免调用方误传非零 Id 导致插入指定 Id 或主键冲突;非自增主键保留调用方传入值
 	for _, v := range list {
 		v.Id = *new(int64)

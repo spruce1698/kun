@@ -17,7 +17,6 @@ import (
 	"advanced/pkg/utils"
 	"advanced/pkg/xerror"
 	"advanced/pkg/xlog"
-	"advanced/pkg/xredis"
 
 	"github.com/gorilla/websocket"
 	"github.com/jinzhu/copier"
@@ -352,7 +351,7 @@ func (d *demoSvc) ConsumeWSTicket(ctx context.Context, ticket string) (int64, in
 	}
 	userId, roleId, err := d.ctx.DemoCache.ConsumeWSTicket(ctx, ticket)
 	if err != nil {
-		if errors.Is(err, xredis.Nil) {
+		if errors.Is(err, cache.ErrNotFound) {
 			return 0, 0, xerror.NewError(xerror.Unauthorized, "票据无效或已过期", nil)
 		}
 		return 0, 0, xerror.NewError(xerror.BusinessError, "票据校验失败", err)

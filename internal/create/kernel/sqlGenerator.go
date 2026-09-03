@@ -492,7 +492,7 @@ func (c *Column) ToField(nullable, coverable, signable bool) *Field {
 	}
 	switch {
 	case c.Name() == "deleted_at" && fieldType == "time.Time":
-		fieldType = "gorm.DeletedAt"
+		fieldType = "DeletedAt"
 	case coverable && c.needDefaultTag(c.defaultTagValue()):
 		fieldType = "*" + fieldType
 	case nullable:
