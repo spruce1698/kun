@@ -4,7 +4,6 @@
 package wire
 
 import (
-	"advanced/internal/app"
 	"advanced/internal/repository/db"
 	"advanced/internal/service"
 	"advanced/pkg/xconfig"
@@ -29,8 +28,8 @@ func WireApp(env string) (*xserver.Server, error) {
 		db.NewConn,
 
 		// broker 父进程健康探针 gin 引擎与子进程入口装配
-		app.NewBrokerHealth,
-		app.NewBrokerChildRun,
+		NewBrokerHealth,
+		NewBrokerChildRun,
 
 		broker.New,
 

@@ -3,6 +3,8 @@ package utils
 import (
 	"math/rand/v2"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -63,4 +65,9 @@ func GenNumeric(min int, max int) int {
 	} else {
 		return max
 	}
+}
+
+// GenUUid 生成UUID
+func GenUUid() string {
+	return uuid.NewString()
 }

@@ -40,11 +40,11 @@ type Server struct {
 	db    *xdb.Client
 	redis *xredis.Client
 
-	// childRun 子进程入口:由装配层(internal/app)注入,内部负责初始化 tracer、
+	// childRun 子进程入口:由装配层(cmd/broker/wire)注入,内部负责初始化 tracer、
 	// 启动 kafka/asynq 消费者并阻塞等待退出。broker 引擎只负责进程生命周期,不依赖 internal。
 	childRun func()
 
-	// healthEngine 父进程健康探针 gin 引擎,由装配层(internal/app)构建,broker 只负责启动。
+	// healthEngine 父进程健康探针 gin 引擎,由装配层(cmd/broker/wire)构建,broker 只负责启动。
 	healthEngine *gin.Engine
 
 	// closer 聚合 db/redis/xlog 的关闭,与 http.Server 复用同一套 LIFO 回收逻辑。

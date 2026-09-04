@@ -11,14 +11,25 @@ import (
 	"net/http"
 	"strconv"
 
-	"advanced/pkg/validator"
-	"advanced/pkg/xerror"
-	"advanced/pkg/xlog"
+	"basic/pkg/validator"
+	"basic/pkg/xerror"
+	"basic/pkg/xlog"
 
 	"github.com/gin-gonic/gin"
 )
 
 type (
+	// ReqPage 通用分页查询入参
+	ReqPage struct {
+		OrderField string `json:"orderField" form:"orderField"`                                         // 排序字段
+		OrderType  int64  `json:"orderType" form:"orderType"`                                           // 排序类型 0:降序(默认),1:升序
+		Page       int64  `json:"page" form:"page,default=1" binding:"required,min=1"`                  // 添加验证规则
+		PageSize   int64  `json:"pageSize" form:"pageSize,default=20" binding:"required,min=1,max=100"` // 添加验证规则
+		LastId     int64  `json:"lastId" form:"lastId"`                                                 // 上一页最大id
+	}
+
+
+
 	Response struct {
 		Code    int    `json:"code"`    // 错误码,非0为错误
 		Message string `json:"message"` // 错误消息
@@ -113,9 +124,6 @@ func BusFail(ctx *gin.Context, err error) {
 
 	var e xerror.Error
 	if ok := errors.As(err, &e); ok {
-		// 直接取 defaultError 内层 cause（Unwrap()），避免 rootCause 指针比较歧义：
-		// 当无 wrap 时 rootCause 返回 err 自身，cause==err 条件 false 走 else，
-		// 看似正确但逻辑令人困惑；改为 e.Unwrap() 语义明确。
 		if inner := errors.Unwrap(e); inner != nil {
 			xlog.Warnf(ctx.Request.Context(), "api business error: %s, cause: %v", e.Error(), inner)
 		} else {

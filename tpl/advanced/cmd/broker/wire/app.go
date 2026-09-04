@@ -1,14 +1,13 @@
 /**
  * @Author: spruce
  * @Date: 2024-08-15
- * @Desc: broker 装配
+ * @Desc: Broker 应用装配层
  *
- * broker 父进程的健康探针 server 在此组装(gin 模式/中间件/路由),
- * 使 pkg/xserver/broker 不再依赖 internal/{middleware,router},
- * 依赖方向回到 internal -> pkg。
+ * 作为 Composition Root，在 cmd/broker/wire 中组装 broker 父进程的健康探针 server(gin 模式/中间件/路由)
+ * 以及构建子进程消费执行入口(kafka/asynq 消费者与生命周期信号管理)。
  */
 
-package app
+package wire
 
 import (
 	"context"
@@ -22,7 +21,6 @@ import (
 	"advanced/internal/event"
 	"advanced/internal/middleware"
 	"advanced/internal/router"
-	"advanced/pkg/xbroker"
 	"advanced/pkg/xconfig"
 	"advanced/pkg/xlog"
 	"advanced/pkg/xserver"
@@ -63,7 +61,7 @@ func NewBrokerHealth(conf *xconfig.Conf, log *xlog.Logger) *gin.Engine {
 
 // NewBrokerChildRun 构建 broker 子进程入口(由 broker.Server 在子进程内调用)。
 // 职责:初始化 tracer、创建订阅器、启动 kafka/asynq 消费者并阻塞等待退出信号。
-func NewBrokerChildRun(conf *xconfig.Conf, task *xbroker.Task) func() {
+func NewBrokerChildRun(conf *xconfig.Conf, task *event.Task) func() {
 	return func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()

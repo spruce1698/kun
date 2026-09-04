@@ -7,7 +7,6 @@
 package wire
 
 import (
-	"advanced/internal/app"
 	"advanced/internal/event"
 	"advanced/internal/handler"
 	"advanced/internal/handler/demo"
@@ -66,7 +65,7 @@ func WireApp(env string) (*xserver.Server, error) {
 		DemoHandler: demoHandler,
 	}
 	v := router.WireServerSet()
-	assembly, err := app.NewHttp(conf, logger, gormDB, client, pub, jwt, handlerCtx, v)
+	assembly, err := NewHttp(conf, logger, gormDB, client, pub, jwt, handlerCtx, v)
 	if err != nil {
 		return nil, err
 	}

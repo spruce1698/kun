@@ -64,7 +64,7 @@ func (d *DemoHandler) Detail(ctx *gin.Context) {
 // @Router /api/demo/list [get]
 func (d *DemoHandler) List(ctx *gin.Context) {
 	req := &struct {
-		xhttp.PageArg
+		xhttp.ReqPage
 		Id   *int64 `form:"id"   json:"id"`
 		Name string `form:"name"  json:"name"` // 名称
 	}{}

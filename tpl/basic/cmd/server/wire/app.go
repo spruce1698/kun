@@ -1,16 +1,15 @@
 /**
  * @Author: spruce
  * @Date: 2024-08-14
- * @Desc: 应用装配层
+ * @Desc: HTTP 应用装配层
  *
- * 将 gin 引擎的组装(中间件/JWT/限流/路由)与资源关闭器注册从 pkg/xserver/http
- * 上移到此处,使 pkg/xserver/http 不再反向依赖 internal/*,依赖方向回到 internal -> pkg。
- * 返回组装好的 *gin.Engine 与统一的资源关闭器 *xserver.Closer。
+ * 作为 Composition Root，在 cmd/server/wire 中完成 gin 引擎与各层业务组件（中间件/JWT/限流/路由）的组装，
+ * 并注册资源关闭器，返回组装好的 *gin.Engine 与统一的资源关闭器 *xserver.Closer。
  *
  * jwt 由 wire 注入(与 service 层共用同一单例,保证黑名单/轮换全局生效)。
  */
 
-package app
+package wire
 
 import (
 	"context"

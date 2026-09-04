@@ -41,41 +41,45 @@
 ├── cmd/                           项目入口目录
 │   ├── broker/                    消息服务器入口（异步消息、延时任务、周期性任务）
 │   │   ├── main.go                Wire DI 启动入口，信号优雅关闭
-│   │   └── wire/                  Wire 依赖注入声明与自动生成
+│   │   └── wire/                  Wire 依赖注入与装配
+│   │       ├── app.go             Broker 应用装配（健康探针与消费者启动）
 │   │       ├── wire.go            声明 Broker 全链路依赖
 │   │       └── wire_gen.go        Wire 自动生成代码
 │   └── server/                    HTTP 服务入口
 │       ├── main.go                Wire DI 启动入口，信号优雅关闭
-│       └── wire/                  Wire 依赖注入声明与自动生成
+│       └── wire/                  Wire 依赖注入与装配
+│           ├── app.go             HTTP 应用装配（Gin 模式、中间件、路由与资源回收）
 │           ├── wire.go            声明 Server 全栈分层依赖
 │           └── wire_gen.go        Wire 自动生成代码
 ├── config/                        配置文件目录
-│   └── local.yml                  本地环境配置（YAML 格式）
+│   ├── local.yml                  本地环境配置（YAML 格式）
+│   └── release.yml                生产环境配置
+├── deploy/                        部署与容器化编排
+│   ├── .env.example               环境变量示例
+│   ├── Dockerfile                 多阶段构建镜像 Dockerfile
+│   └── docker-compose.yml         本地中间件一键拉起编排
 ├── docs/                          项目文档
-│   ├── ci/                        CI 编排
-│   │   └── docker-compose.yml     容器化编排
-│   ├── docker/                    镜像构建
-│   │   └── Dockerfile             Docker 构建文件
-│   ├─ sql/                        数据库建表脚本
-│   └── scripts/                       辅助脚本
-│       └── swagger.sh                 自动生成 Swagger 文档
-├── swagger/                       Swagger 接口文档              
+│   └── sql/                       数据库建表脚本
+│       └── advanced.sql           数据库初始化 SQL
+├── swagger/                       Swagger 接口文档            
 ├── internal/                      内部业务逻辑
 │   ├── handler/                   HTTP 处理器层（参数校验、调用 Service）
 │   │   ├── demo/demo.go           Demo CRUD 处理器（含缓存、事件发布）
 │   │   └── serverDI.go            Wire DI 容器，注册所有处理器
 │   ├── event/                     事件发布/订阅抽象层
 │   │   ├── publisher.go           多后端发布器（Kafka 同步 + Asynq 异步/延时/定时）
-│   │   └── subscriber.go          订阅管理器（Kafka 消费组 + Asynq Task Worker）
+│   │   ├── subscriber.go          订阅管理器（Kafka 消费组 + Asynq Task Worker）
+│   │   └── types.go               订阅任务定义（Task / Kafka / Asynq）
 │   ├── global/                    全局常量与枚举
-│   │   ├── ctx.go                 上下文 Key 常量（认证 Token、账户 ID）
+│   │   ├── constants.go           上下文 Key 常量与 API 路由前缀常量
 │   │   ├── event.go               事件类型/主题/消费组枚举及消息结构
-│   │   ├── pay.go                 支付状态与支付方式枚举
-│   │   └── router.go              API 路由前缀常量
+│   │   └── pay.go                 支付状态与支付方式枚举
 │   ├── middleware/                HTTP 中间件
 │   │   ├── auth.go                JWT 鉴权（强制/可选/写入三种模式）
 │   │   ├── cors.go                跨域资源共享
 │   │   ├── csrf.go                CSRF 防护（gorilla/csrf）
+│   │   ├── metrics.go             Prometheus 指标统计中间件
+│   │   ├── ratelimit.go           单机/分布式限流器
 │   │   └── recovery.go            Panic 恢复（区分 broken pipe 与普通 panic）
 │   ├── repository/                数据访问层
 │   │   ├── cache/                 缓存层
@@ -88,66 +92,51 @@
 │   │   │   └── mysql.go           GORM 连接池/事务/分页/排序封装
 │   │   └── serverDI.go            Wire DI 注册所有 Repository 实现
 │   ├── router/                    路由注册层
-│   │   ├── router.go              全局路由工具（404 处理/健康检查/Swagger）
+│   │   ├── router.go              全局路由工具（404 处理/健康检查/Swagger/Metrics）
 │   │   ├── serverDI.go            Wire DI 注册所有路由定义
 │   │   └── v0/demo.go             v0 版本 Demo RESTful 路由组
 │   └── service/                   业务逻辑层
 │       ├── svc/                   核心业务逻辑
-│       │   ├── context.go         业务服务基础上下文（配置/DB/Redis/日志）
+│       │   ├── context.go         业务服务基础上下文（配置/DB/Redis）
 │       │   ├── demo.go            Demo 业务编排（CRUD + 缓存 + 事件发布）
 │       │   └── broker.go          事件消费处理器（Kafka + Asynq 任务路由）
 │       ├── brokerDI.go            Wire DI 注册 Broker 事件订阅任务
 │       └── serverDI.go            Wire DI 注册 HTTP 服务层依赖
 ├── pkg/                           公共工具包
 │   ├── asynq/                     Asynq 异步/延时/定时任务队列封装
-│   ├── encrypt/                   加密工具
-│   │   ├── encrypt.go             MD5/SHA/PBKDF2 哈希工具
-│   │   ├── rsa.go                 RSA 加解密（公钥加密/私钥解密）
-│   │   └── rsaExt.go              RSA PEM 解析/分块加解密扩展
+│   ├── encrypt/                   加解密工具（MD5/AES/RSA/Bcrypt）
+│   │   ├── bcrypt.go              Bcrypt 密码加密与校验
+│   │   ├── encrypt.go             对称加解密与哈希工具
+│   │   └── rsa.go                 RSA 完整套件（OAEP 加密/解密/签名/验签）
 │   ├── kafka/                     Kafka 客户端封装
 │   │   ├── client.go              主题管理客户端（列举/创建/删除）
 │   │   ├── publisher.go           消息发布器（压缩/超时/批量异步）
-│   │   └── subscriber.go          消费者（两种订阅模式/消费组/偏移量）
+│   │   ├── subscriber.go          消费者（消费组/偏移量提交/自动重试）
+│   │   └── tracing.go             Kafka 跨进程链路追踪
 │   ├── token/                     JWT Token 管理
-│   │   ├── error.go               JWT 错误类型定义（位标志）
-│   │   └── jwt.go                 令牌创建/验证/刷新/Redis 撤销（单例模式）
+│   │   └── jwt.go                 令牌签发/校验/刷新/黑名单撤销
 │   ├── utils/                     通用工具函数
-│   │   ├── convert.go             进制转换（base62/base58）
-│   │   ├── decimal.go             货币单位转换（元 ⇔ 分）
-│   │   ├── file.go                文件系统操作（存在校验/读写/遍历）
-│   │   ├── func.go                字符串工具（中文检测/脱敏/字典排序）
+│   │   ├── convert.go             进制转换（Base62/Base58）与货币单位转换（元/分）
+│   │   ├── file.go                文件系统操作
+│   │   ├── func.go                字符串工具（中文检测/脱敏/排序）
 │   │   ├── net.go                 网络工具（端口/IP 检测）
 │   │   ├── pool.go                Goroutine 工作池
-│   │   ├── random.go              随机字符串/数字生成
-│   │   ├── snowflake.go           Twitter Snowflake 分布式 ID
-│   │   ├── time.go                时间计算与转换工具
-│   │   ├── uuid.go                UUID v4 生成
-│   │   └── verify.go              密码强度校验
-│   ├── validator/                 参数校验器（中英文错误翻译/自定义规则）
-│   ├── xconfig/                   配置加载器（Viper/YAML/环境变量/热重载）
-│   ├── xdb/                       数据库扩展
-│   │   ├── xdb.go                 GORM 初始化（连接池/读写分离/链路追踪）
-│   │   └── xdblog.go              GORM 自定义日志（SQL 追踪集成）
-│   ├── xerror/                    错误码与错误处理
-│   │   ├── base36.go              Base36 编解码（错误码序列化）
-│   │   ├── code.go                业务错误码常量定义
-│   │   └── error.go               结构化错误（错误码/指纹/日志集成）
-│   ├── xhttp/                     HTTP 请求/响应封装
-│   │   ├── request.go             请求参数结构（分页/排序）
-│   │   └── response.go            统一响应结构（数据/列表/分页）
-│   ├── xlog/                      日志与链路追踪（基于 Zap + OpenTelemetry）
-│   │   ├── filter.go              敏感数据过滤（密码/Token 脱敏）
-│   │   ├── http.go                HTTP 请求/响应日志结构
-│   │   ├── middleware.go          Gin 追踪中间件（请求日志 + Span/Body/Header/耗时）
-│   │   ├── options.go             日志选项（级别/轮转/Kafka Hook）
-│   │   ├── tracer.go              OpenTelemetry 链路追踪初始化（OTLP gRPC）
-│   │   └── xlog.go                Zap 初始化（多输出/链路追踪）
-│   ├── xredis/                    Redis 客户端（连接池/集群/链路追踪）
-│   └── xserver/                   服务管理
-│       ├── broker/                Broker 引擎（Kafka + Asynq 订阅/健康检查）
-│       ├── http/                  HTTP 引擎（Gin 初始化/中间件栈/路由注册）
-│       └── xserver.go             服务抽象层（信号处理/优雅关闭）
-├── test/                          单元测试与 Mock
+│   │   ├── random.go              随机字符、数字及 UUID 生成
+│   │   ├── snowflake.go           Snowflake 分布式 ID 生成器
+│   │   ├── time.go                时间计算与格式化
+│   │   └── verify.go              正则与格式校验
+│   ├── validator/                 参数校验器（中英文翻译/自定义规则）
+│   ├── xconfig/                   配置加载器（Viper/YAML/多环境）
+│   ├── xdb/                       数据库集成（GORM/连接池/日志追踪）
+│   ├── xerror/                    统一错误码与错误模型（xerror.go）
+│   ├── xhttp/                     统一 HTTP 响应输出与通用分页请求（http.go）
+│   ├── xlog/                      日志与链路追踪（Zap + OpenTelemetry）
+│   ├── xredis/                    Redis 客户端（连接池/健康检查/追踪）
+│   └── xserver/                   服务抽象与生命周期管理
+│       ├── broker/                Broker 守护进程（Supervisor/子进程保活/探针）
+│       ├── http/                  HTTP Server（生命周期/优雅退出）
+│       └── xserver.go             通用 Server 抽象与资源清理器（Closer）
+├── test/                          单元测试与基准测试
 ├── Makefile                       构建与命令快捷入口
 └── README.md                      项目说明
 ```
@@ -203,6 +192,12 @@ kun wire
 
 Advanced Layout 提供了由 `internal/event` 封装的多后端消息发布与订阅架构（Kafka + Asynq）：
 
+### 核心角色与概念
+
+- **调度服务器 (Broker)**：作为事件中转调度枢纽，管理事件和监听器之间的映射关系，负责触发与分发任务（支持异步消息、延时消息、周期性 Cron 任务、Job 消费处理等）。
+- **发布者 (Publisher / Producer)**：发送数据的实体，负责向指定的主题（Topic）投递消息。
+- **订阅者 (Subscriber / Consumer)**：接收并处理数据的实体，订阅特定主题并在收到新事件时触发对应 Handler 执行业务逻辑。
+
 ### 1. 消息发布 (Publisher)
 
 在 Service 层注入 `*event.Publisher`，即可进行多场景消息投递：
@@ -246,8 +241,6 @@ func (s *Service) DemoAsynqHandler(ctx context.Context, task *asynq.Task) error 
 3. **错误处理**: 统一使用 `xerror` 包管理错误码，返回结构化错误响应。
 4. **日志**: 使用 `xlog`（基于 Zap）记录结构化日志，支持链路追踪。
 5. **缓存 Key**: 统一在 `repository/cache/keys.go` 中管理，避免散落各处。
-
-
 
 ```go
 // ==============github.com/robfig/cron 周期性任务=====================================

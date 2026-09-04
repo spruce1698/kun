@@ -387,3 +387,30 @@ func (j *Jwt) CancelDisuse(ctx context.Context, value string) error {
 	_, err := j.Cache.Del(ctx, cacheKey).Result()
 	return err
 }
+
+// ================= JWT 错误类型定义 =================
+
+type Error struct {
+	Inner  error
+	Errors uint32
+	text   string
+}
+
+func newError(errorText string, errorFlags uint32) *Error {
+	return &Error{
+		text:   errorText,
+		Errors: errorFlags,
+	}
+}
+
+// Error 实现 error 接口
+func (o *Error) Error() string {
+	if o.Inner != nil {
+		return o.Inner.Error()
+	}
+	return o.text
+}
+
+func (o *Error) valid() bool {
+	return o.Errors == 0
+}

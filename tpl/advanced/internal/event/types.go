@@ -1,15 +1,10 @@
 /**
  * @Author: spruce
  * @Date: 2024-08-15
- * @Desc: broker 事件订阅配置类型
- *
- * Task/Kafka/Asynq 定义了"订阅哪些 topic、由谁处理"的配置结构,
- * 被 pkg/xserver/broker(引擎)与 internal/event(消费者运行时)、
- * internal/service(装配)共同引用。放在 pkg 使 broker 引擎不再依赖 internal。
- * topic/group 使用原始 string:业务枚举(如 internal/global 的 EventTopic)由装配层转换。
+ * @Desc: Broker 事件订阅任务配置类型
  */
 
-package xbroker
+package event
 
 import (
 	"context"

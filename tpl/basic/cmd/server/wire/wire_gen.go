@@ -7,7 +7,6 @@
 package wire
 
 import (
-	"basic/internal/app"
 	"basic/internal/handler"
 	"basic/internal/repository/cache"
 	"basic/internal/repository/db"
@@ -61,7 +60,7 @@ func WireApp(env string) (*xserver.Server, error) {
 		DemoHandler: demoHandler,
 	}
 	v := router.WireServerSet()
-	assembly, err := app.NewHttp(conf, logger, gormDB, client, jwt, handlerCtx, v)
+	assembly, err := NewHttp(conf, logger, gormDB, client, jwt, handlerCtx, v)
 	if err != nil {
 		return nil, err
 	}

@@ -4,7 +4,6 @@
 package wire
 
 import (
-	"basic/internal/app"
 	"basic/internal/handler"
 	"basic/internal/repository"
 	"basic/internal/repository/db"
@@ -38,8 +37,8 @@ func WireApp(env string) (*xserver.Server, error) {
 		token.NewJwt,
 
 		// app 装配 gin 引擎 + 资源 closer
-		app.NewHttp,
-		wire.FieldsOf(new(*app.Assembly), "Engine", "Closer"),
+		NewHttp,
+		wire.FieldsOf(new(*Assembly), "Engine", "Closer"),
 
 		xhttp.New,
 

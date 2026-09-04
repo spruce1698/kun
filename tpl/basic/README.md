@@ -9,6 +9,8 @@
 | 依赖注入 | [Wire](https://github.com/google/wire)                  | 编译期依赖注入    |
 | 配置管理 | [Viper](https://github.com/spf13/viper)                 | 多环境配置        |
 | 日志     | [Zap](https://github.com/uber-go/zap)                   | 高性能结构化日志  |
+| 链路追踪 | [OpenTelemetry](https://github.com/open-telemetry/opentelemetry-go) | 分布式全链路追踪 |
+| 指标监控 | [Prometheus](https://github.com/prometheus/client_golang) | HTTP 吞吐与耗时监控 |
 | JWT      | [Golang-jwt](https://github.com/golang-jwt/jwt)         | Token 鉴权        |
 | 缓存     | [Go-redis](https://github.com/go-redis/redis)           | Redis 客户端      |
 | 校验     | [Validator](https://github.com/go-playground/validator) | 参数校验          |
@@ -36,95 +38,92 @@
 
 ```
 .
-├── cmd
-│   └── server                               服务入口目录
-│       ├── wire
-│       │   ├── wire.go                      Wire 依赖注入声明
-│       │   └── wire_gen.go                  Wire 自动生成代码
-│       └── main.go                          服务入口文件
-├── config
-│   └── local.yml                            本地环境配置
-├── docs
-│   └── sql
-│       └── basic.sql                        数据库初始化脚本
-├── internal
-│   ├── handler                              HTTP 处理器层
-│   │   ├── demo.go                          Demo 处理器
-│   │   └── serverDI.go                      Server 处理器 DI 配置
-│   ├── global                               全局常量与枚举
-│   │   ├── ctx.go                           上下文 key 常量
-│   │   └── router.go                        路由前缀常量
-│   ├── middleware                           HTTP 中间件
-│   │   ├── auth.go                          授权验证中间件
-│   │   ├── cors.go                          跨域中间件
-│   │   └── recovery.go                      异常恢复（panic 处理）
-│   ├── repository                           数据访问层
-│   │   ├── cache                            缓存层
-│   │   │   ├── demo.go                      Demo 缓存实现
-│   │   │   ├── keys.go                      缓存 Key 统一管理
-│   │   │   └── local.go                     本地缓存（go-cache）
-│   │   ├── db                               数据库层
-│   │   │   ├── demo.go                      Demo 数据访问（自定义实现）
-│   │   │   ├── demo_gen.go                  Demo 数据访问（SqlGen 自动生成）
-│   │   │   └── mysql.go                     MySQL 通用操作封装
-│   │   └── serverDI.go                      Server 存储层 DI 配置
-│   ├── router                               路由注册层
-│   │   ├── v0
-│   │   │   └── demo.go                      v0 版本 Demo 路由
-│   │   ├── router.go                        通用路由 & 404 处理
-│   │   └── serverDI.go                      Server 路由 DI 配置
-│   └── service                              业务逻辑层
-│       ├── svc                              核心业务逻辑
-│       │   ├── context.go                   业务上下文（配置/DB/Redis）
-│       │   └── demo.go                      Demo 业务实现
-│       └── serverDI.go                      Server 服务 DI 配置
-├── pkg                                      公共工具包
-│   ├── encrypt                              加密工具
-│   │   ├── encrypt.go                       AES/DES/MD5/SHA 等加密
-│   │   ├── rsa.go                           RSA 加解密
-│   │   └── rsaExt.go                        RSA 扩展（PKCS1/PKCS8）
-│   ├── token                                JWT Token 管理
-│   │   ├── error.go                         JWT 错误定义
-│   │   └── jwt.go                           JWT 签名 & 验签
-│   ├── utils                                通用工具函数
-│   │   ├── convert.go                       Base62/Base58 编码转换
-│   │   ├── decimal.go                       浮点数精度处理
-│   │   ├── file.go                          文件操作
-│   │   ├── func.go                          通用函数工具
-│   │   ├── net.go                           网络工具
-│   │   ├── pool.go                          协程池
-│   │   ├── random.go                        随机数生成
-│   │   ├── time.go                          时间工具
-│   │   ├── uuid.go                          UUID 生成
-│   │   └── verify.go                        验证工具（手机号/邮箱等）
-│   ├── validator                            参数校验器
-│   │   └── validator.go                     系统输入参数校验（中英文）
-│   ├── xconfig                              配置管理（Viper）
-│   │   └── xconfig.go                       多环境配置加载
-│   ├── xdb                                  数据库扩展
-│   │   ├── xdb.go                           GORM 数据库通用操作
-│   │   └── xdblog.go                        数据库操作日志
-│   ├── xerror                               统一错误处理
-│   │   ├── base36.go                        错误码 Base36 编码
-│   │   ├── code.go                          错误码定义
-│   │   └── error.go                         错误接口与处理
-│   ├── xhttp                                HTTP 请求/响应封装
-│   │   ├── request.go                       请求参数封装
-│   │   └── response.go                      统一响应输出
-│   ├── xlog                                 日志与链路追踪（Zap + OpenTelemetry）
-│   │   ├── filter.go                        敏感字段过滤
-│   │   ├── http.go                          HTTP 请求信息结构
-│   │   ├── middleware.go                    Gin 追踪中间件（请求日志 + Span）
-│   │   ├── options.go                       自定义日志选项
-│   │   ├── tracer.go                        OpenTelemetry 链路追踪初始化
-│   │   └── xlog.go                          日志核心封装
-│   ├── xredis                               Redis 客户端封装
-│   │   └── xredis.go                        Redis 操作 & 链路追踪
-│   └── xserver                              服务管理
-│       ├── xserver.go                       服务生命周期接口
-│       └── http                             HTTP 服务实现
-│           └── http.go                      Gin HTTP 引擎
-└── README.md                                项目说明
+├── cmd/                           服务入口目录
+│   └── server/                    HTTP 服务入口
+│       ├── main.go                Wire DI 启动入口，信号优雅关闭
+│       └── wire/                  Wire 依赖注入与应用装配
+│           ├── app.go             HTTP 应用装配（Gin 模式、中间件、路由与资源回收）
+│           ├── wire.go            声明 Server 全栈分层依赖
+│           └── wire_gen.go        Wire 自动生成代码
+├── config/                        配置文件目录
+│   ├── local.yml                  本地环境配置（YAML 格式）
+│   └── release.yml                生产环境配置
+├── docs/                          项目文档
+│   └── sql/                       数据库建表脚本
+│       └── basic.sql              数据库初始化 SQL
+├── internal/                      内部业务逻辑
+│   ├── handler/                   HTTP 处理器层（参数校验、调用 Service）
+│   │   ├── demo.go                Demo 处理器
+│   │   └── serverDI.go            Wire DI 容器，注册所有处理器
+│   ├── global/                    全局常量与枚举
+│   │   └── constants.go           上下文 Key 常量与 API 路由前缀常量
+│   ├── middleware/                HTTP 中间件
+│   │   ├── auth.go                JWT 鉴权验证（支持强制/可选模式）
+│   │   ├── cors.go                跨域资源共享中间件
+│   │   ├── metrics.go             Prometheus 监控指标收集中间件
+│   │   ├── ratelimit.go           单机/分布式限流器
+│   │   └── recovery.go            Panic 异常恢复与堆栈捕获
+│   ├── repository/                数据访问层
+│   │   ├── cache/                 缓存层
+│   │   │   ├── demo.go            二级缓存（本地 + Redis）实现
+│   │   │   ├── keys.go            缓存 Key 统一管理
+│   │   │   └── local.go           线程安全本地内存缓存（go-cache 封装）
+│   │   ├── db/                    数据库层
+│   │   │   ├── demo.go            Demo 数据访问（自定义查询）
+│   │   │   ├── demo_gen.go        SqlGen 自动生成基础 CRUD
+│   │   │   └── mysql.go           GORM 连接池/事务/分页/排序封装
+│   │   └── serverDI.go            Wire DI 注册所有 Repository 实现
+│   ├── router/                    路由注册层
+│   │   ├── router.go              全局通用路由（404 处理/健康检查/Metrics）
+│   │   ├── serverDI.go            Wire DI 注册所有路由定义
+│   │   └── v0/demo.go             v0 版本 Demo RESTful 路由组
+│   └── service/                   业务逻辑层
+│       ├── svc/                   核心业务逻辑
+│       │   ├── context.go         业务服务基础上下文（配置/DB/Redis）
+│       │   └── demo.go            Demo 业务实现（CRUD + 缓存）
+│       └── serverDI.go            Wire DI 注册 HTTP 服务层依赖
+├── pkg/                           公共工具包
+│   ├── encrypt/                   加解密工具
+│   │   ├── bcrypt.go              Bcrypt 密码加密与校验
+│   │   ├── encrypt.go             对称加解密（AES/DES）与哈希工具（MD5/SHA）
+│   │   └── rsa.go                 RSA 完整套件（OAEP 加解密/签名/验签）
+│   ├── token/                     JWT Token 管理
+│   │   └── jwt.go                 令牌签发/校验/刷新/黑名单撤销
+│   ├── utils/                     通用工具函数
+│   │   ├── convert.go             进制转换（Base62/Base58）与货币转换（元/分）
+│   │   ├── file.go                文件读写与系统操作
+│   │   ├── func.go                字符串工具（中文检测/脱敏/排序）
+│   │   ├── net.go                 网络工具（端口/IP 检测）
+│   │   ├── pool.go                Goroutine 工作池
+│   │   ├── random.go              随机字符、数字及 UUID 生成
+│   │   ├── snowflake.go           Snowflake 分布式 ID 生成器
+│   │   ├── time.go                时间计算与格式化
+│   │   └── verify.go              正则与格式校验
+│   ├── validator/                 参数校验器
+│   │   └── validator.go           参数规则校验（中英文翻译/自定义规则）
+│   ├── xconfig/                   配置加载器（Viper/YAML/多环境）
+│   │   └── xconfig.go             多环境配置动态加载
+│   ├── xdb/                       数据库扩展
+│   │   ├── xdb.go                 GORM 初始化与连接池管理
+│   │   └── xdblog.go              GORM 自定义日志与链路追踪集成
+│   ├── xerror/                    统一错误码与错误模型
+│   │   └── xerror.go              结构化业务错误与错误码定义
+│   ├── xhttp/                     统一 HTTP 响应输出与通用分页请求
+│   │   └── http.go                统一 JSON 响应与分页入参封装
+│   ├── xlog/                      日志与链路追踪（Zap + OpenTelemetry）
+│   │   ├── filter.go              敏感字段脱敏过滤
+│   │   ├── http.go                HTTP 请求信息提取
+│   │   ├── middleware.go          Gin 请求日志中间件
+│   │   ├── options.go             日志自定义选项
+│   │   ├── tracer.go              OpenTelemetry 全链路追踪初始化
+│   │   └── xlog.go                Zap 高性能结构化日志核心
+│   ├── xredis/                    Redis 客户端封装
+│   │   └── xredis.go              Redis 连接池与操作封装
+│   └── xserver/                   服务管理
+│       ├── http/                  HTTP 服务实现
+│       │   └── http.go            Gin HTTP 引擎与优雅关闭
+│       └── xserver.go             服务通用抽象与资源关闭器（Closer）
+└── README.md                      项目说明
 ```
 
 ## 要求
@@ -176,5 +175,5 @@ kun wire
 1. **依赖注入**: 所有层之间通过 `Wire` 进行编译期依赖注入，避免手动管理依赖。
 2. **配置管理**: 使用 `Viper` 加载 `config/` 下的配置文件，支持多环境。
 3. **错误处理**: 统一使用 `xerror` 包管理错误码，返回结构化错误响应。
-4. **日志**: 使用 `xlog`（基于 Zap）记录结构化日志，支持链路追踪。
+4. **日志与追踪**: 使用 `xlog`（基于 Zap）记录结构化日志，无缝集成 OpenTelemetry 链路追踪。
 5. **缓存 Key**: 统一在 `repository/cache/keys.go` 中管理，避免散落各处。

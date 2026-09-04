@@ -12,7 +12,7 @@ init:
 
 .PHONY: bootstrap
 bootstrap:
-	cd ./docs/ci && docker compose up -d
+	cd ./deploy && docker compose up -d
 	kun run ./cmd/server
 
 .PHONY: mock
@@ -45,8 +45,8 @@ build:
 # 会让 docker 把 B=2 当成构建上下文路径。
 .PHONY: docker
 docker:
-	docker build -f docs/docker/Dockerfile --build-arg SERVICE_NAME=server --build-arg LISTEN_PORT=9998 -t advanced/server:latest .
-	docker build -f docs/docker/Dockerfile --build-arg SERVICE_NAME=broker --build-arg LISTEN_PORT=9999 -t advanced/broker:latest .
+	docker build -f deploy/Dockerfile --build-arg SERVICE_NAME=server --build-arg LISTEN_PORT=9998 -t advanced/server:latest .
+	docker build -f deploy/Dockerfile --build-arg SERVICE_NAME=broker --build-arg LISTEN_PORT=9999 -t advanced/broker:latest .
 
 # 输出目录必须是 ./swagger:代码里 import 的是 "advanced/swagger"
 # (见 internal/router/router.go),输出到 ./docs 生成的文档永远不会被编译进程序。

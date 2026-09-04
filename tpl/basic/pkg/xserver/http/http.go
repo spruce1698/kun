@@ -4,7 +4,7 @@
  * @Desc: http Engine
  *
  * 仅负责 HTTP 生命周期(listen / graceful shutdown / 资源回收),
- * 不再组装中间件与路由--组装由 internal/app 完成,依赖方向 internal -> pkg。
+ * 不再组装中间件与路由--组装由 cmd/server/wire 完成,依赖方向 cmd -> pkg。
  */
 
 package http
@@ -41,7 +41,7 @@ type Server struct {
 }
 
 // New 创建 http 服务。engine 为已装配好中间件/路由的 gin 引擎,
-// closer 聚合进程退出时需回收的资源(由 internal/app 注册)。
+// closer 聚合进程退出时需回收的资源(由 cmd/server/wire 注册)。
 func New(
 	conf *xconfig.Conf,
 	log *xlog.Logger,

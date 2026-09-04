@@ -7,7 +7,6 @@
 package wire
 
 import (
-	"advanced/internal/app"
 	"advanced/internal/repository/db"
 	"advanced/internal/service"
 	"advanced/internal/service/svc"
@@ -32,7 +31,7 @@ func WireApp(env string) (*xserver.Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	engine := app.NewBrokerHealth(conf, logger)
+	engine := NewBrokerHealth(conf, logger)
 	conn := db.NewConn(gormDB)
 	ctx := &svc.Ctx{
 		Conf:     conf,
@@ -44,7 +43,7 @@ func WireApp(env string) (*xserver.Server, error) {
 	}
 	brokerSvc := svc.NewBrokerSvc(brokerCtx)
 	task := service.TaskSet(brokerSvc)
-	v := app.NewBrokerChildRun(conf, task)
+	v := NewBrokerChildRun(conf, task)
 	xserverEngine, err := broker.New(conf, logger, gormDB, client, engine, v)
 	if err != nil {
 		return nil, err

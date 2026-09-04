@@ -14,7 +14,6 @@ import (
 
 	"advanced/pkg/asynq"
 	"advanced/pkg/kafka"
-	"advanced/pkg/xbroker"
 	"advanced/pkg/xconfig"
 
 	githubAsynq "github.com/hibiken/asynq"
@@ -26,7 +25,7 @@ type (
 		conf   *xconfig.Conf
 		ctx    context.Context
 		aQueue *asynq.Asynq
-		task   *xbroker.Task
+		task   *Task
 		// asynq server / cron manager,关闭时需要 Shutdown
 		aSrv *githubAsynq.Server
 		aMgr *githubAsynq.PeriodicTaskManager
@@ -34,7 +33,7 @@ type (
 	}
 )
 
-func NewSub(wg *sync.WaitGroup, conf *xconfig.Conf, task *xbroker.Task, ctx context.Context) *Sub {
+func NewSub(wg *sync.WaitGroup, conf *xconfig.Conf, task *Task, ctx context.Context) *Sub {
 	return &Sub{
 		wg:     wg,
 		conf:   conf,
@@ -55,7 +54,7 @@ func (s *Sub) Kafka() {
 
 	s.wg.Add(len(s.task.KafkaSet))
 	for _, kq := range s.task.KafkaSet {
-		go func(v *xbroker.Kafka) {
+		go func(v *Kafka) {
 			defer s.wg.Done()
 			s.kSub.SubFetch(s.ctx, v.Topic, v.Group, v.Handler)
 		}(kq)
