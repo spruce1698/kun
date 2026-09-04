@@ -1,0 +1,55 @@
+version: "3"
+
+services:
+  mysql:
+    image: mysql:8.0.23
+    container_name: mysql8
+    volumes:
+      - ./mysql/conf.d:/etc/mysql/conf.d
+      - ./mysql/data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: 12345678
+    command: --default-authentication-plugin=mysql_native_password
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+    restart: unless-stopped
+
+  redis:
+    image: redis:6.2.5-alpine
+    container_name: redis
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - ./redis/data:/data:rw
+    command: "redis-server --requirepass 12345678 --appendonly yes"
+    privileged: true
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  zookeeper:
+    image: wurstmeister/zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    restart: unless-stopped
+
+  kafka:
+    image: wurstmeister/kafka
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: localhost #填写本机地址
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+    volumes:
+      - ./kafka/docker.sock:/var/run/docker.sock
+    restart: unless-stopped

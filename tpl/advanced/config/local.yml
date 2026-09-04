@@ -1,0 +1,59 @@
+env: "debug" # 环境  debug:开发 test:测试 staging:预发布 release:生产
+version: "0.0.1"
+
+#  Server/DB/Redis/Kafka 连接、HTTP 端口等启动期固化的资源,热重载不会重建,需重启
+server:
+  name: "advanced"
+  port: 9998 # http端口
+  readTimeout: 60 #单位s
+  writeTimeout: 60 #单位s
+  allowOrigins: # CORS 允许的来源白名单。为空=不允许跨域;写 "*" =允许所有来源(此时跨域请求不能携带 Cookie)
+    - "http://127.0.0.1:9998"
+
+broker:
+  name: "advanced-broker"
+  port: 9999 # broker端口
+  readTimeout: 60 # 单位s
+  writeTimeout: 60 # 单位s
+
+token:
+  secret: "123456ABCDEFGHIJKLMNOPQRSTUVWXYZ" # 示例后面正式要切换
+  refreshSecret: "abcdefghijklmnopqrstuvwxyz123456" # 示例后面正式要切换
+  csrfKey: "abcdefghijklmnopqrstuvwxyz123456" # CSRF 密钥,32位 ,示例后面正式要切换
+  expire: 3600    # 过期时间(秒)
+  refresh: 604800  # 刷新时间(秒)
+  queryKey: "Authorization"   # query 参数 key
+  cacheKey: "token:disuse:"   # 缓存 key 前缀
+  multiLogin: false   # 是否允许多端登录
+
+log:
+  level: "debug" # 输出日志等级:debug,info,warn,error
+  filePath: "" # "./logs/log.log"
+  stdout: true
+  kafkaTopic: ""   # 日志推送到 kafka 的 topic,为空则不推送
+  kafkaBrokers: [] # kafka brokers 地址
+
+
+mysql: # mysql服务器地址,第一条默认是主库
+  logLevel: "debug" # 日志等级:debug,error
+  source:
+    - "root:zrcnBCq83MmuvojG@tcp(127.0.0.1:3306)/advanced?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
+  maxIdleConns: 10    # 空闲连接池中连接的最大数量
+  maxOpenConns: 100   # 打开数据库连接的最大数量
+  connMaxLifetime: 3600 # 连接可复用的最大时间(秒)
+
+redis:
+  source: # redis服务器地址,如果redis是集群，则多条
+    - "127.0.0.1:6379"
+  password: "1cVeQ26GhlUSsRmx"
+  cluster: false
+  poolSize: 100 # 连接池大小
+
+kafka:
+  brokers:
+    - "127.0.0.1:9092"
+
+jaeger:
+  endpoint: "127.0.0.1:4317" # Jaeger collector 地址
+  sampleRate: 1.0 # 采样率 0.0~1.0,1.0 全量采样;生产建议 0.1
+
