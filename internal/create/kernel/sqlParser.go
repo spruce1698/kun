@@ -48,7 +48,7 @@ type uniqueIndexInfo struct {
 }
 
 // ParseSQLFile 解析 .sql 文件，提取所有 CREATE TABLE 语句并构建 StructMeta
-// conf 用于控制代码生成行为（FieldNullable、FieldCoverable、FieldSignable、FieldWithIndexTag、FieldWithTypeTag）
+// conf 用于控制代码生成行为（FieldNullable、FieldCoverable、FieldSignable、FieldWithIndexTag、FieldWithTypeTag、FieldWithJSONTag）
 func ParseSQLFile(filePath string, conf *SQLConfig) ([]*StructMeta, error) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
@@ -582,6 +582,7 @@ func buildField(cd *columnDef, uniqueIdxs []uniqueIndexInfo, conf *SQLConfig) *F
 			FieldSignable:     false,
 			FieldWithIndexTag: true,
 			FieldWithTypeTag:  true,
+			FieldWithJSONTag:  false,
 		}
 	}
 
@@ -657,8 +658,11 @@ func buildField(cd *columnDef, uniqueIdxs []uniqueIndexInfo, conf *SQLConfig) *F
 		gormTag += ";default:" + defaultVal
 	}
 
-	// JSON tag: 小驼峰（传 fieldName 已含 ID→Id 修正）
-	jsonTag := toLowerCamel(fieldName)
+	// JSON tag: 仅当启用 FieldWithJSONTag 时生成小驼峰（传 fieldName 已含 ID→Id 修正）
+	jsonTag := ""
+	if conf.FieldWithJSONTag {
+		jsonTag = toLowerCamel(fieldName)
+	}
 
 	// 注释标签：始终保留 //，有内容时追加
 	commentTag := "//"

@@ -77,9 +77,14 @@ func detectDBType(dsn string) DBType {
 }
 
 func genDBRepo(cmd *cobra.Command, args []string) error {
+	withJSONTag, _ := cmd.Flags().GetBool("json-tag")
+	if !withJSONTag {
+		withJSONTag, _ = cmd.Flags().GetBool("json")
+	}
+
 	// 如果参数是 .sql 文件，则解析 SQL 文件生成 repo
 	if strings.HasSuffix(args[0], ".sql") {
-		return genDBRepoFromSQL(args)
+		return genDBRepoFromSQL(args, withJSONTag)
 	}
 
 	cmdConf := &CmdParams{
@@ -115,6 +120,7 @@ func genDBRepo(cmd *cobra.Command, args []string) error {
 	}
 	conf := defaultSQLConfig()
 	conf.DbConn = gormDb
+	conf.FieldWithJSONTag = withJSONTag
 	g := kernel.NewGenerator(conf)
 
 	var tablesList []string
@@ -180,12 +186,14 @@ func defaultSQLConfig() kernel.SQLConfig {
 		FieldWithIndexTag: true,  // 生成字段包含 索引 标记
 		FieldWithTypeTag:  true,  // 生成字段包含 列类型 标记
 		FieldSignable:     false, // 检测整数字段的无符号类型，调整生成的数据类型
+		FieldWithJSONTag:  false, // 生成字段包含 json 标记（默认 false，不生成 json tag）
 	}
 }
 
 // genDBRepoFromSQL 从 .sql 文件解析 CREATE TABLE 语句并生成 repo
-func genDBRepoFromSQL(args []string) error {
+func genDBRepoFromSQL(args []string, withJSONTag bool) error {
 	conf := defaultSQLConfig()
+	conf.FieldWithJSONTag = withJSONTag
 
 	metas, err := kernel.ParseSQLFile(args[0], &conf)
 	if err != nil {

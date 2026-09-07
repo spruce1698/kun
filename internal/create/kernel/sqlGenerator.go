@@ -33,6 +33,7 @@ type SQLConfig struct {
 	FieldSignable     bool // detect integer field's unsigned type, adjust generated data type
 	FieldWithIndexTag bool // generate with gorm index tag
 	FieldWithTypeTag  bool // generate with gorm column type tag
+	FieldWithJSONTag  bool // generate with json tag
 }
 
 type StructMeta struct {
@@ -208,8 +209,10 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 		if m.IsPrimaryKey {
 			primaryKeyType = m.Type
 		}
-		// json 小驼峰
-		m.JSONTag = toLowerCamel(m.Name)
+		if g.Conf.FieldWithJSONTag {
+			// json 小驼峰
+			m.JSONTag = toLowerCamel(m.Name)
+		}
 
 		if prevCol, exists := seenFields[m.Name]; exists {
 			output.Warn("table %q 中列 %q 与 %q 映射到重复的 Go 字段名 %q", tableName, prevCol, m.ColumnName, m.Name)
@@ -514,7 +517,7 @@ func (c *Column) ToField(nullable, coverable, signable bool) *Field {
 		Name:         c.Name(),
 		Type:         fieldType,
 		GORMTag:      c.buildGormTag(),
-		JSONTag:      c.Name(),
+		JSONTag:      "",
 		CommentTag:   commentTag,
 		IsPrimaryKey: isPrimaryKey,
 		ColumnName:   c.Name(),

@@ -99,6 +99,9 @@ func init() {
 	} {
 		c.Flags().BoolP("force", "f", false, "force override existing file")
 	}
+	CmdCreateDBRepository.Flags().BoolP("json-tag", "j", false, "generate struct fields with json tags")
+	CmdCreateDBRepository.Flags().Bool("json", false, "alias for --json-tag")
+	_ = CmdCreateDBRepository.Flags().MarkHidden("json")
 }
 
 // Register E6: 将 create 及其子命令挂载到 parent，由本包自行维护命令树。
