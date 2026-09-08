@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -59,7 +60,13 @@ func Wire2DIFile(filePath string, contentMap map[string]string) error {
 	}
 	if len(missing) > 0 {
 		sort.Strings(missing)
-		return fmt.Errorf("DI 注入不完整,以下 marker 未在任何 DI 文件中找到: %s", strings.Join(missing, " | "))
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("DI 注入不完整,以下 marker 未在任何 DI 文件中找到: %s\n", strings.Join(missing, " | ")))
+		sb.WriteString("建议在相关 wire DI 文件中补齐对应 marker,或手动添加以下代码片段:\n")
+		for _, m := range missing {
+			sb.WriteString(fmt.Sprintf("  - Marker: %s\n    Code:\n%s\n", m, contentMap[m]))
+		}
+		return errors.New(strings.TrimRight(sb.String(), "\n"))
 	}
 	return nil
 }

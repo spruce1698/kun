@@ -30,7 +30,9 @@ type (
 		Update(ctx context.Context, newData *{{.StructName}}, field []string) (int64, error)
 		UpdateFields(ctx context.Context, id {{.PrimaryKeyType}}, newData map[string]any) (int64, error)
 
+		{{if .HasSoftDelete -}}
 		SoftDelete(ctx context.Context, ids []{{.PrimaryKeyType}}) error
+		{{- end}}
 		Delete(ctx context.Context, ids []{{.PrimaryKeyType}}) error
 
 		Count(ctx context.Context) (int64, error)
@@ -88,7 +90,7 @@ func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context, list []*{{.S
 		v.{{.PrimaryKeyName}} = *new({{.PrimaryKeyType}})
 	}
 	{{- end}}
-	err := d.WithContext(ctx).Create(list).Error
+	err := d.WithContext(ctx).CreateInBatches(list, 500).Error
 	if err != nil {
 		return nil, err
 	}
@@ -124,12 +126,12 @@ func (d *default{{.StructName}}Db) FindFields(ctx context.Context, id {{.Primary
 }
 
 func (d *default{{.StructName}}Db) FindByIds(ctx context.Context, ids []{{.PrimaryKeyType}}) ([]*{{.StructName}}, error) {
-	// 空 ids 直接返回,避免生成 `IN ()` 在 MySQL 上报语法错误
+	// 空 ids 直接返回,避免生成 IN () 在数据库上报语法错误
 	if len(ids) == 0 {
 		return nil, nil
 	}
 	var result []*{{.StructName}}
-	err := d.WithContext(ctx).Where("`{{.PrimaryKeyColumn}}` IN (?)", ids).Find(&result).Error
+	err := d.WithContext(ctx).Where("{{.PrimaryKeyColumn}} IN (?)", ids).Find(&result).Error
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +140,7 @@ func (d *default{{.StructName}}Db) FindByIds(ctx context.Context, ids []{{.Prima
 
 func (d *default{{.StructName}}Db) Exist(ctx context.Context, id {{.PrimaryKeyType}}) (bool, error) {
 	var count int64
-	err := d.WithContext(ctx).Model(d.model).Where("`{{.PrimaryKeyColumn}}` = ?", id).Limit(1).Count(&count).Error
+	err := d.WithContext(ctx).Model(d.model).Where("{{.PrimaryKeyColumn}} = ?", id).Limit(1).Count(&count).Error
 	if err != nil {
 		return false, err
 	}
@@ -150,30 +152,36 @@ func (d *default{{.StructName}}Db) Update(ctx context.Context, newData *{{.Struc
 	if len(field) > 0 {
 		engine = engine.Select(field)
 	}
-	result := engine.Omit("{{.PrimaryKeyColumn}}").Where(" `{{.PrimaryKeyColumn}}` = ? ", newData.{{.PrimaryKeyName}}).Updates(newData)
+	result := engine.Omit("{{.PrimaryKeyColumn}}").Where("{{.PrimaryKeyColumn}} = ?", newData.{{.PrimaryKeyName}}).Updates(newData)
 	return result.RowsAffected, result.Error
 }
 
 func (d *default{{.StructName}}Db) UpdateFields(ctx context.Context, id {{.PrimaryKeyType}}, newData map[string]any) (int64, error) {
-	result := d.WithContext(ctx).Model(d.model).Where(" `{{.PrimaryKeyColumn}}` = ? ", id).Updates(newData)
+	result := d.WithContext(ctx).Model(d.model).Where("{{.PrimaryKeyColumn}} = ?", id).Updates(newData)
 	return result.RowsAffected, result.Error
 }
 
+{{if .HasSoftDelete -}}
 func (d *default{{.StructName}}Db) SoftDelete(ctx context.Context, ids []{{.PrimaryKeyType}}) error {
-	// 空 ids 直接返回,避免生成 `IN ()` 在 MySQL 上报语法错误
+	// 空 ids 直接返回,避免生成 IN () 在数据库上报语法错误
 	if len(ids) == 0 {
 		return nil
 	}
-	err := d.WithContext(ctx).Where(" `{{.PrimaryKeyColumn}}`  IN (?)  ", ids).Delete(d.model).Error
+	err := d.WithContext(ctx).Where("{{.PrimaryKeyColumn}} IN (?)", ids).Delete(d.model).Error
 	return err
 }
+{{- end}}
 
 func (d *default{{.StructName}}Db) Delete(ctx context.Context, ids []{{.PrimaryKeyType}}) error {
-	// 空 ids 直接返回,避免生成 `IN ()` 在 MySQL 上报语法错误
+	// 空 ids 直接返回,避免生成 IN () 在数据库上报语法错误
 	if len(ids) == 0 {
 		return nil
 	}
-	err := d.WithContext(ctx).Where(" `{{.PrimaryKeyColumn}}`  IN (?)  ", ids).Unscoped().Delete(d.model).Error
+	{{if .HasSoftDelete -}}
+	err := d.WithContext(ctx).Where("{{.PrimaryKeyColumn}} IN (?)", ids).Unscoped().Delete(d.model).Error
+	{{- else -}}
+	err := d.WithContext(ctx).Where("{{.PrimaryKeyColumn}} IN (?)", ids).Delete(d.model).Error
+	{{- end}}
 	return err
 }
 
@@ -192,7 +200,7 @@ func (d *default{{.StructName}}Db) BatchInsert(ctx context.Context, list []*{{.S
 	if len(list) == 0 {
 		return nil
 	}
-	err := d.WithContext(ctx).Create(list).Error
+	err := d.WithContext(ctx).CreateInBatches(list, 500).Error
 	return err
 }
 

@@ -99,8 +99,30 @@ func NewHttp(
 	// 缺失路由
 	eng.NoRoute(router.NotFoundHandle)
 
-	// 探针路由
-	router.Ping(eng)
+	// 探针路由: 注册 DB 与 Redis 等核心依赖探活
+	var checkers []router.NamedChecker
+	if db != nil {
+		checkers = append(checkers, router.NamedChecker{
+			Name: "database",
+			Check: func(ctx context.Context) error {
+				sqlDB, err := db.DB()
+				if err != nil {
+					return err
+				}
+				return sqlDB.PingContext(ctx)
+			},
+		})
+	}
+	if redis != nil {
+		checkers = append(checkers, router.NamedChecker{
+			Name: "redis",
+			Check: func(ctx context.Context) error {
+				return redis.Ping(ctx).Err()
+			},
+		})
+	}
+	router.HealthChecks(eng, checkers...)
+
 	// Prometheus 监控指标端点
 	router.Metrics(eng)
 

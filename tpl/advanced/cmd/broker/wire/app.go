@@ -22,7 +22,9 @@ import (
 	"advanced/internal/middleware"
 	"advanced/internal/router"
 	"advanced/pkg/xconfig"
+	"advanced/pkg/xdb"
 	"advanced/pkg/xlog"
+	"advanced/pkg/xredis"
 	"advanced/pkg/xserver"
 	"advanced/pkg/xserver/broker"
 
@@ -32,7 +34,12 @@ import (
 
 // NewBrokerHealth 装配 broker 父进程的健康探针 gin 引擎。
 // 由 broker.Server 负责创建 http.Server 并启动。子进程无需承载 HTTP 探针，直接跳过构建以节约资源并避免重复打印日志。
-func NewBrokerHealth(conf *xconfig.Conf, log *xlog.Logger) *gin.Engine {
+func NewBrokerHealth(
+	conf *xconfig.Conf,
+	log *xlog.Logger,
+	db *xdb.Client,
+	redis *xredis.Client,
+) *gin.Engine {
 	if broker.IsChild() {
 		return nil
 	}
@@ -53,8 +60,29 @@ func NewBrokerHealth(conf *xconfig.Conf, log *xlog.Logger) *gin.Engine {
 		xlog.TracingWithLogger(log, conf.Broker.Name),
 	)
 
-	// 探针路由
-	router.Ping(engine)
+	// 探针路由: 注册 DB 与 Redis 等核心依赖探活并支持优雅下线排空
+	var checkers []router.NamedChecker
+	if db != nil {
+		checkers = append(checkers, router.NamedChecker{
+			Name: "database",
+			Check: func(ctx context.Context) error {
+				sqlDB, err := db.DB()
+				if err != nil {
+					return err
+				}
+				return sqlDB.PingContext(ctx)
+			},
+		})
+	}
+	if redis != nil {
+		checkers = append(checkers, router.NamedChecker{
+			Name: "redis",
+			Check: func(ctx context.Context) error {
+				return redis.Ping(ctx).Err()
+			},
+		})
+	}
+	router.HealthChecks(engine, checkers...)
 
 	return engine
 }

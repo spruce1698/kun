@@ -11,10 +11,23 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/gin-gonic/gin"
 )
+
+var draining int32
+
+// SetDraining 标记服务进入优雅停机排空状态，使就绪探针立即返回 503 摘除流量
+func SetDraining() {
+	atomic.StoreInt32(&draining, 1)
+}
+
+// IsDraining 检查服务是否处于优雅停机排空状态
+func IsDraining() bool {
+	return atomic.LoadInt32(&draining) == 1
+}
 
 type Engine interface {
 	Start() error

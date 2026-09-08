@@ -48,7 +48,7 @@ type uniqueIndexInfo struct {
 }
 
 // ParseSQLFile 解析 .sql 文件，提取所有 CREATE TABLE 语句并构建 StructMeta
-// conf 用于控制代码生成行为（FieldNullable、FieldCoverable、FieldSignable、FieldWithIndexTag、FieldWithTypeTag、FieldWithJSONTag）
+// conf 用于控制代码生成行为（FieldNullable、FieldCoverable、FieldSignable、FieldWithIndexTag、FieldWithTypeTag）
 func ParseSQLFile(filePath string, conf *SQLConfig) ([]*StructMeta, error) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
@@ -328,19 +328,11 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 	}
 
 	seenFields := make(map[string]string)
-	seenJSON := make(map[string]string)
 	for _, f := range fields {
 		if prevCol, exists := seenFields[f.Name]; exists {
 			output.Warn("table %q 中列 %q 与 %q 映射到重复的 Go 字段名 %q", tableName, prevCol, f.ColumnName, f.Name)
 		} else {
 			seenFields[f.Name] = f.ColumnName
-		}
-		if f.JSONTag != "" && f.JSONTag != "-" {
-			if prevCol, exists := seenJSON[f.JSONTag]; exists {
-				output.Warn("table %q 中列 %q 与 %q 映射到重复的 JSON tag %q", tableName, prevCol, f.ColumnName, f.JSONTag)
-			} else {
-				seenJSON[f.JSONTag] = f.ColumnName
-			}
 		}
 	}
 
@@ -365,6 +357,7 @@ func parseTableBody(tableName, body string, conf *SQLConfig) *StructMeta {
 		PrimaryKeyName:          primaryKeyName,
 		PrimaryKeyColumn:        primaryKeyColumn,
 		PrimaryKeyAutoIncrement: primaryKeyAutoIncrement,
+		HasSoftDelete:           hasSoftDeleteField(fields),
 	}
 }
 
@@ -582,7 +575,6 @@ func buildField(cd *columnDef, uniqueIdxs []uniqueIndexInfo, conf *SQLConfig) *F
 			FieldSignable:     false,
 			FieldWithIndexTag: true,
 			FieldWithTypeTag:  true,
-			FieldWithJSONTag:  false,
 		}
 	}
 
@@ -658,12 +650,6 @@ func buildField(cd *columnDef, uniqueIdxs []uniqueIndexInfo, conf *SQLConfig) *F
 		gormTag += ";default:" + defaultVal
 	}
 
-	// JSON tag: 仅当启用 FieldWithJSONTag 时生成小驼峰（传 fieldName 已含 ID→Id 修正）
-	jsonTag := ""
-	if conf.FieldWithJSONTag {
-		jsonTag = toLowerCamel(fieldName)
-	}
-
 	// 注释标签：始终保留 //，有内容时追加
 	commentTag := "//"
 	if comment != "" {
@@ -688,7 +674,7 @@ func buildField(cd *columnDef, uniqueIdxs []uniqueIndexInfo, conf *SQLConfig) *F
 		Name:         fieldName,
 		Type:         goType,
 		GORMTag:      gormTag,
-		JSONTag:      jsonTag,
+		JSONTag:      "",
 		CommentTag:   commentTag,
 		IsPrimaryKey: isPK,
 		ColumnName:   cd.Name,

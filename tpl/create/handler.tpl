@@ -4,36 +4,25 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"{{ .ProjectName }}/pkg/xerror"
-    "{{ .ProjectName }}/pkg/xhttp"
-
-	// TODO: import service files here and delete this line
-	// "{{ .ProjectName }}/internal/service/svc"
+	"{{ .ProjectName }}/pkg/xhttp"
 )
 
 type (
-   {{ .FileName }}Handler struct {
-	   // TODO: add service here and delete this line
-       // {{ .FileName }}Svc svc.{{ .FileName }}Svc
-   }
+	{{ .FileName }}Handler struct {
+	}
 
-   // TODO: add struct here and delete this line
+	// {{ .FileName }}DetailReq 接口请求参数 DTO
+	{{ .FileName }}DetailReq struct {
+		Id {{ if .PrimaryKeyType }}{{ .PrimaryKeyType }}{{ else }}int64{{ end }} `form:"id" json:"id" binding:"required"`
+	}
 )
 
 func ({{ .FileNameFirstChar }} *{{ .FileName }}Handler) Detail(ctx *gin.Context) {
-    req := &struct {
-		Id   int64  `form:"id"   json:"id" binding:"required,gt=0"`
-    }{}
-    if err := ctx.ShouldBind(req); err != nil {
+	req := &{{ .FileName }}DetailReq{}
+	if err := ctx.ShouldBind(req); err != nil {
 		xhttp.BusCode(ctx, xerror.ParamError, err)
 		return
 	}
-    // TODO: add service call logic here and delete this line
-    // data, err := {{ .FileNameFirstChar }}.{{ .FileName }}Svc.Detail(ctx.Request.Context(), req.Id)
-	// if err != nil {
-	// 	xhttp.BusFail(ctx, err)
-	// 	return
-	// }
-	// xhttp.Data(ctx, "{{ .FileName }} Detail success", data)
+	// TODO: 调用对应 service 获取数据并转换响应
+	xhttp.Data(ctx, "{{ .FileName }} Detail success", req)
 }
-
-// TODO: add your code here and delete this line

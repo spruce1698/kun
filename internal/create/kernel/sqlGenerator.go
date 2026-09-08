@@ -33,7 +33,6 @@ type SQLConfig struct {
 	FieldSignable     bool // detect integer field's unsigned type, adjust generated data type
 	FieldWithIndexTag bool // generate with gorm index tag
 	FieldWithTypeTag  bool // generate with gorm column type tag
-	FieldWithJSONTag  bool // generate with json tag
 }
 
 type StructMeta struct {
@@ -49,6 +48,7 @@ type StructMeta struct {
 	PrimaryKeyName          string // 主键 Go 字段名
 	PrimaryKeyColumn        string // 主键 DB 列名
 	PrimaryKeyAutoIncrement bool   // 主键是否自增(自增主键 Insert/BatchInsert 时清零让 DB 分配;非自增主键保留调用方传入的值)
+	HasSoftDelete           bool   // 是否含有软删除字段(如 deleted_at)
 }
 
 // user input structures
@@ -198,7 +198,6 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 	primaryKeyType := "int64"
 	fields := make([]*Field, 0, len(columns))
 	seenFields := make(map[string]string)
-	seenJSON := make(map[string]string)
 	for _, col := range columns {
 		m := col.ToField(g.Conf.FieldNullable, g.Conf.FieldCoverable, g.Conf.FieldSignable)
 		if t, ok := col.ColumnType.ColumnType(); ok && !g.Conf.FieldWithTypeTag { // remove type tag if FieldWithTypeTag == false
@@ -209,22 +208,11 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 		if m.IsPrimaryKey {
 			primaryKeyType = m.Type
 		}
-		if g.Conf.FieldWithJSONTag {
-			// json 小驼峰
-			m.JSONTag = toLowerCamel(m.Name)
-		}
 
 		if prevCol, exists := seenFields[m.Name]; exists {
 			output.Warn("table %q 中列 %q 与 %q 映射到重复的 Go 字段名 %q", tableName, prevCol, m.ColumnName, m.Name)
 		} else {
 			seenFields[m.Name] = m.ColumnName
-		}
-		if m.JSONTag != "" && m.JSONTag != "-" {
-			if prevCol, exists := seenJSON[m.JSONTag]; exists {
-				output.Warn("table %q 中列 %q 与 %q 映射到重复的 JSON tag %q", tableName, prevCol, m.ColumnName, m.JSONTag)
-			} else {
-				seenJSON[m.JSONTag] = m.ColumnName
-			}
 		}
 
 		fields = append(fields, m)
@@ -250,6 +238,7 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 		PrimaryKeyName:          primaryKeyName,
 		PrimaryKeyColumn:        primaryKeyColumn,
 		PrimaryKeyAutoIncrement: primaryKeyAutoIncrement,
+		HasSoftDelete:           hasSoftDeleteField(fields),
 	}, nil
 }
 
@@ -529,9 +518,6 @@ func (m *Field) Tags() string {
 	var tags strings.Builder
 	if gormTag := strings.TrimSpace(m.GORMTag); gormTag != "" {
 		tags.WriteString(fmt.Sprintf(`gorm:"%s" `, gormTag))
-	}
-	if jsonTag := strings.TrimSpace(m.JSONTag); jsonTag != "" {
-		tags.WriteString(fmt.Sprintf(`json:"%s" `, jsonTag))
 	}
 	return strings.TrimSpace(tags.String())
 }

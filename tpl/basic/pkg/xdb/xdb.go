@@ -7,6 +7,7 @@
 package xdb
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -112,6 +113,13 @@ func New(conf *xconfig.Conf) (*Client, error) {
 	// 限制空闲连接最大存活时间,避免长期空闲的连接被 MySQL wait_timeout 单方面关闭后,
 	// 下次复用时拿到坏连接报 bad connection。
 	sqlDB.SetConnMaxIdleTime(time.Minute * 10)
+
+	// 启动阶段快速失败 (Fail-Fast): 校验主库网络连通性与认证,防止依赖未就绪时服务带病启动
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err = sqlDB.PingContext(ctx); err != nil {
+		return nil, fmt.Errorf("ping mysql 主库[%v]失败: %w", conf.Mysql.Source[0], err)
+	}
 
 	return db, nil
 }

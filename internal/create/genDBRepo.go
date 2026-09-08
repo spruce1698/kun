@@ -77,14 +77,11 @@ func detectDBType(dsn string) DBType {
 }
 
 func genDBRepo(cmd *cobra.Command, args []string) error {
-	withJSONTag, _ := cmd.Flags().GetBool("json-tag")
-	if !withJSONTag {
-		withJSONTag, _ = cmd.Flags().GetBool("json")
-	}
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
 	// 如果参数是 .sql 文件，则解析 SQL 文件生成 repo
 	if strings.HasSuffix(args[0], ".sql") {
-		return genDBRepoFromSQL(args, withJSONTag)
+		return genDBRepoFromSQL(args, dryRun)
 	}
 
 	cmdConf := &CmdParams{
@@ -120,7 +117,6 @@ func genDBRepo(cmd *cobra.Command, args []string) error {
 	}
 	conf := defaultSQLConfig()
 	conf.DbConn = gormDb
-	conf.FieldWithJSONTag = withJSONTag
 	g := kernel.NewGenerator(conf)
 
 	var tablesList []string
@@ -133,6 +129,12 @@ func genDBRepo(cmd *cobra.Command, args []string) error {
 	} else {
 		tablesList = cmdConf.Tables
 	}
+
+	if dryRun {
+		output.Success("[dry-run] will generate db repository for tables: %v to %s", tablesList, cmdConf.OutPath)
+		return nil
+	}
+
 	// 汇总各表的失败原因:单表失败不中断其它表的生成,但最终必须以错误返回,
 	// 否则 CLI 打印红色错误却以退出码 0 结束,CI 无法拦截。
 	var genErrs []error
@@ -186,14 +188,12 @@ func defaultSQLConfig() kernel.SQLConfig {
 		FieldWithIndexTag: true,  // 生成字段包含 索引 标记
 		FieldWithTypeTag:  true,  // 生成字段包含 列类型 标记
 		FieldSignable:     false, // 检测整数字段的无符号类型，调整生成的数据类型
-		FieldWithJSONTag:  false, // 生成字段包含 json 标记（默认 false，不生成 json tag）
 	}
 }
 
 // genDBRepoFromSQL 从 .sql 文件解析 CREATE TABLE 语句并生成 repo
-func genDBRepoFromSQL(args []string, withJSONTag bool) error {
+func genDBRepoFromSQL(args []string, dryRun bool) error {
 	conf := defaultSQLConfig()
-	conf.FieldWithJSONTag = withJSONTag
 
 	metas, err := kernel.ParseSQLFile(args[0], &conf)
 	if err != nil {
@@ -228,6 +228,11 @@ func genDBRepoFromSQL(args []string, withJSONTag bool) error {
 			}
 		}
 		g.AddRepoMeta(meta)
+	}
+
+	if dryRun {
+		output.Success("[dry-run] will generate db repository from %s for %d tables to %s", args[0], len(metas), conf.OutPath)
+		return nil
 	}
 
 	if err := g.Execute(); err != nil {

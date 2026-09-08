@@ -74,6 +74,11 @@ func TracingWithLogger(log *Logger, serviceName string) gin.HandlerFunc {
 		ctx, span := tracer.Start(ctx, spanName)
 		defer span.End()
 
+		// 回写 X-Trace-Id 到响应头，便于端到端追踪调试
+		if traceID := span.SpanContext().TraceID(); traceID.IsValid() {
+			c.Header("X-Trace-Id", traceID.String())
+		}
+
 		if method == "POST" || method == "PUT" {
 			// 处理表单数据
 			switch {

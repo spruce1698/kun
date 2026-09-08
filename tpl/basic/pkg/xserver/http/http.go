@@ -107,6 +107,9 @@ func (s *Server) Stop(signal string) {
 }
 
 func (s *Server) stop(signal string) {
+	// 收到信号后立即置为排空状态，使 /ready 返回 503 触发 K8s/ALB 快速摘除流量
+	xserver.SetDraining()
+
 	s.logger.Warn("Receive a signal", xlog.KVStr("signal", signal))
 	s.logger.Warn("Http server stopping ...")
 

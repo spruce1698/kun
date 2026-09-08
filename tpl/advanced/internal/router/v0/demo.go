@@ -50,6 +50,10 @@ func Demo(e *gin.Engine, jwt *token.Jwt, ctx *handler.Ctx) {
 		apiGroup.POST("/demo/login", middleware.RateLimiter(5, time.Minute, 5*time.Minute), ctx.DemoHandler.Login)
 		apiGroup.POST("/demo/refresh", ctx.DemoHandler.Refresh)
 
+		// MCP Demo 端点 (Model Context Protocol)
+		apiGroup.POST("/demo/mcp", ctx.DemoHandler.MCP)
+		apiGroup.GET("/demo/mcp", ctx.DemoHandler.MCP)
+
 		// 需授权路由
 		authGroup := apiGroup.Group("/demo", middleware.Auth(jwt))
 		{
@@ -58,4 +62,8 @@ func Demo(e *gin.Engine, jwt *token.Jwt, ctx *handler.Ctx) {
 			authGroup.POST("/ws-ticket", ctx.DemoHandler.WSTicket)
 		}
 	}
+
+	// 根路径直连 /mcp (兼容外部标准 MCP 客户端直接挂载根路径)
+	e.POST("/mcp", ctx.DemoHandler.MCP)
+	e.GET("/mcp", ctx.DemoHandler.MCP)
 }

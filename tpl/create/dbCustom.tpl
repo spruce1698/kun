@@ -60,10 +60,10 @@ func (c *custom{{.StructName}}Db) buildListQuery(ctx context.Context, args *{{.S
 		// 游标按主键 {{.PrimaryKeyColumn}} 比较,因此排序也必须按 {{.PrimaryKeyColumn}},否则(如按其它列排序而按主键取游标)
 		// 翻页结果会重复或漏行。需要按其它列做游标分页时,应改为 (orderCol, {{.PrimaryKeyColumn}}) 复合游标。
 		cursorOrder := Table{{.StructName}} + ".{{.PrimaryKeyColumn}} DESC"
-		lastCond := Table{{.StructName}} + ".`{{.PrimaryKeyColumn}}` < ?"
+		lastCond := Table{{.StructName}} + ".{{.PrimaryKeyColumn}} < ?"
 		if args.OrderType == 1 {
 			cursorOrder = Table{{.StructName}} + ".{{.PrimaryKeyColumn}} ASC"
-			lastCond = Table{{.StructName}} + ".`{{.PrimaryKeyColumn}}` > ?"
+			lastCond = Table{{.StructName}} + ".{{.PrimaryKeyColumn}} > ?"
 		}
 		return filter.Where(lastCond, args.LastId).Order(cursorOrder).Limit(limit)
 	case offset > 100000: // 深分页: SELECT * FROM {{.TableName}} INNER JOIN (SELECT {{.PrimaryKeyColumn}} FROM {{.TableName}} WHERE ... ORDER BY {{.PrimaryKeyColumn}} LIMIT ?,?) AS tmp USING({{.PrimaryKeyColumn}})

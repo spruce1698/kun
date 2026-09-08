@@ -25,6 +25,16 @@ func findPrimaryKey(fields []*Field) (name, column, typ string, autoIncr, found 
 	return "", "", "", false, false
 }
 
+// hasSoftDeleteField 检测 fields 中是否包含软删除字段（如 deleted_at、delete_at 或 DeletedAt）
+func hasSoftDeleteField(fields []*Field) bool {
+	for _, f := range fields {
+		if eqFold(f.ColumnName, "deleted_at") || eqFold(f.ColumnName, "delete_at") || eqFold(f.Name, "DeletedAt") {
+			return true
+		}
+	}
+	return false
+}
+
 func containsStr(s, sub string) bool {
 	return len(sub) > 0 && len(s) >= len(sub) && indexOf(s, sub) >= 0
 }

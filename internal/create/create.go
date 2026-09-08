@@ -83,6 +83,14 @@ var (
 		Args:    cobra.ExactArgs(1),
 		RunE:    runCreate,
 	}
+
+	CmdCreateCRUD = &cobra.Command{
+		Use:     "crud [name]",
+		Short:   "Create a new handler, service & router in one step",
+		Example: "kun create crud user",
+		Args:    cobra.ExactArgs(1),
+		RunE:    runCreateCRUD,
+	}
 )
 
 func init() {
@@ -90,18 +98,17 @@ func init() {
 	for _, c := range []*cobra.Command{
 		CmdCreateHandler, CmdCreateService, CmdCreateHandlerAndService,
 		CmdCreateRouter, CmdCreateDBRepository, CmdCreateCacheRepository,
+		CmdCreateCRUD,
 	} {
 		c.Flags().StringP("tpl-path", "t", "", "template path")
+		c.Flags().Bool("dry-run", false, "preview generated files without modifying disk")
 	}
 	for _, c := range []*cobra.Command{
 		CmdCreateHandler, CmdCreateService, CmdCreateHandlerAndService,
-		CmdCreateRouter, CmdCreateCacheRepository,
+		CmdCreateRouter, CmdCreateCacheRepository, CmdCreateCRUD,
 	} {
 		c.Flags().BoolP("force", "f", false, "force override existing file")
 	}
-	CmdCreateDBRepository.Flags().BoolP("json-tag", "j", false, "generate struct fields with json tags")
-	CmdCreateDBRepository.Flags().Bool("json", false, "alias for --json-tag")
-	_ = CmdCreateDBRepository.Flags().MarkHidden("json")
 }
 
 // Register E6: 将 create 及其子命令挂载到 parent，由本包自行维护命令树。
@@ -113,6 +120,7 @@ func Register(parent *cobra.Command) {
 	CmdCreate.AddCommand(CmdCreateRouter)
 	CmdCreate.AddCommand(CmdCreateDBRepository)
 	CmdCreate.AddCommand(CmdCreateCacheRepository)
+	CmdCreate.AddCommand(CmdCreateCRUD)
 }
 
 type Create struct {
@@ -128,6 +136,8 @@ type Create struct {
 	IsFull             bool
 	TplPath            string
 	Force              bool
+	DryRun             bool
+	PrimaryKeyType     string
 }
 
 func NewCreate() *Create {
@@ -214,6 +224,10 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// 从当前命令的 flag 读取，避免全局变量在多次调用间泄漏
 	c.TplPath, _ = cmd.Flags().GetString("tpl-path")
 	c.Force, _ = cmd.Flags().GetBool("force")
+	c.DryRun, _ = cmd.Flags().GetBool("dry-run")
+	if c.PrimaryKeyType == "" {
+		c.PrimaryKeyType = "int64"
+	}
 
 	c.CmdType = cmd.Name()
 	arg := args[0]
@@ -264,6 +278,61 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid type: %s", c.CmdType)
 	}
 
+}
+
+func runCreateCRUD(cmd *cobra.Command, args []string) error {
+	steps := []struct {
+		cmdType    string
+		createType string
+	}{
+		{cmdType: "hdl", createType: TypeHandler},
+		{cmdType: "svc", createType: TypeService},
+		{cmdType: "rt", createType: TypeRouter},
+	}
+
+	projectName, err := helper.GetProjectName(".")
+	if err != nil {
+		return fmt.Errorf("get project name error: %w", err)
+	}
+
+	tplPath, _ := cmd.Flags().GetString("tpl-path")
+	force, _ := cmd.Flags().GetBool("force")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+	for _, step := range steps {
+		c := NewCreate()
+		c.ProjectName = projectName
+		c.TplPath = tplPath
+		c.Force = force
+		c.DryRun = dryRun
+		c.PrimaryKeyType = "int64"
+		c.CmdType = step.cmdType
+		c.CreateType = step.createType
+
+		arg := args[0]
+		if c.CmdType == "svc" {
+			if strings.HasPrefix(strings.ToLower(arg), "svc/") {
+				arg = arg[4:]
+			} else if strings.HasPrefix(strings.ToLower(arg), `svc\`) {
+				arg = arg[4:]
+			}
+		}
+		c.FilePath, c.FileName = filepath.Split(arg)
+		cleanName := strings.TrimSuffix(c.FileName, ".go")
+		cleanName = strings.TrimSpace(cleanName)
+		if cleanName == "" {
+			return fmt.Errorf("name argument %q cannot be empty or resolve to an empty name", arg)
+		}
+		runes := []rune(cleanName)
+		c.FileName = string(unicode.ToUpper(runes[0])) + string(runes[1:])
+		c.FileNameTitleLower = string(unicode.ToLower(runes[0])) + string(runes[1:])
+		c.FileNameFirstChar = string(unicode.ToLower(runes[0]))
+
+		if err := c.generateFile(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *Create) generateFile() error {
@@ -329,12 +398,20 @@ func (c *Create) generateFile() error {
 	if err != nil {
 		return fmt.Errorf("create %s error: %w", c.CreateType, err)
 	}
+	if c.DryRun {
+		output.Success("[dry-run] will create new %s: %s", c.CreateType, filepath.Join(absLinuxPath, fileName))
+		if c.CreateType == TypeCache {
+			output.Success("[dry-run] will generate keys.go in %s", absLinuxPath)
+		}
+		output.Success("[dry-run] will inject DI markers for %s", c.FileName)
+		return nil
+	}
 	f, existed, err := createFile(filePath, fileName, c.Force)
 	if err != nil {
 		return fmt.Errorf("create %s error: %w", c.CreateType, err)
 	}
 	if existed {
-		output.Warn("warn: file %s%s already exists.", absLinuxPath, fileName)
+		output.Warn("warn: file %s%s already exists. Use -f/--force to overwrite.", absLinuxPath, fileName)
 		return nil
 	}
 	defer func(f *os.File) {

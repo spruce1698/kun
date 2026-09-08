@@ -31,7 +31,7 @@ func WireApp(env string) (*xserver.Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	engine := NewBrokerHealth(conf, logger)
+	engine := NewBrokerHealth(conf, logger, gormDB, client)
 	conn := db.NewConn(gormDB)
 	ctx := &svc.Ctx{
 		Conf:     conf,

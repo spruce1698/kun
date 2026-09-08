@@ -40,21 +40,21 @@ type (
 
 	// Demo mapped from table <demo>
 	Demo struct {
-		Id        int64      `gorm:"column:id;type:int unsigned;primaryKey;autoIncrement:true" json:"id"`         //
-		Name      string     `gorm:"column:name;type:varchar(45);not null;uniqueIndex:a,priority:1" json:"name"`  // 名称
-		RoleId    int64      `gorm:"column:role_id;type:int unsigned;not null" json:"roleId"`                     // 角色id
-		Password  string     `gorm:"column:password;type:varchar(255);not null" json:"-"`                         // 密码(bcrypt)
-		Test1     float64    `gorm:"column:test1;type:decimal(10,2) unsigned;not null;default:0.00" json:"test1"` // 测试1
-		Test2     int64      `gorm:"column:test2;type:smallint unsigned;not null" json:"test2"`                   // 测试2
-		Test3     int64      `gorm:"column:test3;type:year;not null" json:"test3"`                                // 测试3
-		Test4     int32      `gorm:"column:test4;type:tinyint unsigned;not null" json:"test4"`                    // 测试4
-		Test5     *string    `gorm:"column:test5;type:varchar(255)" json:"test5"`                                 // 测试5
-		Test6     string     `gorm:"column:test6;type:varchar(255);not null;default:test6666" json:"test6"`       // 测试6
-		Test7     *time.Time `gorm:"column:test7;type:timestamp" json:"test7"`                                    // 测试7
-		Test8     *string    `gorm:"column:test8;type:json" json:"test8"`                                         // 测试8
-		DeletedAt DeletedAt  `gorm:"column:deleted_at;type:timestamp" json:"deletedAt"`                           // 删除时间
-		TestA888  *string    `gorm:"column:test_a888;type:varchar(255)" json:"testA888"`                          //
-		TestB     int64      `gorm:"column:test_b;type:bigint unsigned;not null" json:"testB"`                    // 测试b
+		Id        int64      `gorm:"column:id;type:int unsigned;primaryKey;autoIncrement:true"`      //
+		Name      string     `gorm:"column:name;type:varchar(45);not null;uniqueIndex:a,priority:1"` // 名称
+		RoleId    int64      `gorm:"column:role_id;type:int unsigned;not null"`                      // 角色id
+		Password  string     `gorm:"column:password;type:varchar(255);not null"`                     // 密码(bcrypt)
+		Test1     float64    `gorm:"column:test1;type:decimal(10,2) unsigned;not null;default:0.00"` // 测试1
+		Test2     int64      `gorm:"column:test2;type:smallint unsigned;not null"`                   // 测试2
+		Test3     int64      `gorm:"column:test3;type:year;not null"`                                // 测试3
+		Test4     int32      `gorm:"column:test4;type:tinyint unsigned;not null"`                    // 测试4
+		Test5     *string    `gorm:"column:test5;type:varchar(255)"`                                 // 测试5
+		Test6     string     `gorm:"column:test6;type:varchar(255);not null;default:test6666"`       // 测试6
+		Test7     *time.Time `gorm:"column:test7;type:timestamp"`                                    // 测试7
+		Test8     *string    `gorm:"column:test8;type:json"`                                         // 测试8
+		DeletedAt DeletedAt  `gorm:"column:deleted_at;type:timestamp"`                               // 删除时间
+		TestA888  *string    `gorm:"column:test_a888;type:varchar(255)"`                             //
+		TestB     int64      `gorm:"column:test_b;type:bigint unsigned;not null"`                    // 测试b
 	}
 )
 
@@ -87,7 +87,7 @@ func (d *defaultDemoDb) BatchInsert(ctx context.Context, list []*Demo) ([]int64,
 	for _, v := range list {
 		v.Id = *new(int64)
 	}
-	err := d.WithContext(ctx).Create(list).Error
+	err := d.WithContext(ctx).CreateInBatches(list, 500).Error
 	if err != nil {
 		return nil, err
 	}
@@ -122,12 +122,12 @@ func (d *defaultDemoDb) FindFields(ctx context.Context, id int64, fields ...stri
 }
 
 func (d *defaultDemoDb) FindByIds(ctx context.Context, ids []int64) ([]*Demo, error) {
-	// 空 ids 直接返回,避免生成 `IN ()` 在 MySQL 上报语法错误
+	// 空 ids 直接返回,避免生成 IN () 在数据库上报语法错误
 	if len(ids) == 0 {
 		return nil, nil
 	}
 	var result []*Demo
-	err := d.WithContext(ctx).Where("`id` IN (?)", ids).Find(&result).Error
+	err := d.WithContext(ctx).Where("id IN (?)", ids).Find(&result).Error
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (d *defaultDemoDb) FindByIds(ctx context.Context, ids []int64) ([]*Demo, er
 
 func (d *defaultDemoDb) Exist(ctx context.Context, id int64) (bool, error) {
 	var count int64
-	err := d.WithContext(ctx).Model(d.model).Where("`id` = ?", id).Limit(1).Count(&count).Error
+	err := d.WithContext(ctx).Model(d.model).Where("id = ?", id).Limit(1).Count(&count).Error
 	if err != nil {
 		return false, err
 	}
@@ -148,30 +148,30 @@ func (d *defaultDemoDb) Update(ctx context.Context, newData *Demo, field []strin
 	if len(field) > 0 {
 		engine = engine.Select(field)
 	}
-	result := engine.Omit("id").Where(" `id` = ? ", newData.Id).Updates(newData)
+	result := engine.Omit("id").Where("id = ?", newData.Id).Updates(newData)
 	return result.RowsAffected, result.Error
 }
 
 func (d *defaultDemoDb) UpdateFields(ctx context.Context, id int64, newData map[string]any) (int64, error) {
-	result := d.WithContext(ctx).Model(d.model).Where(" `id` = ? ", id).Updates(newData)
+	result := d.WithContext(ctx).Model(d.model).Where("id = ?", id).Updates(newData)
 	return result.RowsAffected, result.Error
 }
 
 func (d *defaultDemoDb) SoftDelete(ctx context.Context, ids []int64) error {
-	// 空 ids 直接返回,避免生成 `IN ()` 在 MySQL 上报语法错误
+	// 空 ids 直接返回,避免生成 IN () 在数据库上报语法错误
 	if len(ids) == 0 {
 		return nil
 	}
-	err := d.WithContext(ctx).Where(" `id`  IN (?)  ", ids).Delete(d.model).Error
+	err := d.WithContext(ctx).Where("id IN (?)", ids).Delete(d.model).Error
 	return err
 }
 
 func (d *defaultDemoDb) Delete(ctx context.Context, ids []int64) error {
-	// 空 ids 直接返回,避免生成 `IN ()` 在 MySQL 上报语法错误
+	// 空 ids 直接返回,避免生成 IN () 在数据库上报语法错误
 	if len(ids) == 0 {
 		return nil
 	}
-	err := d.WithContext(ctx).Where(" `id`  IN (?)  ", ids).Unscoped().Delete(d.model).Error
+	err := d.WithContext(ctx).Where("id IN (?)", ids).Unscoped().Delete(d.model).Error
 	return err
 }
 
