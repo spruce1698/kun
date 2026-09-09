@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 
 	"github.com/spruce1698/kun/cmd/kun"
@@ -16,6 +17,9 @@ func main() {
 	// 避免重复打印(Error: ... 前缀)和误打印 usage。
 	err := kun.Execute()
 	if err != nil {
+		if errors.Is(err, kun.ErrSilent) {
+			os.Exit(1)
+		}
 		output.Error("execute error: %v", err)
 		os.Exit(1)
 	}

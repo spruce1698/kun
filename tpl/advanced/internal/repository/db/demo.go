@@ -72,10 +72,10 @@ func (c *customDemoDb) buildListQuery(ctx context.Context, args *DemoSearch, lim
 		// 游标按主键 id 比较,因此排序也必须按 id,否则(如按其它列排序而按主键取游标)
 		// 翻页结果会重复或漏行。需要按其它列做游标分页时,应改为 (orderCol, id) 复合游标。
 		cursorOrder := TableDemo + ".id DESC"
-		lastCond := TableDemo + ".`id` < ?"
+		lastCond := TableDemo + ".id < ?"
 		if args.OrderType == 1 {
 			cursorOrder = TableDemo + ".id ASC"
-			lastCond = TableDemo + ".`id` > ?"
+			lastCond = TableDemo + ".id > ?"
 		}
 		return filter.Where(lastCond, args.LastId).Order(cursorOrder).Limit(limit)
 	case offset > 100000: // 深分页: SELECT * FROM demo INNER JOIN (SELECT id FROM demo WHERE ... ORDER BY id LIMIT ?,?) AS tmp USING(id)
@@ -164,7 +164,7 @@ func (c *customDemoDb) DemoUpdateTrans(ctx context.Context, id int64, upData *De
 func (c *customDemoDb) FindStream(ctx context.Context, handler func(*Demo) error) error {
 	// 复用同一 *gorm.DB session 扫描,避免每行都 WithContext 重新派生。
 	// rows 生命周期由 ctx 控制:ctx 取消时 Rows()/Next() 返回错误退出。
-	db := c.WithContext(ctx).Model(c.model).Order("`id` ASC")
+	db := c.WithContext(ctx).Model(c.model).Order("id ASC")
 	rows, err := db.Rows()
 	if err != nil {
 		return err
@@ -185,7 +185,7 @@ func (c *customDemoDb) FindStream(ctx context.Context, handler func(*Demo) error
 // FindByName 根据名称查找(登录账号)
 func (c *customDemoDb) FindByName(ctx context.Context, name string) (*Demo, error) {
 	result := &Demo{}
-	err := c.WithContext(ctx).Where(" `name` = ? ", name).First(result).Error
+	err := c.WithContext(ctx).Where(" name = ? ", name).First(result).Error
 	if err != nil {
 		return nil, err
 	}

@@ -40,7 +40,7 @@ func NewDemoDb(c *Conn) DemoDb {
 
 func (c *customDemoDb) FindByName(ctx context.Context, name string) (*Demo, error) {
 	result := &Demo{}
-	err := c.WithContext(ctx).Where(" `name` = ? ", name).First(result).Error
+	err := c.WithContext(ctx).Where(" name = ? ", name).First(result).Error
 	if err != nil {
 		return nil, err
 	}
@@ -76,10 +76,10 @@ func (c *customDemoDb) buildListQuery(ctx context.Context, args *DemoSearch, lim
 		// 游标按主键 id 比较,因此排序也必须按 id,否则(如按其它列排序而按主键取游标)
 		// 翻页结果会重复或漏行。需要按其它列做游标分页时,应改为 (orderCol, id) 复合游标。
 		cursorOrder := TableDemo + ".id DESC"
-		lastCond := TableDemo + ".`id` < ?"
+		lastCond := TableDemo + ".id < ?"
 		if args.OrderType == 1 {
 			cursorOrder = TableDemo + ".id ASC"
-			lastCond = TableDemo + ".`id` > ?"
+			lastCond = TableDemo + ".id > ?"
 		}
 		return filter.Where(lastCond, args.LastId).Order(cursorOrder).Limit(limit)
 	case offset > 100000: // 深分页: SELECT * FROM demo INNER JOIN (SELECT id FROM demo WHERE ... ORDER BY id LIMIT ?,?) AS tmp USING(id)

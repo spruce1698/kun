@@ -1,6 +1,9 @@
 package kun
 
 import (
+	"errors"
+	"strings"
+
 	"github.com/spf13/cobra"
 	"github.com/spruce1698/kun/config"
 	"github.com/spruce1698/kun/internal/create"
@@ -30,7 +33,36 @@ func init() {
 	wire.Register(CmdRoot)
 }
 
+// ErrSilent 表示命令已自行处理输出（例如打印了 Help），调用方只需退出，无需再次打印错误。
+var ErrSilent = errors.New("silent exit")
+
+// IsArgsError 判断错误是否为参数个数相关错误。
+func IsArgsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "arg(s), received ") ||
+		strings.Contains(msg, "arg, received ") ||
+		(strings.Contains(msg, "accepts between ") && strings.Contains(msg, "arg")) ||
+		(strings.Contains(msg, "requires at least ") && strings.Contains(msg, "arg")) ||
+		(strings.Contains(msg, "accepts at most ") && strings.Contains(msg, "arg")) ||
+		(strings.Contains(msg, "accepts ") && strings.Contains(msg, "arg(s)"))
+}
+
 // Execute executes the root command.
 func Execute() error {
-	return CmdRoot.Execute()
+	cmd, err := CmdRoot.ExecuteC()
+	if err != nil {
+		if IsArgsError(err) {
+			if cmd != nil {
+				_ = cmd.Help()
+			} else {
+				_ = CmdRoot.Help()
+			}
+			return ErrSilent
+		}
+		return err
+	}
+	return nil
 }
