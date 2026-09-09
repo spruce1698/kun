@@ -6,7 +6,7 @@ import (
 {{- if ne .PackageName "svc" }}
 	"{{ .ProjectName }}/internal/service/svc"
 {{- end }}
-	"{{ .ProjectName }}/pkg/xerror"
+
 )
 
 //go:generate mockgen -source=./{{ .FileNameTitleLower }}.go -destination=../../../{{ .AddUPPath }}test/mocks/service/{{ .FilePath }}{{ .FileNameTitleLower }}.go  -package mock_service
@@ -43,6 +43,9 @@ func New{{ .FileName }}Svc(ctx *{{ .FileName }}Ctx) {{ .FileName }}Svc {
 }
 
 func ({{ .FileNameFirstChar }} *{{ .FileNameTitleLower }}Svc) Detail(ctx context.Context, id {{ if .PrimaryKeyType }}{{ .PrimaryKeyType }}{{ else }}int64{{ end }}) (*{{ .FileName }}Resp, error) {
-	// TODO: 实现业务详情查询逻辑(通过 ctx.xxxDb 获取 DO 数据后,转换组装为 DTO 返回)
+	
+	// 实现业务详情查询逻辑: 通过 ctx.xxxDb 获取 DO 数据后,转换组装为 DTO 返回
+	// TODO: add service logic here and delete this line  
+	
 	return &{{ .FileName }}Resp{Id: id}, nil
 }

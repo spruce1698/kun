@@ -28,16 +28,16 @@ const (
 var (
 	CmdCreate = &cobra.Command{
 		Use:     "create [type] [name]",
-		Short:   "Create a new hdl/svc/hs/rt/db/cache",
+		Short:   "Create a new hdl/svc/rt/db/cache/hs/crud",
 		Example: "kun create hdl user",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return fmt.Errorf("create requires a subcommand: hdl, svc, hs, rt, db, cache")
+			return fmt.Errorf("create requires a subcommand: rt, hdl, svc,  db, cache, hs, crud")
 		},
 	}
 
 	CmdCreateHandler = &cobra.Command{
-		Use:     "hdl",
+		Use:     "hdl [name]",
 		Short:   "Create a new handler",
 		Example: "kun create hdl user",
 		Args:    cobra.ExactArgs(1),
@@ -45,23 +45,15 @@ var (
 	}
 
 	CmdCreateService = &cobra.Command{
-		Use:     "svc",
+		Use:     "svc [name]",
 		Short:   "Create a new service",
 		Example: "kun create svc user",
 		Args:    cobra.ExactArgs(1),
 		RunE:    runCreate,
 	}
 
-	CmdCreateHandlerAndService = &cobra.Command{
-		Use:     "hs",
-		Short:   "Create a new handler & service",
-		Example: "kun create hs user",
-		Args:    cobra.ExactArgs(1),
-		RunE:    runCreate,
-	}
-
 	CmdCreateRouter = &cobra.Command{
-		Use:     "rt",
+		Use:     "rt [name]",
 		Short:   "Create a new router",
 		Example: "kun create rt user",
 		Args:    cobra.ExactArgs(1),
@@ -77,16 +69,24 @@ var (
 	}
 
 	CmdCreateCacheRepository = &cobra.Command{
-		Use:     "cache",
+		Use:     "cache [name]",
 		Short:   "Create a new cache repository",
 		Example: "kun create cache ",
 		Args:    cobra.ExactArgs(1),
 		RunE:    runCreate,
 	}
 
+	CmdCreateHandlerAndService = &cobra.Command{
+		Use:     "hs [name]",
+		Short:   "Create a new handler & service",
+		Example: "kun create hs user",
+		Args:    cobra.ExactArgs(1),
+		RunE:    runCreate,
+	}
+
 	CmdCreateCRUD = &cobra.Command{
 		Use:     "crud [name]",
-		Short:   "Create a new handler, service & router in one step",
+		Short:   "Create a new router, service & handler in one step",
 		Example: "kun create crud user",
 		Args:    cobra.ExactArgs(1),
 		RunE:    runCreateCRUD,

@@ -4,8 +4,6 @@
 
 kun(坤)是一个基于Golang的应用脚手架，由Golang生态中各种非常流行的库整合而成的，它们的组合可以帮助你快速构建一个高效、可靠的应用程序。
 
-## 文档 TODO
-
 ## 功能
 
 - **Gin**: https://github.com/gin-gonic/gin
@@ -232,20 +230,25 @@ kun create rt user
 kun create hdl user
 kun create svc user
 kun create db "name:pwd@tcp(127.0.0.1:3306)/dbname" "[t1,t2|t1|*]" 
-kun create db "*.sql" "[t1,t2|t1|*]"
+kun create db "*.sql" "[t1,t2|*]"
 kun create cache cache
+kun create crud user # 一键生成 router、service 与 handler
 ```
 
 或
 
+```bash
+kun create hs user # 一键生成 handler 与 service
 ```
-kun create hs user
-```
 
-这些命令将分别创建以`UserHandler` 和 `UserSvc` 命名的组件，并将它们放置在正确的目录中。
+这些命令将分别创建对应的组件文件，并自动挂载到相应的 Wire DI 依赖项与目录结构中。
 
-
-
+> [!TIP]
+> **💡 业务代码占位规范：关于 `// TODO: add` 标识**
+>
+> 自动生成的各个组件文件中均统一内置了格式为 `// TODO: add ... and delete this line` 的待办标识：
+> - **全局一键检索**：开发者在 IDE 中只需全局搜索 `// TODO: add`，即可一站式定位所有需要填充核心业务逻辑、路由注册、查询过滤条件或结构体扩展的位置。
+> - **开发避坑提醒**：**在尚未实际添加对应的业务实现代码前，请不要轻易删除该标识行**，避免在多人协作或后续开发中遗漏关键实现；当具体逻辑代码编写完成后，再按提示删除该行注释即可。
 
 ### 启动项目
 

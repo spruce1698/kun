@@ -23,6 +23,9 @@ func ({{ .FileNameFirstChar }} *{{ .FileName }}Handler) Detail(ctx *gin.Context)
 		xhttp.BusCode(ctx, xerror.ParamError, err)
 		return
 	}
-	// TODO: 调用对应 service 获取数据并转换响应
+
+	// 调用对应 service 获取数据并转换响应
+	// TODO: add handler logic here and delete this line 
+
 	xhttp.Data(ctx, "{{ .FileName }} Detail success", req)
 }

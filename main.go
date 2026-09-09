@@ -17,10 +17,13 @@ func main() {
 	// 避免重复打印(Error: ... 前缀)和误打印 usage。
 	err := kun.Execute()
 	if err != nil {
-		if errors.Is(err, kun.ErrSilent) {
-			os.Exit(1)
-		}
 		output.Error("execute error: %v", err)
+		var cmdErr *kun.CommandError
+		if errors.As(err, &cmdErr) {
+			output.Tip("Run '%s -h' for more information.", cmdErr.CmdPath)
+		} else {
+			output.Tip("Run 'kun -h' for more information.")
+		}
 		os.Exit(1)
 	}
 }

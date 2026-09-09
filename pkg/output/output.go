@@ -37,3 +37,9 @@ func Warn(format string, args ...any) {
 	c := color.New(color.FgYellow)
 	c.Fprintf(os.Stderr, " [!] "+format+"\n", args...)
 }
+
+func Tip(format string, args ...any) {
+	// 提示信息走 stderr，以 Cyan 蓝绿色友好展示。
+	c := color.New(color.FgCyan)
+	c.Fprintf(os.Stderr, " [?] "+format+"\n", args...)
+}

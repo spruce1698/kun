@@ -38,7 +38,8 @@ func New{{.StructName}}Db(c *Conn) {{.StructName}}Db {
 
 func (c *custom{{.StructName}}Db) buildListFilter(ctx context.Context, args *{{.StructName}}Search) *DB {
 	d := c.WithContext(ctx).Model(c.model)
-	// TODO 自定义条件处理
+	// 自定义条件处理
+	// TODO: add filter conditions here and delete this line
 
 	return d
 }
