@@ -1,0 +1,9 @@
+# 统一换行符:仓库内一律 LF。
+# 没有该文件时,Windows 上 core.autocrlf=true 会把检出的 .go 变成 CRLF,
+# 导致 gofmt -l / golangci-lint 把整文件报为"未格式化"(实际只是换行符差异)。
+* text=auto eol=lf
+
+# 生成物/二进制:不做任何换行符转换,避免 zip 被破坏。
+*.zip binary
+*.png binary
+*.exe binary
