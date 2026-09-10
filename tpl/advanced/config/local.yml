@@ -37,7 +37,7 @@ log:
 mysql: # mysql服务器地址,第一条默认是主库
   logLevel: "debug" # 日志等级:debug,error
   source:
-    - "root:zrcnBCq83MmuvojG@tcp(127.0.0.1:3306)/advanced?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
+    - "root:12345678@tcp(127.0.0.1:3306)/advanced?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
   maxIdleConns: 10    # 空闲连接池中连接的最大数量
   maxOpenConns: 100   # 打开数据库连接的最大数量
   connMaxLifetime: 3600 # 连接可复用的最大时间(秒)
@@ -45,7 +45,7 @@ mysql: # mysql服务器地址,第一条默认是主库
 redis:
   source: # redis服务器地址,如果redis是集群，则多条
     - "127.0.0.1:6379"
-  password: "1cVeQ26GhlUSsRmx"
+  password: "12345678"
   cluster: false
   poolSize: 100 # 连接池大小
 
