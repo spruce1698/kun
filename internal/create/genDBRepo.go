@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spruce1698/kun/internal/create/kernel"
-	"github.com/spruce1698/kun/pkg/output"
+	"github.com/sprucepeak/kun/internal/create/kernel"
+	"github.com/sprucepeak/kun/pkg/output"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 )

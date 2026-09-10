@@ -12,10 +12,10 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/spf13/cobra"
-	"github.com/spruce1698/kun/config"
-	"github.com/spruce1698/kun/pkg/helper"
-	"github.com/spruce1698/kun/pkg/output"
-	"github.com/spruce1698/kun/tpl"
+	"github.com/sprucepeak/kun/config"
+	"github.com/sprucepeak/kun/pkg/helper"
+	"github.com/sprucepeak/kun/pkg/output"
+	"github.com/sprucepeak/kun/tpl"
 )
 
 type Project struct {

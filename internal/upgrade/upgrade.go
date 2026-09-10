@@ -6,8 +6,8 @@ import (
 	"os/exec"
 
 	"github.com/spf13/cobra"
-	"github.com/spruce1698/kun/config"
-	"github.com/spruce1698/kun/pkg/output"
+	"github.com/sprucepeak/kun/config"
+	"github.com/sprucepeak/kun/pkg/output"
 )
 
 var CmdUpgrade = &cobra.Command{

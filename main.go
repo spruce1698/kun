@@ -4,8 +4,8 @@ import (
 	"errors"
 	"os"
 
-	"github.com/spruce1698/kun/cmd/kun"
-	"github.com/spruce1698/kun/pkg/output"
+	"github.com/sprucepeak/kun/cmd/kun"
+	"github.com/sprucepeak/kun/pkg/output"
 )
 
 // go run main.go create db "root:123456@tcp(127.0.0.1:3306)/dbname" *

@@ -1,4 +1,4 @@
-module github.com/spruce1698/kun
+module github.com/sprucepeak/kun
 
 go 1.25.11
 
