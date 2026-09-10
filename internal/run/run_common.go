@@ -14,9 +14,9 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
 
-	"github.com/spruce1698/kun/config"
-	"github.com/spruce1698/kun/pkg/helper"
-	"github.com/spruce1698/kun/pkg/output"
+	"github.com/sprucepeak/kun/config"
+	"github.com/sprucepeak/kun/pkg/helper"
+	"github.com/sprucepeak/kun/pkg/output"
 )
 
 var quit = make(chan os.Signal, 1)

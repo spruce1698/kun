@@ -11,8 +11,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/spruce1698/kun/pkg/output"
-	"github.com/spruce1698/kun/tpl"
+	"github.com/sprucepeak/kun/pkg/output"
+	"github.com/sprucepeak/kun/tpl"
 	"golang.org/x/tools/imports"
 	"gorm.io/gorm"
 )
