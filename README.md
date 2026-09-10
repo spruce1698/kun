@@ -141,7 +141,7 @@ kun采用了经典的分层架构。同时，为了更好地实现模块化和�
 您可以通过以下命令安装kun：
 
 ```bash
-go install github.com/spruce1698/kun@latest
+go install github.com/sprucepeak/kun@latest
 ```
 
 国内用户可以使用 `GOPROXY`加速 `go install`
@@ -167,13 +167,13 @@ kun 默认只编译 **MySQL** 和 **PostgreSQL** 驱动，支持 `CGO_ENABLED=0`
 **默认安装（推荐，静态构建）：**
 
 ```bash
-go install github.com/spruce1698/kun@latest
+go install github.com/sprucepeak/kun@latest
 ```
 
 **包含全部驱动（需要 CGO 环境）：**
 
 ```bash
-go install -tags "with_sqlite with_clickhouse" github.com/spruce1698/kun@latest
+go install -tags "with_sqlite with_clickhouse" github.com/sprucepeak/kun@latest
 ```
 
 **本地构建时指定驱动：**

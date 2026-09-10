@@ -12,7 +12,7 @@ import (
 	"unicode"
 	"unicode/utf16"
 
-	"github.com/spruce1698/kun/pkg/output"
+	"github.com/sprucepeak/kun/pkg/output"
 	"gorm.io/gorm/schema"
 )
 

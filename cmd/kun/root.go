@@ -4,12 +4,12 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spruce1698/kun/config"
-	"github.com/spruce1698/kun/internal/create"
-	"github.com/spruce1698/kun/internal/new"
-	"github.com/spruce1698/kun/internal/run"
-	"github.com/spruce1698/kun/internal/upgrade"
-	"github.com/spruce1698/kun/internal/wire"
+	"github.com/sprucepeak/kun/config"
+	"github.com/sprucepeak/kun/internal/create"
+	"github.com/sprucepeak/kun/internal/new"
+	"github.com/sprucepeak/kun/internal/run"
+	"github.com/sprucepeak/kun/internal/upgrade"
+	"github.com/sprucepeak/kun/internal/wire"
 )
 
 var CmdRoot = &cobra.Command{
