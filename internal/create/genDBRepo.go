@@ -1,22 +1,17 @@
-/**
- * @Author: spruce
- * @Date: 2024-04-23 17:13
- * @Desc: 根据数据库生成 repository/db
- */
-
+// Package create provides the "kun create db" subcommand.
+// It connects to a database (or parses a SQL file) and generates
+// GORM repository files for the specified tables.
 package create
 
 import (
+	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spruce1698/kun/internal/command/create/kernel"
-	"github.com/spruce1698/kun/pkg/fmt"
-	"gorm.io/driver/clickhouse"
-	"gorm.io/driver/mysql"
-	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
+	"github.com/spruce1698/kun/internal/create/kernel"
+	"github.com/spruce1698/kun/pkg/output"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 )
@@ -44,24 +39,27 @@ type CmdParams struct {
 	DBType  string   // 数据库类型
 }
 
+// driverRegistry P1: 驱动注册表。
+// mysql/postgres 由 genDBRepo_mysql.go 默认注册；
+// sqlite 由 genDBRepo_sqlite.go（build tag: with_sqlite）注册；
+// clickhouse 由 genDBRepo_clickhouse.go（build tag: with_clickhouse）注册。
+var driverRegistry = map[DBType]func(string) gorm.Dialector{}
+
+// registerDriver 由各驱动文件的 init() 调用，将驱动注册到全局表。
+func registerDriver(t DBType, opener func(string) gorm.Dialector) {
+	driverRegistry[t] = opener
+}
+
 // connectDB 连接数据库 选择用于连接到数据库的数据库类型
 func connectDB(t DBType, dsn string) (*gorm.DB, error) {
 	if dsn == "" {
 		return nil, fmt.Errorf("dsn cannot be empty")
 	}
-
-	switch t {
-	case dbMySQL:
-		return gorm.Open(mysql.Open(dsn))
-	case dbPostgres:
-		return gorm.Open(postgres.Open(dsn))
-	case dbClickHouse:
-		return gorm.Open(clickhouse.Open(dsn))
-	case dbSQLite:
-		return gorm.Open(sqlite.Open(dsn))
-	default:
-		return nil, fmt.Errorf("unknow db %q (support mysql || postgres || sqlite || clickhouse for now)", t)
+	opener, ok := driverRegistry[t]
+	if !ok {
+		return nil, fmt.Errorf("driver %q is not available in this build (mysql/postgres built-in; add -tags with_sqlite or -tags with_clickhouse for others)", t)
 	}
+	return gorm.Open(opener(dsn))
 }
 
 func detectDBType(dsn string) DBType {
@@ -78,11 +76,12 @@ func detectDBType(dsn string) DBType {
 	return dbMySQL
 }
 
-func genDBRepo(cmd *cobra.Command, args []string) {
+func genDBRepo(cmd *cobra.Command, args []string) error {
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+
 	// 如果参数是 .sql 文件，则解析 SQL 文件生成 repo
 	if strings.HasSuffix(args[0], ".sql") {
-		genDBRepoFromSQL(args)
-		return
+		return genDBRepoFromSQL(args, dryRun)
 	}
 
 	cmdConf := &CmdParams{
@@ -100,12 +99,15 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 
 	gormDb, err := connectDB(DBType(cmdConf.DBType), cmdConf.DSN)
 	if err != nil {
-		fmt.Error("connect db server fail: %s", err)
-		return
+		// 连接错误信息可能回显 DSN 片段(含明文密码),脱敏后再返回。
+		return fmt.Errorf("connect db server fail: %w", maskDSN(err))
 	}
 	if gormDb == nil {
-		fmt.Error("gorm db is nil")
-		return
+		return fmt.Errorf("gorm db is nil")
+	}
+	// 生成完成后显式关闭底层 *sql.DB,避免 CLI 进程依赖退出才释放连接。
+	if sqlDB, err := gormDb.DB(); err == nil {
+		defer sqlDB.Close()
 	}
 	// 自定义命名策略
 	gormDb.Config.NamingStrategy = schema.NamingStrategy{
@@ -122,31 +124,67 @@ func genDBRepo(cmd *cobra.Command, args []string) {
 		// Execute tasks for all tables in the database
 		tablesList, err = gormDb.Migrator().GetTables()
 		if err != nil {
-			fmt.Error("GORM migrator get all tables fail: %s", err)
-			return
+			return fmt.Errorf("GORM migrator get all tables fail: %w", maskDSN(err))
 		}
 	} else {
 		tablesList = cmdConf.Tables
 	}
-	for _, tableName := range tablesList {
-		g.GenerateRepo(tableName)
+
+	if dryRun {
+		output.Success("[dry-run] will generate db repository for tables: %v to %s", tablesList, cmdConf.OutPath)
+		return nil
 	}
 
-	g.Execute()
+	// 汇总各表的失败原因:单表失败不中断其它表的生成,但最终必须以错误返回,
+	// 否则 CLI 打印红色错误却以退出码 0 结束,CI 无法拦截。
+	var genErrs []error
+	for _, tableName := range tablesList {
+		if err := g.GenerateRepo(tableName); err != nil {
+			output.Error("%s", maskDSN(err))
+			genErrs = append(genErrs, maskDSN(err))
+		}
+	}
+
+	if err := g.Execute(); err != nil {
+		genErrs = append(genErrs, maskDSN(err))
+	}
+	if len(genErrs) > 0 {
+		return errors.Join(genErrs...)
+	}
+	return nil
+}
+
+// maskDSN 将错误信息中可能出现的 DSN 密码替换为 ***,避免明文密码进终端/CI 日志。
+//
+// B3: 此处故意使用 fmt.Errorf("%s", msg) 而非 %w，因为原始错误中包含明文密码片段。
+// 使用 %w 会保留原始错误对象，导致调用方通过 errors.As/Unwrap 拿到含密码的错误文本。
+// 权衡：安全性优先于错误链的可追溯性；调用方若需类型判断，应在 maskDSN 之前处理。
+func maskDSN(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	// MySQL DSN 形如 user:password@tcp(host)/dbname —— 把第一个 ':' 与 '@tcp'/'@' 之间的内容掩码。
+	if at := strings.Index(msg, "@tcp("); at > 0 {
+		if colon := strings.Index(msg[:at], ":"); colon >= 0 && colon < at {
+			msg = msg[:colon+1] + "***" + msg[at:]
+		}
+	}
+	return fmt.Errorf("%s", msg)
 }
 
 // defaultSQLConfig 构建默认 SQLConfig（DB 和 SQL 文件路径共用）
 func defaultSQLConfig() kernel.SQLConfig {
 	outPath, err := filepath.Abs(DefaultOutPath)
 	if err != nil {
-		fmt.Error("outPath is invalid: %s, using default", err)
+		output.Error("outPath is invalid: %s, using default", err)
 		outPath = DefaultOutPath
 	}
 	return kernel.SQLConfig{
 		OutPath:           outPath,
 		PackageName:       "db",
 		FieldCoverable:    false, // 当字段具有默认值时生成指针，以解决无法分配零值的问题
-		FieldNullable:     true,  // 当字段可为空时生成指针
+		FieldNullable:     true,  // 当字段可为空时生成指针。注意：此默认值会让所有可空列生成 *T 指针类型，若希望生成值类型请改为 false
 		FieldWithIndexTag: true,  // 生成字段包含 索引 标记
 		FieldWithTypeTag:  true,  // 生成字段包含 列类型 标记
 		FieldSignable:     false, // 检测整数字段的无符号类型，调整生成的数据类型
@@ -154,21 +192,20 @@ func defaultSQLConfig() kernel.SQLConfig {
 }
 
 // genDBRepoFromSQL 从 .sql 文件解析 CREATE TABLE 语句并生成 repo
-func genDBRepoFromSQL(args []string) {
+func genDBRepoFromSQL(args []string, dryRun bool) error {
 	conf := defaultSQLConfig()
 
 	metas, err := kernel.ParseSQLFile(args[0], &conf)
 	if err != nil {
-		fmt.Error("parse sql file fail: %s", err)
-		return
+		return fmt.Errorf("parse sql file fail: %w", err)
 	}
 	if len(metas) == 0 {
-		fmt.Warn("no CREATE TABLE found in file: %s", args[0])
-		return
+		output.Warn("no CREATE TABLE found in file: %s", args[0])
+		return nil
 	}
 
 	var tableFilter []string
-	if len(args) > 1 && args[1] != "" && args[1] != "*" && args[1] != "." {
+	if len(args) > 1 && args[1] != "" && args[1] != "*" {
 		tableFilter = strings.Split(args[1], ",")
 	}
 
@@ -193,5 +230,13 @@ func genDBRepoFromSQL(args []string) {
 		g.AddRepoMeta(meta)
 	}
 
-	g.Execute()
+	if dryRun {
+		output.Success("[dry-run] will generate db repository from %s for %d tables to %s", args[0], len(metas), conf.OutPath)
+		return nil
+	}
+
+	if err := g.Execute(); err != nil {
+		return err
+	}
+	return nil
 }

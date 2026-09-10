@@ -1,12 +1,13 @@
 package upgrade
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 
 	"github.com/spf13/cobra"
 	"github.com/spruce1698/kun/config"
-	"github.com/spruce1698/kun/pkg/fmt"
+	"github.com/spruce1698/kun/pkg/output"
 )
 
 var CmdUpgrade = &cobra.Command{
@@ -14,14 +15,20 @@ var CmdUpgrade = &cobra.Command{
 	Short:   "Upgrade the kun command.",
 	Long:    "Upgrade the kun command.",
 	Example: "kun upgrade",
-	Run: func(_ *cobra.Command, _ []string) {
-		fmt.Success("go install %s", config.KunUrl)
+	RunE: func(_ *cobra.Command, _ []string) error {
+		output.Success("go install %s", config.KunUrl)
 		cmd := exec.Command("go", "install", config.KunUrl)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			fmt.Error("go install %s error", err)
+			return fmt.Errorf("go install %s error: %w", config.KunUrl, err)
 		}
-		fmt.Success("kun upgrade successfully!")
+		output.Success("kun upgrade successfully!")
+		return nil
 	},
+}
+
+// Register 将 upgrade 子命令挂载到 parent。
+func Register(parent *cobra.Command) {
+	parent.AddCommand(CmdUpgrade)
 }
