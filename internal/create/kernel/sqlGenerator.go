@@ -2,20 +2,23 @@ package kernel
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"runtime"
 	"strings"
 	"text/template"
-	"unicode"
 
-	"github.com/spruce1698/kun/pkg/fmt"
+	"github.com/spruce1698/kun/pkg/output"
 	"github.com/spruce1698/kun/tpl"
 	"golang.org/x/tools/imports"
 	"gorm.io/gorm"
 )
+
+// E3: 包级预编译正则，避免在 checkStructName 热路径中重复编译。
+var reValidStructName = regexp.MustCompile(`^\w+$`)
 
 // generator's basic configuration
 type SQLConfig struct {
@@ -33,17 +36,19 @@ type SQLConfig struct {
 }
 
 type StructMeta struct {
-	DbConn           *gorm.DB
-	FileName         string // generated file name
-	InterfaceName    string // interface name
-	StructName       string // origin/repo struct name
-	TableName        string // table name in db server
-	PackageName      string
-	PrimaryKeyType   string // 主键key类型
-	Fields           []*Field
-	HasPrimaryKey    bool   // 是否有主键
-	PrimaryKeyName   string // 主键 Go 字段名
-	PrimaryKeyColumn string // 主键 DB 列名
+	DbConn                  *gorm.DB
+	FileName                string // generated file name
+	InterfaceName           string // interface name
+	StructName              string // origin/repo struct name
+	TableName               string // table name in db server
+	PackageName             string
+	PrimaryKeyType          string // 主键key类型
+	Fields                  []*Field
+	HasPrimaryKey           bool   // 是否有主键
+	PrimaryKeyName          string // 主键 Go 字段名
+	PrimaryKeyColumn        string // 主键 DB 列名
+	PrimaryKeyAutoIncrement bool   // 主键是否自增(自增主键 Insert/BatchInsert 时清零让 DB 分配;非自增主键保留调用方传入的值)
+	HasSoftDelete           bool   // 是否含有软删除字段(如 deleted_at)
 }
 
 // user input structures
@@ -107,15 +112,18 @@ var (
 		"bit":        func(string) string { return "[]uint8" },
 		"boolean":    func(string) string { return "bool" },
 		"tinyint": func(detailType string) string {
-			if strings.HasPrefix(strings.TrimSpace(detailType), "tinyint(1)") {
-				return "bool"
+			// 仅当精确为 tinyint(1)（可带 unsigned 等后缀）时视为 bool，避免 tinyint(10)/tinyint(100) 误判
+			dt := strings.TrimSpace(detailType)
+			if strings.HasPrefix(dt, "tinyint(1)") {
+				rest := strings.TrimSpace(dt[len("tinyint(1)"):])
+				if rest == "" || strings.HasPrefix(rest, "unsigned") || strings.HasPrefix(rest, "signed") {
+					return "bool"
+				}
 			}
 			return "int32"
 		},
 	}
 )
-
-func init() { runtime.GOMAXPROCS(runtime.NumCPU()) }
 
 // code generator
 type Generator struct {
@@ -131,35 +139,35 @@ func NewGenerator(conf SQLConfig) *Generator {
 	}
 }
 
-// Catch table info from db, return a BaseStruct
-func (g *Generator) GenerateRepo(tableName string) {
+// GenerateRepo 从数据库表读取结构信息。
+// 返回 error 而不是只打日志:调用方需要据此决定退出码,否则 CI 无法拦截生成失败。
+func (g *Generator) GenerateRepo(tableName string) error {
 	structName := g.Conf.DbConn.NamingStrategy.SchemaName(tableName)
 
 	meta, err := g.getStructMeta(tableName, structName)
 	if err != nil {
-		fmt.Error("generate struct from table fail: %s", err)
-		return
+		return fmt.Errorf("generate struct from table <%s> fail: %w", tableName, err)
 	}
 	if meta == nil {
-		fmt.Success("ignore table <%s>", tableName)
-		return
+		output.Success("ignore table <%s>", tableName)
+		return nil
 	}
 	g.repos[meta.StructName] = meta
 
-	fmt.Success("got %d columns from table <%s>", len(meta.Fields), meta.TableName)
-	return
+	output.Success("got %d columns from table <%s>", len(meta.Fields), meta.TableName)
+	return nil
 }
 
 // Execute generate code to output path
-func (g *Generator) Execute() {
-	fmt.Success("Start generating code.")
+func (g *Generator) Execute() error {
+	output.Success("Start generating code.")
 
 	if err := g.generateRepoFile(); err != nil {
-		fmt.Error("generate repository struct fail: %s", err)
-		return
+		return fmt.Errorf("generate repository struct fail: %w", err)
 	}
 
-	fmt.Success("Generate code done.")
+	output.Success("Generate code done.")
+	return nil
 }
 
 // AddRepoMeta adds a pre-built StructMeta (e.g. parsed from SQL file) to the generator.
@@ -168,7 +176,7 @@ func (g *Generator) AddRepoMeta(meta *StructMeta) {
 		return
 	}
 	g.repos[meta.StructName] = meta
-	fmt.Success("got %d columns from table <%s", len(meta.Fields), meta.TableName)
+	output.Success("got %d columns from table <%s>", len(meta.Fields), meta.TableName)
 }
 
 // Generate db repository by table name
@@ -180,7 +188,7 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 		return nil, fmt.Errorf("repo name %q is invalid: %w", structName, err)
 	}
 
-	fileName := string(unicode.ToLower(rune(structName[0]))) + structName[1:]
+	fileName := toLowerCamel(structName)
 
 	columns, err := g.getTableColumns(tableName)
 	if err != nil || len(columns) == 0 {
@@ -189,6 +197,7 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 
 	primaryKeyType := "int64"
 	fields := make([]*Field, 0, len(columns))
+	seenFields := make(map[string]string)
 	for _, col := range columns {
 		m := col.ToField(g.Conf.FieldNullable, g.Conf.FieldCoverable, g.Conf.FieldSignable)
 		if t, ok := col.ColumnType.ColumnType(); ok && !g.Conf.FieldWithTypeTag { // remove type tag if FieldWithTypeTag == false
@@ -199,52 +208,37 @@ func (g *Generator) getStructMeta(tableName, structName string) (*StructMeta, er
 		if m.IsPrimaryKey {
 			primaryKeyType = m.Type
 		}
-		// json 小驼峰
-		m.JSONTag = strings.ToLower(m.Name[:1]) + m.Name[1:]
+
+		if prevCol, exists := seenFields[m.Name]; exists {
+			output.Warn("table %q 中列 %q 与 %q 映射到重复的 Go 字段名 %q", tableName, prevCol, m.ColumnName, m.Name)
+		} else {
+			seenFields[m.Name] = m.ColumnName
+		}
 
 		fields = append(fields, m)
 	}
 
+	// E8: 使用公共 findPrimaryKey 函数，消除与 sqlParser.go 的重复逻辑。
 	var hasPrimaryKey bool
 	var primaryKeyName string
 	var primaryKeyColumn string
-
-	// 1. First look for IsPrimaryKey = true
-	for _, f := range fields {
-		if f.IsPrimaryKey {
-			hasPrimaryKey = true
-			primaryKeyName = f.Name
-			primaryKeyColumn = f.ColumnName
-			primaryKeyType = f.Type
-			break
-		}
-	}
-
-	// 2. If not found, look for field Name == "Id" (case-insensitive column name "id")
-	if !hasPrimaryKey {
-		for _, f := range fields {
-			if strings.ToLower(f.ColumnName) == "id" || f.Name == "Id" {
-				hasPrimaryKey = true
-				primaryKeyName = f.Name
-				primaryKeyColumn = f.ColumnName
-				primaryKeyType = f.Type
-				break
-			}
-		}
-	}
+	var primaryKeyAutoIncrement bool
+	primaryKeyName, primaryKeyColumn, primaryKeyType, primaryKeyAutoIncrement, hasPrimaryKey = findPrimaryKey(fields)
 
 	return &StructMeta{
-		DbConn:           g.Conf.DbConn,
-		FileName:         fileName,
-		InterfaceName:    fileName,
-		StructName:       structName,
-		TableName:        tableName,
-		PackageName:      g.Conf.PackageName,
-		PrimaryKeyType:   primaryKeyType,
-		Fields:           fields,
-		HasPrimaryKey:    hasPrimaryKey,
-		PrimaryKeyName:   primaryKeyName,
-		PrimaryKeyColumn: primaryKeyColumn,
+		DbConn:                  g.Conf.DbConn,
+		FileName:                fileName,
+		InterfaceName:           fileName,
+		StructName:              structName,
+		TableName:               tableName,
+		PackageName:             g.Conf.PackageName,
+		PrimaryKeyType:          primaryKeyType,
+		Fields:                  fields,
+		HasPrimaryKey:           hasPrimaryKey,
+		PrimaryKeyName:          primaryKeyName,
+		PrimaryKeyColumn:        primaryKeyColumn,
+		PrimaryKeyAutoIncrement: primaryKeyAutoIncrement,
+		HasSoftDelete:           hasSoftDeleteField(fields),
 	}, nil
 }
 
@@ -268,7 +262,7 @@ func (g *Generator) getTableColumns(tableName string) (result []*Column, err err
 
 	indexList, err := g.Conf.DbConn.Migrator().GetIndexes(tableName)
 	if err != nil { // ignore find index err
-		fmt.Warn("GetTableIndex for %s,err=%s", tableName, err.Error())
+		output.Warn("GetTableIndex for %s,err=%s", tableName, err.Error())
 		return result, nil
 	}
 	if len(indexList) == 0 {
@@ -308,6 +302,7 @@ func (g *Generator) generateRepoFile() error {
 		return fmt.Errorf("create repository pkg path(%s) fail: %w", repoOutPath, err)
 	}
 
+	var diErrs []error
 	for _, data := range g.repos {
 		if data == nil {
 			continue
@@ -318,7 +313,7 @@ func (g *Generator) generateRepoFile() error {
 			return err
 		}
 
-		fmt.Success("generate repository file(table <%s> -> {%s.%s}): %s", data.TableName, data.PackageName, data.StructName, repoFile)
+		output.Success("generate repository file(table <%s> -> {%s.%s}): %s", data.TableName, data.PackageName, data.StructName, repoFile)
 
 		repoFile = filepath.Join(repoOutPath, data.FileName+".go")
 		_, StatErr := os.Stat(repoFile)
@@ -327,21 +322,22 @@ func (g *Generator) generateRepoFile() error {
 			if err != nil {
 				return err
 			}
-			fmt.Success("generate repository file(table <%s> -> {%s.%s}): %s", data.TableName, data.PackageName, data.StructName, repoFile)
+			output.Success("generate repository file(table <%s> -> {%s.%s}): %s", data.TableName, data.PackageName, data.StructName, repoFile)
 		}
 
 		contentMap := map[string]string{
-			"// ==== Add Repo before this line, don't edit this line.====": "    " + data.PackageName + ".New" + data.StructName + "Db,",
+			"// ==== Add Repo before this line, don't edit this line.====": "\t" + data.PackageName + ".New" + data.StructName + "Db,",
 		}
 		err = Wire2DIFile(repoOutPath, contentMap)
 		if err != nil {
-			fmt.Error("generate db repository insert New%sDb to DI file error: %s", data.StructName, err)
+			output.Error("generate db repository insert New%sDb to DI file error: %s", data.StructName, err)
+			diErrs = append(diErrs, fmt.Errorf("table %s insert to DI file error: %w", data.TableName, err))
 			continue
 		}
-		fmt.Success("generate db repository insert New%sDb to DI file", data.StructName)
+		output.Success("generate db repository insert New%sDb to DI file", data.StructName)
 	}
 
-	return nil
+	return errors.Join(diErrs...)
 }
 
 func (g *Generator) getRepoOutputPath() (outPath string, err error) {
@@ -371,14 +367,16 @@ func (g *Generator) output(tmpl string, data interface{}, fileName string) error
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(fileName, result, 0640)
+	// M3: 统一使用 0644（与其他生成文件一致）
+	return os.WriteFile(fileName, result, 0644)
 }
 
 func (g *Generator) checkStructName(name string) error {
 	if name == "" {
 		return nil
 	}
-	if !regexp.MustCompile(`^\w+$`).MatchString(name) {
+	// E3: 使用包级预编译正则
+	if !reValidStructName.MatchString(name) {
 		return fmt.Errorf("repo name cannot contains invalid character")
 	}
 	if name[0] < 'A' || name[0] > 'Z' {
@@ -486,7 +484,7 @@ func (c *Column) ToField(nullable, coverable, signable bool) *Field {
 	}
 	switch {
 	case c.Name() == "deleted_at" && fieldType == "time.Time":
-		fieldType = "gorm.DeletedAt"
+		fieldType = "DeletedAt"
 	case coverable && c.needDefaultTag(c.defaultTagValue()):
 		fieldType = "*" + fieldType
 	case nullable:
@@ -497,6 +495,7 @@ func (c *Column) ToField(nullable, coverable, signable bool) *Field {
 
 	var commentTag string
 	if ct, ok := c.Comment(); ok {
+		ct = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(ct)
 		commentTag = fmt.Sprintf("// %s", ct)
 	}
 
@@ -507,7 +506,7 @@ func (c *Column) ToField(nullable, coverable, signable bool) *Field {
 		Name:         c.Name(),
 		Type:         fieldType,
 		GORMTag:      c.buildGormTag(),
-		JSONTag:      c.Name(),
+		JSONTag:      "",
 		CommentTag:   commentTag,
 		IsPrimaryKey: isPrimaryKey,
 		ColumnName:   c.Name(),
@@ -519,9 +518,6 @@ func (m *Field) Tags() string {
 	var tags strings.Builder
 	if gormTag := strings.TrimSpace(m.GORMTag); gormTag != "" {
 		tags.WriteString(fmt.Sprintf(`gorm:"%s" `, gormTag))
-	}
-	if jsonTag := strings.TrimSpace(m.JSONTag); jsonTag != "" {
-		tags.WriteString(fmt.Sprintf(`json:"%s" `, jsonTag))
 	}
 	return strings.TrimSpace(tags.String())
 }
